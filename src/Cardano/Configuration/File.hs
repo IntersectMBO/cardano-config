@@ -34,6 +34,7 @@ module Cardano.Configuration.File (
   finalizeTesting,
 ) where
 
+import Autodocodec (JSONCodec)
 import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Mempool
 import Cardano.Configuration.File.Network
@@ -41,9 +42,22 @@ import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
 import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
-import Cardano.Configuration.Genesis (GenesisReadError, genesisErrorFile, resolveExperimentalGenesis)
+import Cardano.Configuration.Genesis (
+  GenesisReadError,
+  genesisErrorFile,
+  readGenesisFileWith,
+  resolveExperimentalGenesis,
+ )
+import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
+import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig, readByronGenesisConfig)
+import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
+import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Schema (componentPropertyNames, recognisedKeys)
+import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
+import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
+import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Control.Exception
 import Control.Monad (unless)
 import Data.Aeson (FromJSON, Value (..), parseJSON)
@@ -82,10 +96,20 @@ data NodeConfigurationFromFileF f
   -- ^ Tracing keys, captured opaquely; see 'TracingConfiguration'. Unlike the
   -- other components this is never read from a sub-file: the node's tracing
   -- system resolves its own @HermodTracing@ file indirection.
+  , byronGenesisConfig :: ByronGenesisConfig
+  -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
+  , shelleyGenesisConfig :: ShelleyGenesis
+  -- ^ The parsed Shelley genesis (read from the @ShelleyGenesisFile@).
+  , alonzoGenesisConfig :: AlonzoGenesis
+  -- ^ The parsed Alonzo genesis (read from the @AlonzoGenesisFile@).
+  , conwayGenesisConfig :: ConwayGenesis
+  -- ^ The parsed Conway genesis (read from the @ConwayGenesisFile@).
   , experimentalGenesisConfig :: Maybe DijkstraGenesis
   -- ^ The experimental (Dijkstra) genesis, read and decoded from the
-  -- @DijkstraGenesisFile@ referenced by the testing configuration (if any). This
-  -- is the parsed genesis, not the file path — JSON resolution happens here.
+  -- @DijkstraGenesisFile@ referenced by the testing configuration (if any).
+  --
+  -- These are the parsed genesis values, not file paths — all genesis JSON
+  -- resolution happens here.
   }
   deriving (Generic)
 
@@ -377,6 +401,15 @@ parseConfigurationVersion1 root configValue = do
   tracing <- runCodec Nothing "Tracing" configValue
   -- The genesis files referenced by the configuration are read and decoded
   -- here, so that JSON resolution happens entirely within this library.
+  let byronCfg = byronGenesis protocol
+  byronGenesisData <-
+    readByronGenesisOrThrow
+      root
+      (toByronReqNetworkMagic (byronReqNetworkMagic byronCfg))
+      (byronGenesisFile byronCfg)
+  shelleyGenesisData <- readEraGenesisOrThrow shelleyGenesisCodec root "ShelleyGenesisFile" (shelleyGenesis protocol)
+  alonzoGenesisData <- readEraGenesisOrThrow alonzoGenesisCodec root "AlonzoGenesisFile" (alonzoGenesis protocol)
+  conwayGenesisData <- readEraGenesisOrThrow conwayGenesisCodec root "ConwayGenesisFile" (conwayGenesis protocol)
   experimentalGenesisData <- readExperimentalGenesisOrThrow root (experimentalGenesis testing)
   pure
     NodeConfigurationFromFileV1
@@ -388,8 +421,56 @@ parseConfigurationVersion1 root configValue = do
       , testingConfiguration = Identity testing
       , mempoolConfiguration = Identity mempool
       , tracingConfiguration = tracing
+      , byronGenesisConfig = byronGenesisData
+      , shelleyGenesisConfig = shelleyGenesisData
+      , alonzoGenesisConfig = alonzoGenesisData
+      , conwayGenesisConfig = conwayGenesisData
       , experimentalGenesisConfig = experimentalGenesisData
       }
+
+-- | Convert this library's 'RequiresNetworkMagic' to the Byron ledger's, used
+-- when reading the Byron genesis. Absent in the configuration defaults to
+-- requiring no magic.
+toByronReqNetworkMagic :: Maybe RequiresNetworkMagic -> Byron.RequiresNetworkMagic
+toByronReqNetworkMagic = \case
+  Just RequiresMagic -> Byron.RequiresMagic
+  Just RequiresNoMagic -> Byron.RequiresNoMagic
+  Nothing -> Byron.RequiresNoMagic
+
+-- | Read, hash-check and decode an (aeson) era genesis file referenced by the
+-- protocol configuration, throwing a 'ConfigurationParsingError' on failure.
+readEraGenesisOrThrow ::
+  JSONCodec a -> FilePath -> String -> Hashed FilePath -> IO a
+readEraGenesisOrThrow genesisCodec root fileKey (Hashed file mHash) = do
+  result <- readGenesisFileWith genesisCodec mHash (root </> file)
+  case result of
+    Left err -> throwIO (genesisReadErrorAt "ProtocolConfig" fileKey err)
+    Right genesis -> pure genesis
+
+-- | Read, hash-check and decode the Byron genesis (canonical JSON), throwing a
+-- 'ConfigurationParsingError' on failure.
+readByronGenesisOrThrow ::
+  FilePath -> Byron.RequiresNetworkMagic -> Hashed FilePath -> IO ByronGenesisConfig
+readByronGenesisOrThrow root rnm (Hashed file mHash) =
+  case mHash of
+    Nothing ->
+      throwIO $
+        ConfigurationParsingError
+          (Just (root </> file))
+          (Just "ProtocolConfig")
+          [Key "ByronGenesisHash"]
+          "a Byron genesis file requires a ByronGenesisHash"
+    Just expected -> do
+      result <- readByronGenesisConfig rnm expected (root </> file)
+      case result of
+        Left err ->
+          throwIO $
+            ConfigurationParsingError
+              (Just (root </> file))
+              (Just "ProtocolConfig")
+              [Key "ByronGenesisFile"]
+              err
+        Right cfg -> pure cfg
 
 -- | Read and decode the experimental (Dijkstra) genesis referenced by the
 -- testing configuration, turning a read\/hash\/decode failure into a
@@ -405,9 +486,14 @@ readExperimentalGenesisOrThrow root mRef = do
 -- | Render a 'GenesisReadError' as a 'ConfigurationParsingError' attributed to
 -- the @TestingConfig@ section and the offending @DijkstraGenesisFile@.
 genesisReadErrorToParsingError :: GenesisReadError -> ConfigurationParsingError
-genesisReadErrorToParsingError err =
+genesisReadErrorToParsingError = genesisReadErrorAt "TestingConfig" "DijkstraGenesisFile"
+
+-- | Render a 'GenesisReadError' as a 'ConfigurationParsingError' attributed to
+-- the given section and file key.
+genesisReadErrorAt :: String -> String -> GenesisReadError -> ConfigurationParsingError
+genesisReadErrorAt section fileKey err =
   ConfigurationParsingError
     (genesisErrorFile err)
-    (Just "TestingConfig")
-    [Key "DijkstraGenesisFile"]
+    (Just section)
+    [Key (K.fromString fileKey)]
     (show err)

@@ -65,16 +65,16 @@ main = do
       , genesisHashRequiredCase
       , genesisHashPresentCase
       , roundTripCase
-          "examples/shelley-genesis.json (round-trips against the ledger instances)"
-          "examples/shelley-genesis.json"
+          "examples/mainnet-shelley-genesis.json (round-trips against the ledger instances)"
+          "examples/mainnet-shelley-genesis.json"
           shelleyGenesisCodec
       , roundTripCase
-          "examples/alonzo-genesis.json (round-trips against the ledger instances)"
-          "examples/alonzo-genesis.json"
+          "examples/mainnet-alonzo-genesis.json (round-trips against the ledger instances)"
+          "examples/mainnet-alonzo-genesis.json"
           alonzoGenesisCodec
       , roundTripCase
-          "examples/conway-genesis.json (round-trips against the ledger instances)"
-          "examples/conway-genesis.json"
+          "examples/mainnet-conway-genesis.json (round-trips against the ledger instances)"
+          "examples/mainnet-conway-genesis.json"
           conwayGenesisCodec
       , byronGenesisDecodeCase
       ]
@@ -218,8 +218,8 @@ genesisHashPresentCase =
 -- ledger's reader. The expected hash is the real mainnet Byron genesis hash.
 byronGenesisDecodeCase :: IO Bool
 byronGenesisDecodeCase = do
-  let label = "examples/byron-genesis.json (decodes + hash-checks via the ledger)"
-  path <- getDataFileName "examples/byron-genesis.json"
+  let label = "examples/mainnet-byron-genesis.json (decodes + hash-checks via the ledger)"
+  path <- getDataFileName "examples/mainnet-byron-genesis.json"
   case hashFromTextAsHex (T.pack "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb") of
     Nothing -> report label (Just "could not parse the expected Byron genesis hash")
     Just expected -> do

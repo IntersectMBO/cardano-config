@@ -19,6 +19,7 @@ import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex, hashToTextAsHe
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString (ByteString)
 import Data.Functor.Identity (Identity)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word
@@ -48,11 +49,17 @@ hashCodec =
 
 -- | An object-codec fragment reading a file path and its optional hash from two
 -- sibling keys of the enclosing object.
+-- | A required genesis file together with its (mandatory) hash: a genesis file
+-- must always be pinned to a hash, so the hash key is required whenever the file
+-- is present. The hash is stored as @'Just'@.
 hashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Hashed FilePath)
 hashedFileObjectCodec fileKey hashKey =
   Hashed
-    <$> requiredFieldWith fileKey filePathCodec "Path to the file" .= hashed
-    <*> optionalFieldWith hashKey hashCodec "Hash of the file" .= hash
+    <$> requiredFieldWith fileKey filePathCodec "Path to the genesis file" .= hashed
+    <*> dimapCodec Just (fromMaybe noHash) (requiredFieldWith hashKey hashCodec "Hash of the genesis file")
+      .= hash
+  where
+    noHash = error (T.unpack hashKey <> " unexpectedly absent")
 
 -- | An optional genesis file whose hash is mandatory once the file is given:
 -- 'Nothing' when the file key is absent, but if the file key is present the hash

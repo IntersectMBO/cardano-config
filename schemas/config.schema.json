@@ -498,24 +498,24 @@
             "type": "object"
         },
         "AlonzoGenesisFile": {
-            "description": "Path to the file",
+            "description": "Path to the genesis file",
             "format": "path",
             "title": "AlonzoGenesisFile",
             "type": "string"
         },
         "AlonzoGenesisHash": {
-            "description": "Hash of the file\nBlake2b_256 hash",
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
             "title": "AlonzoGenesisHash",
             "type": "string"
         },
         "ByronGenesisFile": {
-            "description": "Path to the file",
+            "description": "Path to the genesis file",
             "format": "path",
             "title": "ByronGenesisFile",
             "type": "string"
         },
         "ByronGenesisHash": {
-            "description": "Hash of the file\nBlake2b_256 hash",
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
             "title": "ByronGenesisHash",
             "type": "string"
         },
@@ -710,13 +710,13 @@
             "type": "string"
         },
         "ConwayGenesisFile": {
-            "description": "Path to the file",
+            "description": "Path to the genesis file",
             "format": "path",
             "title": "ConwayGenesisFile",
             "type": "string"
         },
         "ConwayGenesisHash": {
-            "description": "Hash of the file\nBlake2b_256 hash",
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
             "title": "ConwayGenesisHash",
             "type": "string"
         },
@@ -1682,24 +1682,24 @@
                     "description": "ProtocolConfiguration",
                     "properties": {
                         "AlonzoGenesisFile": {
-                            "description": "Path to the file",
+                            "description": "Path to the genesis file",
                             "format": "path",
                             "title": "AlonzoGenesisFile",
                             "type": "string"
                         },
                         "AlonzoGenesisHash": {
-                            "description": "Hash of the file\nBlake2b_256 hash",
+                            "description": "Hash of the genesis file\nBlake2b_256 hash",
                             "title": "AlonzoGenesisHash",
                             "type": "string"
                         },
                         "ByronGenesisFile": {
-                            "description": "Path to the file",
+                            "description": "Path to the genesis file",
                             "format": "path",
                             "title": "ByronGenesisFile",
                             "type": "string"
                         },
                         "ByronGenesisHash": {
-                            "description": "Hash of the file\nBlake2b_256 hash",
+                            "description": "Hash of the genesis file\nBlake2b_256 hash",
                             "title": "ByronGenesisHash",
                             "type": "string"
                         },
@@ -1715,13 +1715,13 @@
                             "type": "string"
                         },
                         "ConwayGenesisFile": {
-                            "description": "Path to the file",
+                            "description": "Path to the genesis file",
                             "format": "path",
                             "title": "ConwayGenesisFile",
                             "type": "string"
                         },
                         "ConwayGenesisHash": {
-                            "description": "Hash of the file\nBlake2b_256 hash",
+                            "description": "Hash of the genesis file\nBlake2b_256 hash",
                             "title": "ConwayGenesisHash",
                             "type": "string"
                         },
@@ -1761,13 +1761,13 @@
                             "type": "string"
                         },
                         "ShelleyGenesisFile": {
-                            "description": "Path to the file",
+                            "description": "Path to the genesis file",
                             "format": "path",
                             "title": "ShelleyGenesisFile",
                             "type": "string"
                         },
                         "ShelleyGenesisHash": {
-                            "description": "Hash of the file\nBlake2b_256 hash",
+                            "description": "Hash of the genesis file\nBlake2b_256 hash",
                             "title": "ShelleyGenesisHash",
                             "type": "string"
                         },
@@ -1778,11 +1778,15 @@
                         }
                     },
                     "required": [
+                        "ConwayGenesisHash",
                         "ConwayGenesisFile",
+                        "AlonzoGenesisHash",
                         "AlonzoGenesisFile",
+                        "ShelleyGenesisHash",
                         "ShelleyGenesisFile",
                         "LastKnownBlockVersion-Minor",
                         "LastKnownBlockVersion-Major",
+                        "ByronGenesisHash",
                         "ByronGenesisFile"
                     ],
                     "title": "ProtocolConfig",
@@ -1801,24 +1805,24 @@
                                 "description": "ProtocolConfiguration",
                                 "properties": {
                                     "AlonzoGenesisFile": {
-                                        "description": "Path to the file",
+                                        "description": "Path to the genesis file",
                                         "format": "path",
                                         "title": "AlonzoGenesisFile",
                                         "type": "string"
                                     },
                                     "AlonzoGenesisHash": {
-                                        "description": "Hash of the file\nBlake2b_256 hash",
+                                        "description": "Hash of the genesis file\nBlake2b_256 hash",
                                         "title": "AlonzoGenesisHash",
                                         "type": "string"
                                     },
                                     "ByronGenesisFile": {
-                                        "description": "Path to the file",
+                                        "description": "Path to the genesis file",
                                         "format": "path",
                                         "title": "ByronGenesisFile",
                                         "type": "string"
                                     },
                                     "ByronGenesisHash": {
-                                        "description": "Hash of the file\nBlake2b_256 hash",
+                                        "description": "Hash of the genesis file\nBlake2b_256 hash",
                                         "title": "ByronGenesisHash",
                                         "type": "string"
                                     },
@@ -1834,13 +1838,13 @@
                                         "type": "string"
                                     },
                                     "ConwayGenesisFile": {
-                                        "description": "Path to the file",
+                                        "description": "Path to the genesis file",
                                         "format": "path",
                                         "title": "ConwayGenesisFile",
                                         "type": "string"
                                     },
                                     "ConwayGenesisHash": {
-                                        "description": "Hash of the file\nBlake2b_256 hash",
+                                        "description": "Hash of the genesis file\nBlake2b_256 hash",
                                         "title": "ConwayGenesisHash",
                                         "type": "string"
                                     },
@@ -1880,13 +1884,13 @@
                                         "type": "string"
                                     },
                                     "ShelleyGenesisFile": {
-                                        "description": "Path to the file",
+                                        "description": "Path to the genesis file",
                                         "format": "path",
                                         "title": "ShelleyGenesisFile",
                                         "type": "string"
                                     },
                                     "ShelleyGenesisHash": {
-                                        "description": "Hash of the file\nBlake2b_256 hash",
+                                        "description": "Hash of the genesis file\nBlake2b_256 hash",
                                         "title": "ShelleyGenesisHash",
                                         "type": "string"
                                     },
@@ -1897,11 +1901,15 @@
                                     }
                                 },
                                 "required": [
+                                    "ConwayGenesisHash",
                                     "ConwayGenesisFile",
+                                    "AlonzoGenesisHash",
                                     "AlonzoGenesisFile",
+                                    "ShelleyGenesisHash",
                                     "ShelleyGenesisFile",
                                     "LastKnownBlockVersion-Minor",
                                     "LastKnownBlockVersion-Major",
+                                    "ByronGenesisHash",
                                     "ByronGenesisFile"
                                 ],
                                 "title": "ProtocolConfig",
@@ -1947,13 +1955,13 @@
             "type": "string"
         },
         "ShelleyGenesisFile": {
-            "description": "Path to the file",
+            "description": "Path to the genesis file",
             "format": "path",
             "title": "ShelleyGenesisFile",
             "type": "string"
         },
         "ShelleyGenesisHash": {
-            "description": "Hash of the file\nBlake2b_256 hash",
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
             "title": "ShelleyGenesisHash",
             "type": "string"
         },
