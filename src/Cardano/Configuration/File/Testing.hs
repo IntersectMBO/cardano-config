@@ -84,7 +84,7 @@ instance HasCodec (TestingConfiguration Maybe) where
           "TestDijkstraHardForkAtVersion"
           "Force the Dijkstra hard fork at this protocol version"
           .= testDijkstraHardForkAtVersion
-        <*> optionalHashedFileObjectCodec "DijkstraGenesisFile" "DijkstraGenesisHash" .= experimentalGenesis
+        <*> optionalHashedGenesisObjectCodec "DijkstraGenesisFile" "DijkstraGenesisHash" .= experimentalGenesis
 
 -- | Resolve a partial testing configuration, taking @ExperimentalHardForksEnabled@
 -- from the (always-applied) defaults.

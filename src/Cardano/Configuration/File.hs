@@ -41,7 +41,9 @@ import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
 import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
+import Cardano.Configuration.Genesis (GenesisReadError, genesisErrorFile, resolveExperimentalGenesis)
 import Cardano.Configuration.Schema (componentPropertyNames, recognisedKeys)
+import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Control.Exception
 import Control.Monad (unless)
 import Data.Aeson (FromJSON, Value (..), parseJSON)
@@ -80,6 +82,10 @@ data NodeConfigurationFromFileF f
   -- ^ Tracing keys, captured opaquely; see 'TracingConfiguration'. Unlike the
   -- other components this is never read from a sub-file: the node's tracing
   -- system resolves its own @HermodTracing@ file indirection.
+  , experimentalGenesisConfig :: Maybe DijkstraGenesis
+  -- ^ The experimental (Dijkstra) genesis, read and decoded from the
+  -- @DijkstraGenesisFile@ referenced by the testing configuration (if any). This
+  -- is the parsed genesis, not the file path — JSON resolution happens here.
   }
   deriving (Generic)
 
@@ -360,13 +366,48 @@ parseConfigurationVersion1 ::
   -- | The configuration object.
   Value ->
   IO NodeConfigurationFromFile
-parseConfigurationVersion1 root configValue =
-  NodeConfigurationFromFileV1
-    <$> (Identity <$> parseSection root configValue "StorageConfig")
-    <*> (Identity <$> parseSection root configValue "ConsensusConfig")
-    <*> (Identity <$> parseSection root configValue "ProtocolConfig")
-    <*> (Identity <$> parseSection root configValue "NetworkConfig")
-    <*> (Identity <$> parseSection root configValue "LocalConnectionsConfig")
-    <*> (Identity <$> parseSection root configValue "TestingConfig")
-    <*> (Identity <$> parseSection root configValue "MempoolConfig")
-    <*> runCodec Nothing "Tracing" configValue
+parseConfigurationVersion1 root configValue = do
+  storage <- parseSection root configValue "StorageConfig"
+  consensus <- parseSection root configValue "ConsensusConfig"
+  protocol <- parseSection root configValue "ProtocolConfig"
+  network <- parseSection root configValue "NetworkConfig"
+  localConnections <- parseSection root configValue "LocalConnectionsConfig"
+  testing <- parseSection root configValue "TestingConfig"
+  mempool <- parseSection root configValue "MempoolConfig"
+  tracing <- runCodec Nothing "Tracing" configValue
+  -- The genesis files referenced by the configuration are read and decoded
+  -- here, so that JSON resolution happens entirely within this library.
+  experimentalGenesisData <- readExperimentalGenesisOrThrow root (experimentalGenesis testing)
+  pure
+    NodeConfigurationFromFileV1
+      { storageConfiguration = Identity storage
+      , consensusConfiguration = Identity consensus
+      , protocolConfiguration = Identity protocol
+      , networkConfiguration = Identity network
+      , localConnectionsConfig = Identity localConnections
+      , testingConfiguration = Identity testing
+      , mempoolConfiguration = Identity mempool
+      , tracingConfiguration = tracing
+      , experimentalGenesisConfig = experimentalGenesisData
+      }
+
+-- | Read and decode the experimental (Dijkstra) genesis referenced by the
+-- testing configuration, turning a read\/hash\/decode failure into a
+-- 'ConfigurationParsingError' under the @TestingConfig@ section.
+readExperimentalGenesisOrThrow ::
+  FilePath -> Maybe (Hashed FilePath) -> IO (Maybe DijkstraGenesis)
+readExperimentalGenesisOrThrow root mRef = do
+  result <- resolveExperimentalGenesis root mRef
+  case result of
+    Left err -> throwIO (genesisReadErrorToParsingError err)
+    Right genesis -> pure genesis
+
+-- | Render a 'GenesisReadError' as a 'ConfigurationParsingError' attributed to
+-- the @TestingConfig@ section and the offending @DijkstraGenesisFile@.
+genesisReadErrorToParsingError :: GenesisReadError -> ConfigurationParsingError
+genesisReadErrorToParsingError err =
+  ConfigurationParsingError
+    (genesisErrorFile err)
+    (Just "TestingConfig")
+    [Key "DijkstraGenesisFile"]
+    (show err)

@@ -12,10 +12,12 @@ module Main (main) where
 import Cardano.Configuration (resolveConfiguration)
 import Cardano.Configuration.CliArgs (parseCliArgs)
 import Cardano.Configuration.File
+import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
   wholeConfigSchemaWithDefaults,
  )
+import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Control.Exception (SomeException, evaluate, try)
 import Data.Aeson (FromJSON, Value, eitherDecodeFileStrict')
 import Data.Functor.Identity (runIdentity)
@@ -51,6 +53,10 @@ main = do
       , shadowWarnCase
       , shadowRejectCase
       , resolveCase
+      , dijkstraGenesisDecodeCase
+      , dijkstraGenesisHashMismatchCase
+      , genesisHashRequiredCase
+      , genesisHashPresentCase
       ]
   schemaResults <- schemaCases
   let failed = length (filter not (results <> schemaResults))
@@ -140,6 +146,53 @@ resolveCase = do
     Just cli -> case resolveConfiguration cli cfg of
       Left err -> report label (Just (show err))
       Right nc -> evaluate (length (show nc)) >> report label Nothing
+
+-- | The Dijkstra genesis example decodes through this library's codec (with no
+-- pinned hash, so the read succeeds without a hash check).
+dijkstraGenesisDecodeCase :: IO Bool
+dijkstraGenesisDecodeCase = do
+  let label = "examples/dijkstra-genesis.json (decodes via the Dijkstra codec)"
+  path <- getDataFileName "examples/dijkstra-genesis.json"
+  res <- readDijkstraGenesisFile Nothing path
+  case res of
+    Left err -> report label (Just (show err))
+    Right g -> evaluate (length (show g)) >> report label Nothing
+
+-- | Reading a genesis file with a wrong expected hash is rejected.
+dijkstraGenesisHashMismatchCase :: IO Bool
+dijkstraGenesisHashMismatchCase = do
+  let label = "examples/dijkstra-genesis.json (wrong hash is rejected)"
+  path <- getDataFileName "examples/dijkstra-genesis.json"
+  let wrongHash :: Maybe (Hash Blake2b_256 a)
+      wrongHash = hashFromTextAsHex (T.pack (replicate 64 '0'))
+  res <- readDijkstraGenesisFile wrongHash path
+  report label $ case res of
+    Left (GenesisHashMismatch{}) -> Nothing
+    Left err -> Just ("expected a hash mismatch, got: " <> show err)
+    Right _ -> Just "expected a hash mismatch, but the read succeeded"
+
+-- | A @DijkstraGenesisFile@ without a @DijkstraGenesisHash@ is rejected at parse
+-- time: a genesis file must come with a pinned hash.
+genesisHashRequiredCase :: IO Bool
+genesisHashRequiredCase = do
+  let label = "examples/testing-dijkstra-nohash.json (genesis file requires a hash)"
+  res <-
+    decodeData "examples/testing-dijkstra-nohash.json"
+      :: IO (Either String (TestingConfiguration Maybe))
+  report label $ case res of
+    Left err
+      | "DijkstraGenesisHash" `isInfixOf` err -> Nothing
+      | otherwise -> Just ("rejected, but with an unexpected error: " <> err)
+    Right _ -> Just "expected rejection (missing DijkstraGenesisHash), but decoding succeeded"
+
+-- | A @DijkstraGenesisFile@ accompanied by a @DijkstraGenesisHash@ decodes.
+genesisHashPresentCase :: IO Bool
+genesisHashPresentCase =
+  decodeCase
+    "examples/testing-dijkstra.json (genesis file + hash decodes)"
+    ( decodeData "examples/testing-dijkstra.json"
+        :: IO (Either String (TestingConfiguration Maybe))
+    )
 
 -- | The committed schemas under @schemas/@ (the whole configuration and one per
 -- component) must match the schema derived from the codecs, so the documented

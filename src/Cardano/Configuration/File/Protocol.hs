@@ -6,6 +6,7 @@ module Cardano.Configuration.File.Protocol (
   -- * Hashed files
   Hashed (..),
   optionalHashedFileObjectCodec,
+  optionalHashedGenesisObjectCodec,
 
   -- * Particular eras
   ByronGenesisConfiguration (..),
@@ -19,6 +20,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString (ByteString)
 import Data.Functor.Identity (Identity)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Word
 import GHC.Generics
 
@@ -51,6 +53,26 @@ hashedFileObjectCodec fileKey hashKey =
   Hashed
     <$> requiredFieldWith fileKey filePathCodec "Path to the file" .= hashed
     <*> optionalFieldWith hashKey hashCodec "Hash of the file" .= hash
+
+-- | An optional genesis file whose hash is mandatory once the file is given:
+-- 'Nothing' when the file key is absent, but if the file key is present the hash
+-- key must be too (a genesis file without a pinned hash is rejected at parse
+-- time). The resulting 'Hashed' therefore always carries a @'Just' hash@.
+optionalHashedGenesisObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (Hashed FilePath))
+optionalHashedGenesisObjectCodec fileKey hashKey =
+  bimapCodec toG fromG $
+    (,)
+      <$> optionalFieldWith fileKey filePathCodec "Path to the genesis file" .= fst
+      <*> optionalFieldWith hashKey hashCodec "Hash of the genesis file" .= snd
+  where
+    toG (Nothing, Nothing) = Right Nothing
+    toG (Just f, Just h) = Right (Just (Hashed f (Just h)))
+    toG (Just _, Nothing) =
+      Left (T.unpack hashKey <> " is required when " <> T.unpack fileKey <> " is provided")
+    toG (Nothing, Just _) =
+      Left (T.unpack hashKey <> " was given without " <> T.unpack fileKey)
+    fromG Nothing = (Nothing, Nothing)
+    fromG (Just (Hashed f mh)) = (Just f, mh)
 
 -- | An optional hashed file: 'Nothing' when the file key is absent.
 optionalHashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (Hashed FilePath))

@@ -766,13 +766,13 @@
             "type": "string"
         },
         "DijkstraGenesisFile": {
-            "description": "Path to the file",
+            "description": "Path to the genesis file",
             "format": "path",
             "title": "DijkstraGenesisFile",
             "type": "string"
         },
         "DijkstraGenesisHash": {
-            "description": "Hash of the file\nBlake2b_256 hash",
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
             "title": "DijkstraGenesisHash",
             "type": "string"
         },
@@ -2476,13 +2476,13 @@
                     "description": "TestingConfiguration",
                     "properties": {
                         "DijkstraGenesisFile": {
-                            "description": "Path to the file",
+                            "description": "Path to the genesis file",
                             "format": "path",
                             "title": "DijkstraGenesisFile",
                             "type": "string"
                         },
                         "DijkstraGenesisHash": {
-                            "description": "Hash of the file\nBlake2b_256 hash",
+                            "description": "Hash of the genesis file\nBlake2b_256 hash",
                             "title": "DijkstraGenesisHash",
                             "type": "string"
                         },
@@ -2606,13 +2606,13 @@
                                 "description": "TestingConfiguration",
                                 "properties": {
                                     "DijkstraGenesisFile": {
-                                        "description": "Path to the file",
+                                        "description": "Path to the genesis file",
                                         "format": "path",
                                         "title": "DijkstraGenesisFile",
                                         "type": "string"
                                     },
                                     "DijkstraGenesisHash": {
-                                        "description": "Hash of the file\nBlake2b_256 hash",
+                                        "description": "Hash of the genesis file\nBlake2b_256 hash",
                                         "title": "DijkstraGenesisHash",
                                         "type": "string"
                                     },

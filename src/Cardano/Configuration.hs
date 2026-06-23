@@ -89,6 +89,7 @@ import Cardano.Configuration.File.Consensus
 import qualified Cardano.Configuration.File.Consensus as File
 import qualified Cardano.Configuration.File.Protocol as File
 import qualified Cardano.Configuration.File.Storage as File
+import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Control.Applicative ((<|>))
 import Control.Exception (Exception)
 import Data.Functor.Identity
@@ -108,6 +109,9 @@ data NodeConfiguration = NodeConfiguration
   , localConnectionsConfig :: File.LocalConnectionsConfig Identity
   , testingConfiguration :: File.TestingConfiguration Identity
   , mempoolConfiguration :: File.MempoolConfiguration Identity
+  , experimentalGenesisConfig :: Maybe DijkstraGenesis
+  -- ^ The parsed experimental (Dijkstra) genesis, decoded from the
+  -- @DijkstraGenesisFile@ referenced by the testing configuration, if any.
   , configFilePath :: FilePath
   , topologyFile :: FilePath
   , validateDatabase :: Bool
@@ -233,6 +237,7 @@ resolveConfigurationWith checks cli file = do
       , localConnectionsConfig = localConnections
       , testingConfiguration = testing
       , mempoolConfiguration = mempool
+      , experimentalGenesisConfig = File.experimentalGenesisConfig file
       , configFilePath = CLI.configFilePath cli
       , topologyFile = CLI.topologyFile cli
       , validateDatabase = CLI.validateDatabase cli

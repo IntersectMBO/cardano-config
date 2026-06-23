@@ -42,6 +42,8 @@ library
     Cardano.Configuration.File.Storage
     Cardano.Configuration.File.Testing
     Cardano.Configuration.File.Tracing
+    Cardano.Configuration.Genesis
+    Cardano.Configuration.Genesis.Dijkstra
     Cardano.Configuration.Render
     Cardano.Configuration.Schema
 
@@ -58,6 +60,8 @@ library
     base,
     bytestring,
     cardano-crypto-class,
+    cardano-ledger-core,
+    cardano-ledger-dijkstra,
     data-default,
     directory,
     filepath,
@@ -126,6 +130,7 @@ test-suite cardano-config-test
     aeson,
     base,
     cardano-config,
+    cardano-crypto-class,
     optparse-applicative,
     text,
 

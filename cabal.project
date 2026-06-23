@@ -24,7 +24,7 @@ source-repository-package
   type: git
   location: https://github.com/IntersectMBO/cardano-ledger
   tag: 29c7e3040621f323f3af27fd4e89a223ba429021
-  --sha256: 0000000000000000000000000000000000000000000000000000000000000000
+  --sha256: sha256-XPXfHvYjuzN0ASL/z4HwWJwDPQn7vJbTPlEa5zV3w9k=
   subdir:
     eras/byron/ledger/impl
     eras/byron/crypto

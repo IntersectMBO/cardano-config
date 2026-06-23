@@ -13,9 +13,11 @@ module Cardano.Configuration.Render (
   nodeConfigurationToJSON,
 ) where
 
+import Autodocodec (toJSONVia)
 import Cardano.Configuration (NodeConfiguration (..))
 import qualified Cardano.Configuration.CliArgs as CLI
 import qualified Cardano.Configuration.File as File
+import Cardano.Configuration.Genesis.Dijkstra (dijkstraGenesisCodec)
 import Data.Aeson (Value, object, toJSON, (.=))
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Maybe (catMaybes)
@@ -24,7 +26,7 @@ import Data.Maybe (catMaybes)
 -- plus the operational CLI-only arguments under @Runtime@.
 nodeConfigurationToJSON :: NodeConfiguration -> Value
 nodeConfigurationToJSON nc =
-  object
+  object $
     [ "StorageConfig" .= toJSON (weakenStorage (storageConfiguration nc))
     , "ConsensusConfig" .= toJSON (weakenConsensus (consensusConfiguration nc))
     , "ProtocolConfig" .= toJSON (weakenProtocol (protocolConfiguration nc))
@@ -34,6 +36,13 @@ nodeConfigurationToJSON nc =
     , "TestingConfig" .= toJSON (weakenTesting (testingConfiguration nc))
     , "Runtime" .= runtimeValue nc
     ]
+      -- The resolved (parsed) experimental genesis, rendered through its own
+      -- codec, so the dump shows the decoded genesis rather than just the file
+      -- reference (which still appears under @TestingConfig@).
+      <> catMaybes
+        [ ("ExperimentalGenesis" .=) . toJSONVia dijkstraGenesisCodec
+            <$> experimentalGenesisConfig nc
+        ]
 
 -- | Lift a resolved (@Identity@) field back into the @Maybe@-parameterised form
 -- the component's 'ToJSON' instance expects.
