@@ -20,8 +20,9 @@ import Cardano.Configuration.Genesis.Ledger (
   coinCodec,
   epochIntervalCodec,
  )
-import Cardano.Ledger.BaseTypes (UnitInterval, maybeToStrictMaybe, strictMaybeToMaybe)
+import Cardano.Ledger.BaseTypes (Anchor (..), UnitInterval, maybeToStrictMaybe, strictMaybeToMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayExtraConfig, ConwayGenesis (..))
+import Cardano.Ledger.Conway.Governance (Committee (..), Constitution (..))
 import Cardano.Ledger.Conway.PParams (
   DRepVotingThresholds (..),
   PoolVotingThresholds (..),
@@ -61,9 +62,9 @@ conwayGenesisCodec =
         .= upgrade ucppMinFeeRefScriptCostPerByte
       <*> requiredFieldWith "plutusV3CostModel" plutusV3CostModelCodec "Plutus V3 cost model"
         .= upgrade ucppPlutusV3CostModel
-      <*> requiredFieldWith "constitution" (codecViaAeson "Constitution") "The initial constitution"
+      <*> requiredFieldWith "constitution" constitutionCodec "The initial constitution"
         .= cgConstitution
-      <*> requiredFieldWith "committee" (codecViaAeson "Committee") "The initial constitutional committee"
+      <*> requiredFieldWith "committee" committeeCodec "The initial constitutional committee"
         .= cgCommittee
       <*> optionalFieldWithOmittedDefaultWith "delegs" (codecViaAeson "Delegs") mempty "Initial stake delegations"
         .= cgDelegs
@@ -116,6 +117,36 @@ dRepVotingThresholdsCodec =
 -- | A required field holding a 'UnitInterval' (a bounded ratio).
 unitField :: Text -> ObjectCodec UnitInterval UnitInterval
 unitField key = requiredFieldWith key (boundedRationalCodec key) ("Threshold: " <> key)
+
+-- | The constitution: an @anchor@ and an optional guardrails @script@ hash.
+constitutionCodec :: JSONCodec (Constitution era)
+constitutionCodec =
+  object "Constitution" $
+    Constitution
+      <$> requiredFieldWith "anchor" anchorCodec "The constitution anchor" .= constitutionAnchor
+      <*> ( dimapCodec maybeToStrictMaybe strictMaybeToMaybe $
+              optionalFieldWith "script" (codecViaAeson "ScriptHash") "The guardrails script hash"
+          )
+        .= constitutionGuardrailsScriptHash
+
+-- | An anchor: a @url@ and a @dataHash@. The URL and hash are atomic ledger
+-- scalars, decoded via the ledger's instances.
+anchorCodec :: JSONCodec Anchor
+anchorCodec =
+  object "Anchor" $
+    Anchor
+      <$> requiredFieldWith "url" (codecViaAeson "Url") "The anchor URL" .= anchorUrl
+      <*> requiredFieldWith "dataHash" (codecViaAeson "AnchorDataHash") "The anchor data hash" .= anchorDataHash
+
+-- | The constitutional committee: a @members@ map (keyed by committee
+-- credential) and a @threshold@. The credential-keyed map uses the ledger's
+-- key encoding.
+committeeCodec :: JSONCodec (Committee era)
+committeeCodec =
+  object "Committee" $
+    Committee
+      <$> requiredFieldWith "members" (codecViaAeson "CommitteeMembers") "Committee members and their term expiry" .= committeeMembers
+      <*> requiredFieldWith "threshold" (boundedRationalCodec "threshold") "Committee voting threshold" .= committeeThreshold
 
 -- | The PlutusV3 cost model is a flat JSON array of integers.
 plutusV3CostModelCodec :: JSONCodec CostModel
