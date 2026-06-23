@@ -20,12 +20,17 @@ import Cardano.Configuration.Genesis.Ledger (
   coinCodec,
   epochIntervalCodec,
  )
-import Cardano.Ledger.BaseTypes (maybeToStrictMaybe, strictMaybeToMaybe)
+import Cardano.Ledger.BaseTypes (UnitInterval, maybeToStrictMaybe, strictMaybeToMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayExtraConfig, ConwayGenesis (..))
-import Cardano.Ledger.Conway.PParams (UpgradeConwayPParams (..))
+import Cardano.Ledger.Conway.PParams (
+  DRepVotingThresholds (..),
+  PoolVotingThresholds (..),
+  UpgradeConwayPParams (..),
+ )
 import Cardano.Ledger.Plutus.CostModels (CostModel, getCostModelParams, mkCostModel)
 import Cardano.Ledger.Plutus.Language (Language (PlutusV3))
 import Data.Int (Int64)
+import Data.Text (Text)
 import Data.Word (Word16)
 
 instance HasCodec ConwayGenesis where
@@ -36,9 +41,9 @@ conwayGenesisCodec :: JSONCodec ConwayGenesis
 conwayGenesisCodec =
   object "ConwayGenesis" $
     mk
-      <$> requiredFieldWith "poolVotingThresholds" (codecViaAeson "PoolVotingThresholds") "Pool voting thresholds"
+      <$> requiredFieldWith "poolVotingThresholds" poolVotingThresholdsCodec "Pool voting thresholds"
         .= upgrade ucppPoolVotingThresholds
-      <*> requiredFieldWith "dRepVotingThresholds" (codecViaAeson "DRepVotingThresholds") "DRep voting thresholds"
+      <*> requiredFieldWith "dRepVotingThresholds" dRepVotingThresholdsCodec "DRep voting thresholds"
         .= upgrade ucppDRepVotingThresholds
       <*> requiredFieldWith "committeeMinSize" (codec @Word16) "Minimum committee size"
         .= upgrade ucppCommitteeMinSize
@@ -80,6 +85,37 @@ conwayGenesisCodec =
         delegs
         initialDReps
         extraConfig
+
+-- | Pool voting thresholds: an object of five 'UnitInterval's.
+poolVotingThresholdsCodec :: JSONCodec PoolVotingThresholds
+poolVotingThresholdsCodec =
+  object "PoolVotingThresholds" $
+    PoolVotingThresholds
+      <$> unitField "motionNoConfidence" .= pvtMotionNoConfidence
+      <*> unitField "committeeNormal" .= pvtCommitteeNormal
+      <*> unitField "committeeNoConfidence" .= pvtCommitteeNoConfidence
+      <*> unitField "hardForkInitiation" .= pvtHardForkInitiation
+      <*> unitField "ppSecurityGroup" .= pvtPPSecurityGroup
+
+-- | DRep voting thresholds: an object of ten 'UnitInterval's.
+dRepVotingThresholdsCodec :: JSONCodec DRepVotingThresholds
+dRepVotingThresholdsCodec =
+  object "DRepVotingThresholds" $
+    DRepVotingThresholds
+      <$> unitField "motionNoConfidence" .= dvtMotionNoConfidence
+      <*> unitField "committeeNormal" .= dvtCommitteeNormal
+      <*> unitField "committeeNoConfidence" .= dvtCommitteeNoConfidence
+      <*> unitField "updateToConstitution" .= dvtUpdateToConstitution
+      <*> unitField "hardForkInitiation" .= dvtHardForkInitiation
+      <*> unitField "ppNetworkGroup" .= dvtPPNetworkGroup
+      <*> unitField "ppEconomicGroup" .= dvtPPEconomicGroup
+      <*> unitField "ppTechnicalGroup" .= dvtPPTechnicalGroup
+      <*> unitField "ppGovGroup" .= dvtPPGovGroup
+      <*> unitField "treasuryWithdrawal" .= dvtTreasuryWithdrawal
+
+-- | A required field holding a 'UnitInterval' (a bounded ratio).
+unitField :: Text -> ObjectCodec UnitInterval UnitInterval
+unitField key = requiredFieldWith key (boundedRationalCodec key) ("Threshold: " <> key)
 
 -- | The PlutusV3 cost model is a flat JSON array of integers.
 plutusV3CostModelCodec :: JSONCodec CostModel
