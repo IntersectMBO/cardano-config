@@ -13,16 +13,16 @@ import Cardano.Configuration (resolveConfiguration)
 import Cardano.Configuration.CliArgs (parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
+import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
   wholeConfigSchemaWithDefaults,
  )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
-import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Autodocodec (parseJSONVia, toJSONVia)
-import Data.Aeson (FromJSON, Value, eitherDecodeFileStrict', parseJSON, toJSON)
+import Autodocodec (JSONCodec, parseJSONVia, toJSONVia)
+import Data.Aeson (FromJSON, ToJSON, Value, eitherDecodeFileStrict', parseJSON, toJSON)
 import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
@@ -61,7 +61,14 @@ main = do
       , dijkstraGenesisHashMismatchCase
       , genesisHashRequiredCase
       , genesisHashPresentCase
-      , shelleyGenesisRoundTripCase
+      , roundTripCase
+          "examples/shelley-genesis.json (round-trips against the ledger instances)"
+          "examples/shelley-genesis.json"
+          shelleyGenesisCodec
+      , roundTripCase
+          "examples/alonzo-genesis.json (round-trips against the ledger instances)"
+          "examples/alonzo-genesis.json"
+          alonzoGenesisCodec
       ]
   schemaResults <- schemaCases
   let failed = length (filter not (results <> schemaResults))
@@ -199,24 +206,23 @@ genesisHashPresentCase =
         :: IO (Either String (TestingConfiguration Maybe))
     )
 
--- | The Shelley genesis codec must agree with the ledger's own instances, both
--- ways: decoding the example with our codec yields the same 'ShelleyGenesis' the
--- ledger's 'FromJSON' does, and re-encoding it with our codec yields the same
--- JSON the ledger's 'ToJSON' does.
-shelleyGenesisRoundTripCase :: IO Bool
-shelleyGenesisRoundTripCase = do
-  let label = "examples/shelley-genesis.json (round-trips against the ledger instances)"
-  res <- decodeData "examples/shelley-genesis.json" :: IO (Either String Value)
+-- | A genesis codec must agree with the ledger's own instances, both ways:
+-- decoding the example with our codec yields the same value the ledger's
+-- 'FromJSON' does, and re-encoding it with our codec yields the same JSON the
+-- ledger's 'ToJSON' does.
+roundTripCase :: (FromJSON a, ToJSON a, Eq a) => String -> FilePath -> JSONCodec a -> IO Bool
+roundTripCase label file genesisCodec = do
+  res <- decodeData file :: IO (Either String Value)
   case res of
     Left err -> report label (Just ("could not read example: " <> err))
     Right value ->
-      case (parseEither parseJSON value, parseEither (parseJSONVia shelleyGenesisCodec) value) of
+      case (parseEither parseJSON value, parseEither (parseJSONVia genesisCodec) value) of
         (Left err, _) -> report label (Just ("ledger decode failed: " <> err))
         (_, Left err) -> report label (Just ("our codec decode failed: " <> err))
         (Right ref, Right mine)
-          | ref /= (mine :: ShelleyGenesis) ->
+          | ref /= mine ->
               report label (Just "decoded value differs from the ledger's decode")
-          | toJSON ref /= toJSONVia shelleyGenesisCodec mine ->
+          | toJSON ref /= toJSONVia genesisCodec mine ->
               report label (Just "re-encoded JSON differs from the ledger's encode")
           | otherwise -> report label Nothing
 

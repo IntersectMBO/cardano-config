@@ -43,6 +43,7 @@ library
     Cardano.Configuration.File.Testing
     Cardano.Configuration.File.Tracing
     Cardano.Configuration.Genesis
+    Cardano.Configuration.Genesis.Alonzo
     Cardano.Configuration.Genesis.Dijkstra
     Cardano.Configuration.Genesis.Ledger
     Cardano.Configuration.Genesis.Shelley
@@ -64,6 +65,7 @@ library
     bytestring,
     cardano-crypto-class,
     cardano-data,
+    cardano-ledger-alonzo,
     cardano-ledger-binary,
     cardano-ledger-core,
     cardano-ledger-dijkstra,
@@ -140,7 +142,6 @@ test-suite cardano-config-test
     base,
     cardano-config,
     cardano-crypto-class,
-    cardano-ledger-shelley,
     optparse-applicative,
     text,
 
