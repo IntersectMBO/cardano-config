@@ -44,6 +44,8 @@ library
     Cardano.Configuration.File.Tracing
     Cardano.Configuration.Genesis
     Cardano.Configuration.Genesis.Dijkstra
+    Cardano.Configuration.Genesis.Ledger
+    Cardano.Configuration.Genesis.Shelley
     Cardano.Configuration.Render
     Cardano.Configuration.Schema
 
@@ -58,10 +60,16 @@ library
     autodocodec,
     autodocodec-schema,
     base,
+    base16-bytestring,
     bytestring,
     cardano-crypto-class,
+    cardano-data,
+    cardano-ledger-binary,
     cardano-ledger-core,
     cardano-ledger-dijkstra,
+    cardano-ledger-shelley,
+    cardano-slotting,
+    containers,
     data-default,
     directory,
     filepath,
@@ -128,9 +136,11 @@ test-suite cardano-config-test
 
   build-depends:
     aeson,
+    autodocodec,
     base,
     cardano-config,
     cardano-crypto-class,
+    cardano-ledger-shelley,
     optparse-applicative,
     text,
 

@@ -13,13 +13,17 @@ import Cardano.Configuration (resolveConfiguration)
 import Cardano.Configuration.CliArgs (parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
+import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
   wholeConfigSchemaWithDefaults,
  )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
+import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Data.Aeson (FromJSON, Value, eitherDecodeFileStrict')
+import Autodocodec (parseJSONVia, toJSONVia)
+import Data.Aeson (FromJSON, Value, eitherDecodeFileStrict', parseJSON, toJSON)
+import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
 import qualified Data.Text as T
@@ -57,6 +61,7 @@ main = do
       , dijkstraGenesisHashMismatchCase
       , genesisHashRequiredCase
       , genesisHashPresentCase
+      , shelleyGenesisRoundTripCase
       ]
   schemaResults <- schemaCases
   let failed = length (filter not (results <> schemaResults))
@@ -193,6 +198,27 @@ genesisHashPresentCase =
     ( decodeData "examples/testing-dijkstra.json"
         :: IO (Either String (TestingConfiguration Maybe))
     )
+
+-- | The Shelley genesis codec must agree with the ledger's own instances, both
+-- ways: decoding the example with our codec yields the same 'ShelleyGenesis' the
+-- ledger's 'FromJSON' does, and re-encoding it with our codec yields the same
+-- JSON the ledger's 'ToJSON' does.
+shelleyGenesisRoundTripCase :: IO Bool
+shelleyGenesisRoundTripCase = do
+  let label = "examples/shelley-genesis.json (round-trips against the ledger instances)"
+  res <- decodeData "examples/shelley-genesis.json" :: IO (Either String Value)
+  case res of
+    Left err -> report label (Just ("could not read example: " <> err))
+    Right value ->
+      case (parseEither parseJSON value, parseEither (parseJSONVia shelleyGenesisCodec) value) of
+        (Left err, _) -> report label (Just ("ledger decode failed: " <> err))
+        (_, Left err) -> report label (Just ("our codec decode failed: " <> err))
+        (Right ref, Right mine)
+          | ref /= (mine :: ShelleyGenesis) ->
+              report label (Just "decoded value differs from the ledger's decode")
+          | toJSON ref /= toJSONVia shelleyGenesisCodec mine ->
+              report label (Just "re-encoded JSON differs from the ledger's encode")
+          | otherwise -> report label Nothing
 
 -- | The committed schemas under @schemas/@ (the whole configuration and one per
 -- component) must match the schema derived from the codecs, so the documented
