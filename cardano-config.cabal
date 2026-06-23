@@ -44,6 +44,7 @@ library
     Cardano.Configuration.File.Tracing
     Cardano.Configuration.Genesis
     Cardano.Configuration.Genesis.Alonzo
+    Cardano.Configuration.Genesis.Conway
     Cardano.Configuration.Genesis.Dijkstra
     Cardano.Configuration.Genesis.Ledger
     Cardano.Configuration.Genesis.Shelley
@@ -67,6 +68,7 @@ library
     cardano-data,
     cardano-ledger-alonzo,
     cardano-ledger-binary,
+    cardano-ledger-conway,
     cardano-ledger-core,
     cardano-ledger-dijkstra,
     cardano-ledger-shelley,

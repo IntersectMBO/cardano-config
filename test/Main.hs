@@ -14,6 +14,7 @@ import Cardano.Configuration.CliArgs (parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
 import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
+import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
 import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
@@ -69,6 +70,10 @@ main = do
           "examples/alonzo-genesis.json (round-trips against the ledger instances)"
           "examples/alonzo-genesis.json"
           alonzoGenesisCodec
+      , roundTripCase
+          "examples/conway-genesis.json (round-trips against the ledger instances)"
+          "examples/conway-genesis.json"
+          conwayGenesisCodec
       ]
   schemaResults <- schemaCases
   let failed = length (filter not (results <> schemaResults))

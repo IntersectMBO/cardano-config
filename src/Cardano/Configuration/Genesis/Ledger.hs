@@ -13,6 +13,7 @@ module Cardano.Configuration.Genesis.Ledger (
   compactCoinCodec,
   coinPerByteCodec,
   epochSizeCodec,
+  epochIntervalCodec,
   nominalDiffTimeMicroCodec,
 
   -- * Enumerations and tagged unions
@@ -34,6 +35,7 @@ import Cardano.Crypto.Hash (hashFromTextAsHex, hashToTextAsHex)
 import Cardano.Ledger.Address (Addr, decodeAddr, serialiseAddr)
 import Cardano.Ledger.BaseTypes (
   BoundedRational (..),
+  EpochInterval (..),
   HasZero,
   Network,
   NonZero,
@@ -119,6 +121,10 @@ coinPerByteCodec = dimapCodec CoinPerByte unCoinPerByte compactCoinCodec
 -- | 'EpochSize' is a JSON 'Word64'.
 epochSizeCodec :: JSONCodec EpochSize
 epochSizeCodec = dimapCodec EpochSize unEpochSize (codec @Word64)
+
+-- | 'EpochInterval' is a JSON 'Word32'.
+epochIntervalCodec :: JSONCodec EpochInterval
+epochIntervalCodec = dimapCodec EpochInterval unEpochInterval (codec @Word32)
 
 -- | 'NominalDiffTimeMicro' is a JSON number (seconds, micro precision). We map
 -- it through 'Micro' so the encoding matches the ledger's derived instance.

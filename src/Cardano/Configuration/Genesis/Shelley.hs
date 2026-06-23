@@ -19,7 +19,6 @@ import Cardano.Configuration.Genesis.Ledger
 import Cardano.Crypto.Hash (hashFromTextAsHex, hashToTextAsHex)
 import Cardano.Ledger.Address (Addr, decodeAddr, serialiseAddr)
 import Cardano.Ledger.BaseTypes (
-  EpochInterval (..),
   maybeToStrictMaybe,
   strictMaybeToMaybe,
  )
@@ -133,10 +132,6 @@ shelleyPParamsCodec =
     unwrap (PParams sp) = sp
     mk a b c d e f g h i j k l m n o p q =
       PParams (ShelleyPParams a b c d e f g h i j k l m n o p q)
-
--- | @eMax@ is an 'EpochInterval' (a 'Word32').
-epochIntervalCodec :: JSONCodec EpochInterval
-epochIntervalCodec = dimapCodec EpochInterval unEpochInterval (codec @Word32)
 
 -- | @slotLength@ is a 'NominalDiffTimeMicro' (a JSON number in seconds).
 slotLengthCodec :: JSONCodec NominalDiffTimeMicro
