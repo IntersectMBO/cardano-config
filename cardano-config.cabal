@@ -44,6 +44,7 @@ library
     Cardano.Configuration.File.Tracing
     Cardano.Configuration.Genesis
     Cardano.Configuration.Genesis.Alonzo
+    Cardano.Configuration.Genesis.Byron
     Cardano.Configuration.Genesis.Conway
     Cardano.Configuration.Genesis.Dijkstra
     Cardano.Configuration.Genesis.Ledger
@@ -65,9 +66,11 @@ library
     base16-bytestring,
     bytestring,
     cardano-crypto-class,
+    cardano-crypto-wrapper,
     cardano-data,
     cardano-ledger-alonzo,
     cardano-ledger-binary,
+    cardano-ledger-byron,
     cardano-ledger-conway,
     cardano-ledger-core,
     cardano-ledger-dijkstra,
@@ -75,6 +78,7 @@ library
     cardano-slotting,
     containers,
     data-default,
+    transformers,
     directory,
     filepath,
     iproute,
@@ -144,6 +148,7 @@ test-suite cardano-config-test
     base,
     cardano-config,
     cardano-crypto-class,
+    cardano-crypto-wrapper,
     optparse-applicative,
     text,
 

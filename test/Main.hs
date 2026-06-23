@@ -14,8 +14,10 @@ import Cardano.Configuration.CliArgs (parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
 import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
+import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
 import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
 import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
+import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
   wholeConfigSchemaWithDefaults,
@@ -74,6 +76,7 @@ main = do
           "examples/conway-genesis.json (round-trips against the ledger instances)"
           "examples/conway-genesis.json"
           conwayGenesisCodec
+      , byronGenesisDecodeCase
       ]
   schemaResults <- schemaCases
   let failed = length (filter not (results <> schemaResults))
@@ -210,6 +213,18 @@ genesisHashPresentCase =
     ( decodeData "examples/testing-dijkstra.json"
         :: IO (Either String (TestingConfiguration Maybe))
     )
+
+-- | The Byron genesis decodes (canonical JSON) and its hash checks out via the
+-- ledger's reader. The expected hash is the real mainnet Byron genesis hash.
+byronGenesisDecodeCase :: IO Bool
+byronGenesisDecodeCase = do
+  let label = "examples/byron-genesis.json (decodes + hash-checks via the ledger)"
+  path <- getDataFileName "examples/byron-genesis.json"
+  case hashFromTextAsHex (T.pack "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb") of
+    Nothing -> report label (Just "could not parse the expected Byron genesis hash")
+    Just expected -> do
+      res <- readByronGenesisConfig RequiresNoMagic expected path
+      report label (either (Just . ("Byron read failed: " <>)) (const Nothing) res)
 
 -- | A genesis codec must agree with the ledger's own instances, both ways:
 -- decoding the example with our codec yields the same value the ledger's
