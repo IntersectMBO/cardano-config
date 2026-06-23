@@ -20,6 +20,7 @@ import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
+  genesisSchemas,
   wholeConfigSchemaWithDefaults,
  )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
@@ -255,7 +256,7 @@ schemaCases = do
   sequence $
     schemaFile "schemas/config.schema.json" (wholeConfigSchemaWithDefaults defs)
       : [ schemaFile ("schemas/" <> T.unpack name <> ".schema.json") schema
-        | (name, schema) <- configurationSchemasWithDefaults defs
+        | (name, schema) <- configurationSchemasWithDefaults defs <> genesisSchemas
         ]
 
 -- | Assert that a committed schema file equals the given derived schema.

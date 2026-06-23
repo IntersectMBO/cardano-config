@@ -43,6 +43,9 @@ module Cardano.Configuration.Schema (
   localConnectionsSchema,
   mempoolSchema,
   testingSchema,
+
+  -- * Genesis schemas
+  genesisSchemas,
 ) where
 
 import Autodocodec.Schema (jsonSchemaViaCodec)
@@ -54,6 +57,14 @@ import Cardano.Configuration.File.Protocol (ProtocolConfiguration)
 import Cardano.Configuration.File.Storage (StorageConfiguration)
 import Cardano.Configuration.File.Testing (TestingConfiguration)
 import Cardano.Configuration.File.Tracing (TracingConfiguration)
+import Cardano.Configuration.Genesis.Alonzo ()
+import Cardano.Configuration.Genesis.Conway ()
+import Cardano.Configuration.Genesis.Dijkstra ()
+import Cardano.Configuration.Genesis.Shelley ()
+import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
+import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
+import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
@@ -108,6 +119,29 @@ rawComponentSchemas =
   , ("LocalConnectionsConfig", rawLocalConnectionsSchema)
   , ("MempoolConfig", rawMempoolSchema)
   , ("TestingConfig", rawTestingSchema)
+  ]
+
+-- The genesis schemas, derived from this library's genesis codecs. Byron is
+-- excluded: it is canonical JSON decoded by the ledger, not via an autodocodec
+-- codec. Sub-trees still delegated to the ledger's aeson instances (via
+-- @codecViaAeson@) carry no structure and so appear as unconstrained schemas.
+rawShelleyGenesisSchema, rawAlonzoGenesisSchema :: Value
+rawConwayGenesisSchema, rawDijkstraGenesisSchema :: Value
+rawShelleyGenesisSchema = toJSON (jsonSchemaViaCodec @ShelleyGenesis)
+rawAlonzoGenesisSchema = toJSON (jsonSchemaViaCodec @AlonzoGenesis)
+rawConwayGenesisSchema = toJSON (jsonSchemaViaCodec @ConwayGenesis)
+rawDijkstraGenesisSchema = toJSON (jsonSchemaViaCodec @DijkstraGenesis)
+
+-- | The JSON Schema of each era genesis this library decodes, keyed by name.
+-- Unlike the configuration components these are standalone documents: they are
+-- not sections of the configuration and take no part in the whole-configuration
+-- schema or its defaults. Byron is excluded (it has no autodocodec codec).
+genesisSchemas :: [(Text, Value)]
+genesisSchemas =
+  [ ("ShelleyGenesis", component "ShelleyGenesis" rawShelleyGenesisSchema)
+  , ("AlonzoGenesis", component "AlonzoGenesis" rawAlonzoGenesisSchema)
+  , ("ConwayGenesis", component "ConwayGenesis" rawConwayGenesisSchema)
+  , ("DijkstraGenesis", component "DijkstraGenesis" rawDijkstraGenesisSchema)
   ]
 
 -- | Tracing is not a component/section of its own; it contributes exactly one

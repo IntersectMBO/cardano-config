@@ -1,0 +1,232 @@
+{
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/master/cardano-config/schemas/ConwayGenesis.schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "ConwayGenesis",
+    "properties": {
+        "committee": {
+            "description": "The initial constitutional committee\nCommittee",
+            "properties": {
+                "members": {
+                    "description": "Committee members and their term expiry\nCommitteeMembers",
+                    "title": "members"
+                },
+                "threshold": {
+                    "description": "Committee voting threshold\nthreshold",
+                    "title": "threshold"
+                }
+            },
+            "required": [
+                "threshold",
+                "members"
+            ],
+            "title": "committee",
+            "type": "object"
+        },
+        "committeeMaxTermLength": {
+            "description": "Maximum committee term length",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "committeeMaxTermLength",
+            "type": "integer"
+        },
+        "committeeMinSize": {
+            "description": "Minimum committee size",
+            "maximum": 65535,
+            "minimum": 0,
+            "title": "committeeMinSize",
+            "type": "integer"
+        },
+        "constitution": {
+            "description": "The initial constitution\nConstitution",
+            "properties": {
+                "anchor": {
+                    "description": "The constitution anchor\nAnchor",
+                    "properties": {
+                        "dataHash": {
+                            "description": "The anchor data hash\nAnchorDataHash",
+                            "title": "dataHash"
+                        },
+                        "url": {
+                            "description": "The anchor URL\nUrl",
+                            "title": "url"
+                        }
+                    },
+                    "required": [
+                        "dataHash",
+                        "url"
+                    ],
+                    "title": "anchor",
+                    "type": "object"
+                },
+                "script": {
+                    "description": "The guardrails script hash\nScriptHash",
+                    "title": "script"
+                }
+            },
+            "required": [
+                "anchor"
+            ],
+            "title": "constitution",
+            "type": "object"
+        },
+        "dRepActivity": {
+            "description": "DRep activity period",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "dRepActivity",
+            "type": "integer"
+        },
+        "dRepDeposit": {
+            "description": "DRep registration deposit",
+            "title": "dRepDeposit",
+            "type": "integer"
+        },
+        "dRepVotingThresholds": {
+            "description": "DRep voting thresholds\nDRepVotingThresholds",
+            "properties": {
+                "committeeNoConfidence": {
+                    "description": "Threshold: committeeNoConfidence\ncommitteeNoConfidence",
+                    "title": "committeeNoConfidence"
+                },
+                "committeeNormal": {
+                    "description": "Threshold: committeeNormal\ncommitteeNormal",
+                    "title": "committeeNormal"
+                },
+                "hardForkInitiation": {
+                    "description": "Threshold: hardForkInitiation\nhardForkInitiation",
+                    "title": "hardForkInitiation"
+                },
+                "motionNoConfidence": {
+                    "description": "Threshold: motionNoConfidence\nmotionNoConfidence",
+                    "title": "motionNoConfidence"
+                },
+                "ppEconomicGroup": {
+                    "description": "Threshold: ppEconomicGroup\nppEconomicGroup",
+                    "title": "ppEconomicGroup"
+                },
+                "ppGovGroup": {
+                    "description": "Threshold: ppGovGroup\nppGovGroup",
+                    "title": "ppGovGroup"
+                },
+                "ppNetworkGroup": {
+                    "description": "Threshold: ppNetworkGroup\nppNetworkGroup",
+                    "title": "ppNetworkGroup"
+                },
+                "ppTechnicalGroup": {
+                    "description": "Threshold: ppTechnicalGroup\nppTechnicalGroup",
+                    "title": "ppTechnicalGroup"
+                },
+                "treasuryWithdrawal": {
+                    "description": "Threshold: treasuryWithdrawal\ntreasuryWithdrawal",
+                    "title": "treasuryWithdrawal"
+                },
+                "updateToConstitution": {
+                    "description": "Threshold: updateToConstitution\nupdateToConstitution",
+                    "title": "updateToConstitution"
+                }
+            },
+            "required": [
+                "treasuryWithdrawal",
+                "ppGovGroup",
+                "ppTechnicalGroup",
+                "ppEconomicGroup",
+                "ppNetworkGroup",
+                "hardForkInitiation",
+                "updateToConstitution",
+                "committeeNoConfidence",
+                "committeeNormal",
+                "motionNoConfidence"
+            ],
+            "title": "dRepVotingThresholds",
+            "type": "object"
+        },
+        "delegs": {
+            "description": "Initial stake delegations\nDelegs",
+            "title": "delegs"
+        },
+        "extraConfig": {
+            "description": "Extra streaming-injection configuration\nConwayExtraConfig",
+            "title": "extraConfig"
+        },
+        "govActionDeposit": {
+            "description": "Governance action deposit",
+            "title": "govActionDeposit",
+            "type": "integer"
+        },
+        "govActionLifetime": {
+            "description": "Governance action lifetime",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "govActionLifetime",
+            "type": "integer"
+        },
+        "initialDReps": {
+            "description": "Initial DReps\nInitialDReps",
+            "title": "initialDReps"
+        },
+        "minFeeRefScriptCostPerByte": {
+            "description": "Reference-script cost per byte\nminFeeRefScriptCostPerByte",
+            "title": "minFeeRefScriptCostPerByte"
+        },
+        "plutusV3CostModel": {
+            "description": "Plutus V3 cost model",
+            "items": {
+                "maximum": 9223372036854775807,
+                "minimum": -9223372036854775808,
+                "type": "integer"
+            },
+            "title": "plutusV3CostModel",
+            "type": "array"
+        },
+        "poolVotingThresholds": {
+            "description": "Pool voting thresholds\nPoolVotingThresholds",
+            "properties": {
+                "committeeNoConfidence": {
+                    "description": "Threshold: committeeNoConfidence\ncommitteeNoConfidence",
+                    "title": "committeeNoConfidence"
+                },
+                "committeeNormal": {
+                    "description": "Threshold: committeeNormal\ncommitteeNormal",
+                    "title": "committeeNormal"
+                },
+                "hardForkInitiation": {
+                    "description": "Threshold: hardForkInitiation\nhardForkInitiation",
+                    "title": "hardForkInitiation"
+                },
+                "motionNoConfidence": {
+                    "description": "Threshold: motionNoConfidence\nmotionNoConfidence",
+                    "title": "motionNoConfidence"
+                },
+                "ppSecurityGroup": {
+                    "description": "Threshold: ppSecurityGroup\nppSecurityGroup",
+                    "title": "ppSecurityGroup"
+                }
+            },
+            "required": [
+                "ppSecurityGroup",
+                "hardForkInitiation",
+                "committeeNoConfidence",
+                "committeeNormal",
+                "motionNoConfidence"
+            ],
+            "title": "poolVotingThresholds",
+            "type": "object"
+        }
+    },
+    "required": [
+        "committee",
+        "constitution",
+        "plutusV3CostModel",
+        "minFeeRefScriptCostPerByte",
+        "dRepActivity",
+        "dRepDeposit",
+        "govActionDeposit",
+        "govActionLifetime",
+        "committeeMaxTermLength",
+        "committeeMinSize",
+        "dRepVotingThresholds",
+        "poolVotingThresholds"
+    ],
+    "title": "ConwayGenesis",
+    "type": "object"
+}

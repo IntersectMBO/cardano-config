@@ -1,0 +1,65 @@
+{
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/master/cardano-config/schemas/AlonzoGenesis.schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "AlonzoGenesis",
+    "properties": {
+        "collateralPercentage": {
+            "description": "Collateral percentage",
+            "maximum": 65535,
+            "minimum": 0,
+            "title": "collateralPercentage",
+            "type": "integer"
+        },
+        "costModels": {
+            "description": "Plutus V1 cost model\nCostModels",
+            "title": "costModels"
+        },
+        "executionPrices": {
+            "description": "Execution unit prices",
+            "title": "executionPrices"
+        },
+        "extraConfig": {
+            "description": "Extra cost-model configuration\nAlonzoExtraConfig",
+            "title": "extraConfig"
+        },
+        "lovelacePerUTxOWord": {
+            "description": "Lovelace per UTxO word",
+            "title": "lovelacePerUTxOWord",
+            "type": "integer"
+        },
+        "maxBlockExUnits": {
+            "description": "Maximum execution units per block",
+            "title": "maxBlockExUnits"
+        },
+        "maxCollateralInputs": {
+            "description": "Maximum number of collateral inputs",
+            "maximum": 65535,
+            "minimum": 0,
+            "title": "maxCollateralInputs",
+            "type": "integer"
+        },
+        "maxTxExUnits": {
+            "description": "Maximum execution units per transaction",
+            "title": "maxTxExUnits"
+        },
+        "maxValueSize": {
+            "description": "Maximum value size",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "maxValueSize",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "maxCollateralInputs",
+        "collateralPercentage",
+        "maxValueSize",
+        "maxBlockExUnits",
+        "maxTxExUnits",
+        "executionPrices",
+        "costModels",
+        "lovelacePerUTxOWord"
+    ],
+    "title": "AlonzoGenesis",
+    "type": "object"
+}

@@ -1,0 +1,40 @@
+{
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/master/cardano-config/schemas/DijkstraGenesis.schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "DijkstraGenesis",
+    "properties": {
+        "maxRefScriptSizePerBlock": {
+            "description": "Maximum total size of reference scripts per block, in bytes",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "maxRefScriptSizePerBlock",
+            "type": "integer"
+        },
+        "maxRefScriptSizePerTx": {
+            "description": "Maximum total size of reference scripts per transaction, in bytes",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "maxRefScriptSizePerTx",
+            "type": "integer"
+        },
+        "refScriptCostMultiplier": {
+            "description": "Multiplier applied to the reference-script cost of each successive tier\nPositiveInterval",
+            "title": "refScriptCostMultiplier"
+        },
+        "refScriptCostStride": {
+            "description": "Size, in bytes, of each reference-script pricing tier",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "title": "refScriptCostStride",
+            "type": "integer"
+        }
+    },
+    "required": [
+        "refScriptCostMultiplier",
+        "refScriptCostStride",
+        "maxRefScriptSizePerTx",
+        "maxRefScriptSizePerBlock"
+    ],
+    "title": "DijkstraGenesis",
+    "type": "object"
+}

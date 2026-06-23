@@ -16,6 +16,7 @@ import Cardano.Configuration.Render (nodeConfigurationToJSON)
 import Cardano.Configuration.Schema (
   configurationSchemas,
   configurationSchemasWithDefaults,
+  genesisSchemas,
   wholeConfigSchemaWithDefaults,
  )
 import Control.Exception (SomeException, displayException, try)
@@ -131,20 +132,22 @@ runResolve cli = do
 
 -- | Print a JSON Schema, or list the component names.
 runSchema :: SchemaCmd -> IO ()
-runSchema SchemaList = mapM_ (putStrLn . T.unpack . fst) configurationSchemas
+runSchema SchemaList = mapM_ (putStrLn . T.unpack . fst) (configurationSchemas <> genesisSchemas)
 runSchema (SchemaComponent Nothing) = do
   defs <- componentDefaults
   dump (wholeConfigSchemaWithDefaults defs)
 runSchema (SchemaComponent (Just name)) = do
   defs <- componentDefaults
-  case lookup (T.pack name) (configurationSchemasWithDefaults defs) of
+  -- Configuration components (with their defaults) and the standalone genesis
+  -- schemas are both addressable by name.
+  case lookup (T.pack name) (configurationSchemasWithDefaults defs <> genesisSchemas) of
     Just s -> dump s
     Nothing ->
       die $
         "Unknown component: "
           <> name
           <> "\nAvailable components: "
-          <> intercalate ", " (map (T.unpack . fst) configurationSchemas)
+          <> intercalate ", " (map (T.unpack . fst) (configurationSchemas <> genesisSchemas))
 
 -- | Print a schema with sorted keys for stable output.
 dump :: Value -> IO ()
