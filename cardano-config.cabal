@@ -34,7 +34,10 @@ library
     Cardano.Configuration.CliArgs
     Cardano.Configuration.File
     Cardano.Configuration.File.Consensus
+    Cardano.Configuration.File.Error
+    Cardano.Configuration.File.Lint
     Cardano.Configuration.File.Mempool
+    Cardano.Configuration.File.Merge
     Cardano.Configuration.File.Network
     Cardano.Configuration.File.Protocol
     Cardano.Configuration.File.Storage
