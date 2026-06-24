@@ -127,15 +127,24 @@ defaults and validation) is the JSON Schema derived from those very codecs. Dump
 it with the bundled `cardano-config` executable's `schema` subcommand:
 
 ```console
-$ cardano-config schema          # the whole configuration
-$ cardano-config schema --list   # the available components
-$ cardano-config schema StorageConfig  # one component
+$ cardano-config schema                  # the whole configuration (split-file form)
+$ cardano-config schema --legacy-one-file # the legacy single-file form (all keys flat)
+$ cardano-config schema --list           # the available components
+$ cardano-config schema StorageConfig    # one component
 ```
 
-The generated schemas are also committed under [`schemas/`](schemas/) — the whole
-configuration (`schemas/config.schema.json`) and one per component
-(`schemas/<Component>.schema.json`). The test-suite asserts they match the codecs
-(so they cannot drift); regenerate them with `scripts/gen-schemas.sh`.
+The default `schema` output is the **split-file form** — each component under its
+section key — which is the form new configurations should use and is far simpler
+than one schema covering every form at once. The older single-file form (every
+key flat at the top level) is still accepted by the parser; its schema is
+available under `--legacy-one-file`.
+
+The generated schemas are also committed under [`schemas/`](schemas/) — the
+split-file whole configuration (`schemas/config.schema.json`), its legacy
+single-file counterpart (`schemas/config.legacy-one-file.schema.json`) and one
+per component (`schemas/<Component>.schema.json`). The test-suite asserts they
+match the codecs (so they cannot drift); regenerate them with
+`scripts/gen-schemas.sh`.
 
 The schemas are draft-07 and post-processed to be as useful as possible:
 
@@ -147,10 +156,13 @@ The schemas are draft-07 and post-processed to be as useful as possible:
   documentation generators such as
   [`jsonschema2md`](https://github.com/adobe/jsonschema2md) render names instead
   of `Untitled`/`undefined` (both keywords are standard draft-07, not extensions);
-- `config.schema.json` covers **both** the single-file form (all keys at the top
-  level) and the split-file form (a component given under its section key as a
-  sub-file path, an inline object, or a list of them), plus the
-  `{ Version, Configuration }` envelope.
+- `config.schema.json` describes the **split-file form** (each component given
+  under its section key as a sub-file path, an inline object, or a list of them),
+  plus the `{ Version, Configuration }` envelope. The flat single-file form lives
+  in its own `config.legacy-one-file.schema.json` (which predates, and so omits,
+  the envelope). Splitting the two forms is what lets each schema drop the
+  "section key *xor* top-level keys" exclusivity rules that a combined schema
+  needs.
 
 To see the *resolved* configuration for a given file — the per-component
 defaults and the configuration file, plus the CLI flags, all merged and resolved
@@ -179,9 +191,11 @@ warns by default and is rejected under `RejectUnknownKeys`. (This concerns only
 the keys you write; the per-component defaults are merged separately and never
 trigger it.)
 
-The whole-config JSON Schema encodes the same rule statically: each component is
-given **either** under its section key **or** as its individual top-level keys,
-not both, so a generic JSON Schema validator also flags the combination.
+The shadowed-key check is a runtime one: the split-file and legacy schemas are
+kept separate precisely so that neither even *offers* both placements for a
+component (the split schema exposes only section keys, the legacy schema only the
+flat keys), which is what lets each schema stay simple. Mixing the two forms is
+therefore caught by the parser rather than by a generic JSON Schema validator.
 
 The recognised keys are grouped into the following components. Every component
 may be given inline, as a sub-file path, or as a list of sources (see

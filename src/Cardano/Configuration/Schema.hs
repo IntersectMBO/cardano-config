@@ -26,12 +26,14 @@
 -- package.
 module Cardano.Configuration.Schema (
   -- * Whole configuration
-  wholeConfigSchema,
+  splitConfigSchema,
+  legacyOneFileConfigSchema,
   recognisedKeys,
   componentPropertyNames,
 
   -- * Default values
-  wholeConfigSchemaWithDefaults,
+  splitConfigSchemaWithDefaults,
+  legacyOneFileConfigSchemaWithDefaults,
   configurationSchemasWithDefaults,
 
   -- * Individual components
@@ -157,78 +159,91 @@ hermodTracingProps = properties rawTracingSchema
 configurationSchemas :: [(Text, Value)]
 configurationSchemas = [(name, component name s) | (name, s) <- rawComponentSchemas]
 
--- | The JSON Schema of the whole configuration, covering both forms:
---
---   * the /single-file/ form, in which every component reads its keys from the
---     top-level object (so all component keys appear flat at the top level); and
---   * the /split-file/ form, in which a component is instead given under its
---     section key (e.g. @StorageConfig@) as a path to a sub-file, an inline
---     object, or a non-empty list of paths\/objects deep-merged in order.
+-- | The JSON Schema of the whole configuration in the /split-file/ form — the
+-- recommended form, and the one the @schema@ subcommand prints by default: each
+-- component is given under its section key (e.g. @StorageConfig@) as a path to a
+-- sub-file, an inline object, or a non-empty list of paths\/objects deep-merged
+-- in order.
 --
 -- The whole document may additionally be wrapped in a @{ Version, Configuration
--- }@ envelope. Because a mandatory key may be provided through either form, the
--- top-level schema marks nothing as required (the mandatory keys are listed in
--- its description, and the inline section forms keep their own @required@).
+-- }@ envelope. Tracing is not a section; it is just the top-level @HermodTracing@
+-- key (a path to a file the node's tracing system reads), whose contents are
+-- neither parsed nor described here.
 --
--- Note: tracing is not a section; it is just the top-level @HermodTracing@ key
--- (a path to a file the node's tracing system reads). Its contents are neither
--- parsed nor described here.
-wholeConfigSchema :: Value
-wholeConfigSchema =
+-- Keeping this form free of the flat top-level keys (which live in
+-- 'legacyOneFileConfigSchema') is what lets it drop the per-component
+-- \"section key /xor/ top-level keys\" exclusivity rules entirely, so it is much
+-- simpler than a schema covering both forms at once.
+splitConfigSchema :: Value
+splitConfigSchema = splitConfigSchemaFrom rawComponentSchemas
+
+-- | 'splitConfigSchema', built from the given component schemas, so the
+-- defaulted variant ('splitConfigSchemaWithDefaults') can feed in component
+-- schemas already carrying their @default@s.
+splitConfigSchemaFrom :: [(Text, Value)] -> Value
+splitConfigSchemaFrom components =
   publish "Cardano node configuration" "config.schema.json" $
     object
-      [ "$comment" .= wholeDescription
+      [ "$comment" .= splitDescription
       , "type" .= ("object" :: Text)
-      , "properties" .= Object (singleFileProps <> sectionRefProps <> envelopeProps)
-      , "allOf" .= sectionExclusivity
+      , "properties" .= Object (sectionRefProps <> hermodTracingProps <> envelopeProps)
       ]
   where
-    -- The single-file form: every component's keys, flat at the top level, plus
-    -- the lone top-level HermodTracing key.
-    singleFileProps = foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
-    -- The split-file form: each component also reachable under its section key.
+    -- Each component reachable under its section key (inline, sub-file, or list).
     sectionRefProps =
-      KM.fromList [(K.fromText name, sectionRef name raw) | (name, raw) <- rawComponentSchemas]
-    -- Give each component one way or the other, not both: if the section key is
-    -- present, none of that component's top-level keys may be (they would be
-    -- shadowed by the section). Mirrors the runtime shadowed-key check.
-    sectionExclusivity =
-      [ object
-          [ "$comment"
-              .= ( "Give the "
-                     <> name
-                     <> " configuration either under the "
-                     <> name
-                     <> " section key or as its individual top-level keys, not both."
-                 )
-          , "if" .= object ["required" .= [name]]
-          , "then"
-              .= object
-                ["not" .= object ["anyOf" .= [object ["required" .= [k]] | k <- keys]]]
-          ]
-      | (name, raw) <- rawComponentSchemas
-      , let keys = map K.toText (KM.keys (properties raw))
-      , not (null keys)
-      ]
-    -- The envelope keys.
+      KM.fromList [(K.fromText name, sectionRef name raw) | (name, raw) <- components]
     envelopeProps =
       KM.fromList
         [ ("Version", versionRef)
         , ("Configuration", configurationRef)
         ]
 
-wholeDescription :: Text
-wholeDescription =
+-- | The JSON Schema of the whole configuration in the /legacy single-file/ form:
+-- every component reads its keys directly from the top-level object, so all keys
+-- appear flat at the top level. New configurations should prefer the split-file
+-- form ('splitConfigSchema'); this form is retained for compatibility and is
+-- printed only under @schema --legacy-one-file@.
+--
+-- The lone top-level @HermodTracing@ key may appear here too. The legacy form
+-- predates the @{ Version, Configuration }@ envelope, so it does not offer it;
+-- use the split-file form for an enveloped configuration.
+legacyOneFileConfigSchema :: Value
+legacyOneFileConfigSchema =
+  publish
+    "Cardano node configuration (legacy single-file form)"
+    "config.legacy-one-file.schema.json"
+    $ object
+      [ "$comment" .= legacyDescription
+      , "type" .= ("object" :: Text)
+      , "properties" .= Object singleFileProps
+      ]
+  where
+    -- Every component's keys, flat at the top level, plus the lone top-level
+    -- HermodTracing key.
+    singleFileProps = foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
+
+splitDescription :: Text
+splitDescription =
   T.unwords
-    [ "The cardano-node configuration."
-    , "Each component's keys may be given directly at the top level (single-file form)"
-    , "or, per component, under that component's section key as a path to a sub-file,"
-    , "an inline object, or a non-empty list of paths/objects deep-merged in order"
-    , "(split-file form); the two forms may be mixed."
+    [ "The cardano-node configuration (split-file form, recommended)."
+    , "Each component is given under its section key (e.g. StorageConfig) as a path to a"
+    , "sub-file, an inline object, or a non-empty list of paths/objects deep-merged in order"
+    , "(later entries override earlier ones)."
     , "The whole document may also be wrapped in a { Version, Configuration } envelope."
-    , "Mandatory keys (in the single-file form): ByronGenesisFile, ShelleyGenesisFile,"
-    , "AlonzoGenesisFile, ConwayGenesisFile, LastKnownBlockVersion-Major and"
-    , "LastKnownBlockVersion-Minor."
+    , "The mandatory genesis files and LastKnownBlockVersion-Major/-Minor are supplied"
+    , "through the ProtocolConfig section."
+    , "For the older form with every key at the top level, see config.legacy-one-file.schema.json."
+    ]
+
+legacyDescription :: Text
+legacyDescription =
+  T.unwords
+    [ "The cardano-node configuration (legacy single-file form)."
+    , "Every component's keys are given directly at the top level."
+    , "New configurations should prefer the split-file form (config.schema.json);"
+    , "this form is retained for compatibility and predates the { Version, Configuration } envelope."
+    , "Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile,"
+    , "ConwayGenesisFile, LastKnownBlockVersion-Major and LastKnownBlockVersion-Minor."
     ]
 
 -- | A component's section key in the split-file form: an inline object (the
@@ -455,12 +470,23 @@ properties _ = KM.empty
 -- and passes them in — so the documented defaults are exactly the ones the
 -- library applies, with a single source of truth.
 
--- | The whole-configuration schema with the @default@ of every key filled in
--- from the per-component defaults (keyed by component name). Components share a
--- flat top-level key space, so their defaults are merged into one overlay.
-wholeConfigSchemaWithDefaults :: [(Text, Value)] -> Value
-wholeConfigSchemaWithDefaults defs =
-  withDefaults (foldr (deepMerge . snd) (Object KM.empty) defs) wholeConfigSchema
+-- | 'splitConfigSchema' with the @default@ of every key filled in from the
+-- per-component defaults (keyed by component name). The defaults are applied to
+-- each component's inline-object form, matching the per-component schemas.
+splitConfigSchemaWithDefaults :: [(Text, Value)] -> Value
+splitConfigSchemaWithDefaults defs =
+  let defsMap = Map.fromList defs
+   in splitConfigSchemaFrom
+        [ (name, maybe raw (`withDefaults` raw) (Map.lookup name defsMap))
+        | (name, raw) <- rawComponentSchemas
+        ]
+
+-- | 'legacyOneFileConfigSchema' with the @default@ of every key filled in from
+-- the per-component defaults. Components share a flat top-level key space, so
+-- their defaults are merged into one overlay.
+legacyOneFileConfigSchemaWithDefaults :: [(Text, Value)] -> Value
+legacyOneFileConfigSchemaWithDefaults defs =
+  withDefaults (foldr (deepMerge . snd) (Object KM.empty) defs) legacyOneFileConfigSchema
 
 -- | Each component schema with its @default@s filled in from its
 -- @defaults\/<Component>.json@ (when one is supplied).

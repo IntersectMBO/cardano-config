@@ -21,7 +21,8 @@ import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
   genesisSchemas,
-  wholeConfigSchemaWithDefaults,
+  legacyOneFileConfigSchemaWithDefaults,
+  splitConfigSchemaWithDefaults,
  )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Control.Exception (SomeException, evaluate, try)
@@ -254,7 +255,10 @@ schemaCases :: IO [Bool]
 schemaCases = do
   defs <- componentDefaults
   sequence $
-    schemaFile "schemas/config.schema.json" (wholeConfigSchemaWithDefaults defs)
+    schemaFile "schemas/config.schema.json" (splitConfigSchemaWithDefaults defs)
+      : schemaFile
+        "schemas/config.legacy-one-file.schema.json"
+        (legacyOneFileConfigSchemaWithDefaults defs)
       : [ schemaFile ("schemas/" <> T.unpack name <> ".schema.json") schema
         | (name, schema) <- configurationSchemasWithDefaults defs <> genesisSchemas
         ]

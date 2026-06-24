@@ -17,7 +17,8 @@ import Cardano.Configuration.Schema (
   configurationSchemas,
   configurationSchemasWithDefaults,
   genesisSchemas,
-  wholeConfigSchemaWithDefaults,
+  legacyOneFileConfigSchemaWithDefaults,
+  splitConfigSchemaWithDefaults,
  )
 import Control.Exception (SomeException, displayException, try)
 import Data.Aeson (Value)
@@ -44,8 +45,17 @@ data Command
 data SchemaCmd
   = -- | List the available component names.
     SchemaList
-  | -- | Dump the whole-configuration schema, or a single named component.
-    SchemaComponent (Maybe String)
+  | -- | Dump the whole-configuration schema, in the given form.
+    SchemaWhole ConfigForm
+  | -- | Dump the schema for a single named component.
+    SchemaComponent String
+
+-- | Which form of the whole-configuration schema to print.
+data ConfigForm
+  = -- | The recommended split-file form (each component under its section key).
+    SplitForm
+  | -- | The legacy single-file form (all keys flat at the top level).
+    LegacyOneFileForm
 
 main :: IO ()
 main = execParser opts >>= run
@@ -103,11 +113,20 @@ schemaParser =
   flag'
     SchemaList
     (long "list" <> help "List the available component names.")
-    <|> ( SchemaComponent
+    <|> flag'
+      (SchemaWhole LegacyOneFileForm)
+      ( long "legacy-one-file"
+          <> help
+            ( "Dump the legacy single-file schema (every key flat at the top level). "
+                <> "Prefer the default split-file schema for new configurations."
+            )
+      )
+    <|> ( maybe (SchemaWhole SplitForm) SchemaComponent
             <$> optional
               ( strArgument
                   ( metavar "COMPONENT"
-                      <> help "Dump the schema for a single component (default: the whole configuration)."
+                      <> help
+                        "Dump the schema for a single component (default: the whole configuration, split-file form)."
                   )
               )
         )
@@ -133,10 +152,12 @@ runResolve cli = do
 -- | Print a JSON Schema, or list the component names.
 runSchema :: SchemaCmd -> IO ()
 runSchema SchemaList = mapM_ (putStrLn . T.unpack . fst) (configurationSchemas <> genesisSchemas)
-runSchema (SchemaComponent Nothing) = do
+runSchema (SchemaWhole form) = do
   defs <- componentDefaults
-  dump (wholeConfigSchemaWithDefaults defs)
-runSchema (SchemaComponent (Just name)) = do
+  dump $ case form of
+    SplitForm -> splitConfigSchemaWithDefaults defs
+    LegacyOneFileForm -> legacyOneFileConfigSchemaWithDefaults defs
+runSchema (SchemaComponent name) = do
   defs <- componentDefaults
   -- Configuration components (with their defaults) and the standalone genesis
   -- schemas are both addressable by name.
