@@ -82,7 +82,7 @@
             "type": "integer"
         },
         "MinBigLedgerPeersForTrustedState": {
-            "default": 0,
+            "default": 5,
             "description": "Minimum big ledger peers for trusted state",
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,

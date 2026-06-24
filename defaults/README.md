@@ -119,6 +119,6 @@ best-effort so the type can be fully resolved; JSON cannot carry comments):
   - `ProtocolIdleTimeout` (5),
   - `TimeWaitTimeout` (60),
   - `TxSubmissionInitDelay` (0),
-  - `MinBigLedgerPeersForTrustedState` (0),
+  - `MinBigLedgerPeersForTrustedState` (5),
   - `TxSubmissionLogicVersion` (`"V1"`),
   - `ResponderCoreAffinityPolicy` (`"Disabled"`).
