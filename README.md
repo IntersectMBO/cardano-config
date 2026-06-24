@@ -227,9 +227,8 @@ files that were read and hash-checked while parsing:
 $ cardano-config resolve --config mainnet-config.yaml --with-geneses
 ```
 
-(The library exposes this rendering as `nodeConfigurationToJSON` in
-`Cardano.Configuration.Render`; its `GenesisRendering` argument selects whether
-the genesis values are included.)
+(This rendering is internal to the `cardano-config` executable, not part of the
+public library API.)
 
 `parseConfigurationFiles` returns the parsed configuration **together with a list
 of `ConfigWarning`s** — it does not print or fail on them itself, so each consumer

@@ -50,6 +50,12 @@ module Cardano.Configuration (
   -- ** Mempool
   File.MempoolConfiguration (..),
 
+  -- ** Genesis
+  -- | The era genesis types of the resolved 'NodeConfiguration' fields. The
+  -- later eras come from @cardano-ledger@ (@ShelleyGenesis@, @AlonzoGenesis@,
+  -- @ConwayGenesis@, @DijkstraGenesis@); only Byron's is defined here.
+  ByronGenesisConfig,
+
   -- ** Operational
   CLI.ShutdownOn (..),
 

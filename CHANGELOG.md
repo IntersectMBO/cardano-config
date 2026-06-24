@@ -6,6 +6,10 @@
 * CLI option parser (`parseCliArgs`), JSON/YAML file parsing
   (`parseConfigurationFiles`) and resolution (`resolveConfiguration`) for the
   `cardano-node` configuration, with an `autodocodec`-derived JSON Schema.
+* The public API is the single `Cardano.Configuration` module, which re-exports
+  the datatypes, parsers, resolution and warnings a consumer needs. The
+  implementation lives in a private `internal` sublibrary (used by this package's
+  own executable and test-suite) and is not importable by downstream packages.
 * `cardano-config` executable with two subcommands:
   * `cardano-config schema` dumps the `autodocodec`-derived JSON Schema (the
     whole configuration or a single component). The schemas declare a `type` for
@@ -18,10 +22,9 @@
     version envelope); `--legacy-one-file` dumps the legacy single-file form.
   * `cardano-config resolve` resolves a configuration (defaults + file + CLI
     flags) and prints the complete result as YAML, using the documented
-    configuration keys (`Cardano.Configuration.Render` exposes this as
-    `nodeConfigurationToJSON`). With `--with-geneses` it also embeds the decoded
-    genesis value of every era (the files read and hash-checked at parse time);
-    by default only their path and hash appear under `ProtocolConfig`.
+    configuration keys. With `--with-geneses` it also embeds the decoded genesis
+    value of every era (the files read and hash-checked at parse time); by
+    default only their path and hash appear under `ProtocolConfig`.
 * Configuration sources are layered with a deep merge: an always-applied
   per-component default (`defaults/`), then the configuration file (a value, a
   sub-file path, or a list of them), then CLI flags.

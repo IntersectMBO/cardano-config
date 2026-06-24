@@ -27,8 +27,19 @@ common warnings
     -Wall
     -Wunused-packages
 
+-- Deliberately small.
 library
+  reexported-modules:
+    Cardano.Configuration,
+
+  build-depends:
+    cardano-config:internal,
+
+  default-language: Haskell2010
+
+library internal
   import: warnings
+  visibility: private
   exposed-modules:
     Cardano.Configuration
     Cardano.Configuration.CliArgs
@@ -125,7 +136,7 @@ executable cardano-config
     aeson-pretty,
     base,
     bytestring,
-    cardano-config,
+    cardano-config:internal,
     optparse-applicative,
     text,
     yaml,
@@ -150,7 +161,7 @@ test-suite cardano-config-test
     aeson,
     autodocodec,
     base,
-    cardano-config,
+    cardano-config:internal,
     cardano-crypto-class,
     cardano-crypto-wrapper,
     optparse-applicative,
