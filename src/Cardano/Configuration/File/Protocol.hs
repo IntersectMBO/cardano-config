@@ -137,7 +137,7 @@ checkpointsObjectCodec = optionalHashedFileObjectCodec "CheckpointsFile" "Checkp
 
 -- | Configuration for the protocol
 data ProtocolConfiguration f = ProtocolConfiguration
-  { byronGenesis :: ByronGenesisConfiguration
+  { byronGenesis :: !ByronGenesisConfiguration
   , shelleyGenesis :: !(Hashed FilePath)
   , alonzoGenesis :: !(Hashed FilePath)
   , conwayGenesis :: !(Hashed FilePath)
