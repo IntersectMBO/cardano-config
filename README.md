@@ -24,6 +24,23 @@ need access to the configuration file of the node, such as [`cardano-cli`](https
 }
 ```
 
+(The `NetworkConfig` line is optional: a node started without block-forging
+credentials resolves to the relay networking defaults automatically.)
+
+### ... run a block-producing node
+
+A block producer is just a node given block-forging credentials. Supply them on
+the CLI and the networking defaults switch to the block-producer peer targets and
+disable `PeerSharing` automatically — no `NetworkConfig` variant required:
+
+```console
+$ cardano-config resolve --config mainnet.json \
+    --shelley-kes-key kes.skey --shelley-vrf-key vrf.skey \
+    --shelley-operational-certificate node.opcert
+```
+
+with `mainnet.json` being `{ "ProtocolConfig": "ProtocolConfig.variants/ProtocolConfig.mainnet.json" }`.
+
 ### ... override a single specific option
 
 ```json
@@ -42,6 +59,20 @@ need access to the configuration file of the node, such as [`cardano-cli`](https
 }
 ```
 
+### ... reuse (and port) an existing single-file config
+
+The historic flat form — every key at the top level — still resolves unchanged,
+so an existing `cardano-node` config keeps working:
+
+```console
+$ cardano-config resolve --config mainnet-config.json
+```
+
+New configurations should prefer the split-file form (each component under its
+section key). `cardano-config schema --legacy-one-file` documents the flat form;
+the default `cardano-config schema` documents the recommended split form to port
+towards.
+
 ### ... see what my current configuration resolves to, with defaults
 
 ```console
@@ -59,6 +90,16 @@ NetworkConfig:
     softLimit: 384
   ChainSyncIdleTimeout: 3373
 ...
+```
+
+### ... see the resolved config including the genesis contents
+
+By default the genesis files appear only as a path and hash (under
+`ProtocolConfig`). Add `--with-geneses` to also embed the decoded genesis of
+every era (large):
+
+```console
+$ cardano-config resolve --config mainnet-config.json --with-geneses
 ```
 
 ### ... see the schema for a component (e.g. NetworkConfig)
