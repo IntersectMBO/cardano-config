@@ -2,16 +2,16 @@
 -- and running a component's codec. This module knows nothing about which keys
 -- the parsers recognise (that is "Cardano.Configuration.File.Lint") nor about the
 -- overall orchestration (that is "Cardano.Configuration.File").
-module Cardano.Configuration.File.Merge (
-  decodeValueFile,
-  runCodec,
-  mergeValues,
-  loadSectionSource,
-  loadBaseDefault,
-  sectionUserLayer,
-  parseSection,
-  splitEnvelope,
-) where
+module Cardano.Configuration.File.Merge
+  ( decodeValueFile
+  , runCodec
+  , mergeValues
+  , loadSectionSource
+  , loadBaseDefault
+  , sectionUserLayer
+  , parseSection
+  , splitEnvelope
+  ) where
 
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Control.Exception (throwIO)
@@ -136,7 +136,7 @@ sectionUserLayer root configValue section =
 parseSection ::
   FromJSON a =>
   -- | The directory the main file lives in, against which sub-file paths are
-  -- resolved.
+  --     resolved.
   FilePath ->
   -- | The (unwrapped) configuration object.
   Value ->
@@ -163,13 +163,13 @@ splitEnvelope value =
     _ ->
       throwIO $
         ConfigurationParsingError Nothing Nothing [] "expected the configuration to be a JSON/YAML object"
-  where
-    -- A missing @Version@ is the legacy version 1. A present one must be an
-    -- integer in range (not e.g. 1.4 or a huge scientific literal): the schema
-    -- declares it as an integer, so anything else is a hard error.
-    lookupVersion o = case KM.lookup "Version" o of
-      Nothing -> pure 1
-      Just (Number n) ->
-        maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
-      Just _ -> throwIO (badVersion "expected an integer")
-    badVersion msg = ConfigurationParsingError Nothing Nothing [Key "Version"] ("invalid Version: " <> msg)
+ where
+  -- A missing @Version@ is the legacy version 1. A present one must be an
+  -- integer in range (not e.g. 1.4 or a huge scientific literal): the schema
+  -- declares it as an integer, so anything else is a hard error.
+  lookupVersion o = case KM.lookup "Version" o of
+    Nothing -> pure 1
+    Just (Number n) ->
+      maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
+    Just _ -> throwIO (badVersion "expected an integer")
+  badVersion msg = ConfigurationParsingError Nothing Nothing [Key "Version"] ("invalid Version: " <> msg)

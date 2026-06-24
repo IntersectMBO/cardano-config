@@ -67,6 +67,7 @@ if impl(ghc >=9.14)
   constraints:
     , containers >= 0.8
     , foldl >= 1.4.18
+
   allow-newer:
     , boring:base
     , canonical-json:containers
@@ -87,7 +88,6 @@ if impl(ghc >=9.14)
     , tree-diff:base
     , tree-diff:containers
     , tree-diff:time
-
 constraints:
   -- Happy version 2.2.1 fails to compile haskell-src-exts
   , happy < 2.2.1

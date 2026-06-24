@@ -1,19 +1,19 @@
 -- | Configuration options related to networking
-module Cardano.Configuration.File.Network (
-  NetworkConfiguration (..),
-  DiffusionMode (..),
-  AcceptedConnectionsLimit (..),
-  LocalConnectionsConfig (..),
-  finalizeNetwork,
-  finalizeLocalConnections,
+module Cardano.Configuration.File.Network
+  ( NetworkConfiguration (..)
+  , DiffusionMode (..)
+  , AcceptedConnectionsLimit (..)
+  , LocalConnectionsConfig (..)
+  , finalizeNetwork
+  , finalizeLocalConnections
 
-  -- * Role defaults
-  BlockProducerOrRelay (..),
-  withRoleDefaults,
-  networkRoleDefaults,
-  blockProducerRoleDefaults,
-  relayRoleDefaults,
-) where
+    -- * Role defaults
+  , BlockProducerOrRelay (..)
+  , withRoleDefaults
+  , networkRoleDefaults
+  , blockProducerRoleDefaults
+  , relayRoleDefaults
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Basic (diffTimeCodec, requireField)
@@ -87,7 +87,7 @@ data NetworkConfiguration f = NetworkConfiguration
   , txSubmissionLogicVersion :: f String
   , txSubmissionInitDelay :: f DiffTime
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (NetworkConfiguration Maybe)
 deriving instance Show (NetworkConfiguration Identity)
@@ -343,7 +343,7 @@ data LocalConnectionsConfig f = LocalConnectionsConfig
   , enableRpc :: f Bool
   , rpcSocketPath :: Maybe FilePath
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (LocalConnectionsConfig Maybe)
 deriving instance Show (LocalConnectionsConfig Identity)

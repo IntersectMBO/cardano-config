@@ -1,17 +1,17 @@
 -- | Options related to the Cardano protocol
-module Cardano.Configuration.File.Protocol (
-  -- * Configuration
-  ProtocolConfiguration (..),
+module Cardano.Configuration.File.Protocol
+  ( -- * Configuration
+    ProtocolConfiguration (..)
 
-  -- * Hashed files
-  Hashed (..),
-  optionalHashedFileObjectCodec,
-  optionalHashedGenesisObjectCodec,
+    -- * Hashed files
+  , Hashed (..)
+  , optionalHashedFileObjectCodec
+  , optionalHashedGenesisObjectCodec
 
-  -- * Particular eras
-  ByronGenesisConfiguration (..),
-  RequiresNetworkMagic (..),
-) where
+    -- * Particular eras
+  , ByronGenesisConfiguration (..)
+  , RequiresNetworkMagic (..)
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Common (filePathCodec)
@@ -58,8 +58,8 @@ hashedFileObjectCodec fileKey hashKey =
     <$> requiredFieldWith fileKey filePathCodec "Path to the genesis file" .= hashed
     <*> dimapCodec Just (fromMaybe noHash) (requiredFieldWith hashKey hashCodec "Hash of the genesis file")
       .= hash
-  where
-    noHash = error (T.unpack hashKey <> " unexpectedly absent")
+ where
+  noHash = error (T.unpack hashKey <> " unexpectedly absent")
 
 -- | An optional genesis file whose hash is mandatory once the file is given:
 -- 'Nothing' when the file key is absent, but if the file key is present the hash
@@ -71,15 +71,15 @@ optionalHashedGenesisObjectCodec fileKey hashKey =
     (,)
       <$> optionalFieldWith fileKey filePathCodec "Path to the genesis file" .= fst
       <*> optionalFieldWith hashKey hashCodec "Hash of the genesis file" .= snd
-  where
-    toG (Nothing, Nothing) = Right Nothing
-    toG (Just f, Just h) = Right (Just (Hashed f (Just h)))
-    toG (Just _, Nothing) =
-      Left (T.unpack hashKey <> " is required when " <> T.unpack fileKey <> " is provided")
-    toG (Nothing, Just _) =
-      Left (T.unpack hashKey <> " was given without " <> T.unpack fileKey)
-    fromG Nothing = (Nothing, Nothing)
-    fromG (Just (Hashed f mh)) = (Just f, mh)
+ where
+  toG (Nothing, Nothing) = Right Nothing
+  toG (Just f, Just h) = Right (Just (Hashed f (Just h)))
+  toG (Just _, Nothing) =
+    Left (T.unpack hashKey <> " is required when " <> T.unpack fileKey <> " is provided")
+  toG (Nothing, Just _) =
+    Left (T.unpack hashKey <> " was given without " <> T.unpack fileKey)
+  fromG Nothing = (Nothing, Nothing)
+  fromG (Just (Hashed f mh)) = (Just f, mh)
 
 -- | An optional hashed file: 'Nothing' when the file key is absent.
 optionalHashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (Hashed FilePath))
@@ -88,11 +88,11 @@ optionalHashedFileObjectCodec fileKey hashKey =
     (,)
       <$> optionalFieldWith fileKey filePathCodec "Path to the file" .= fst
       <*> optionalFieldWith hashKey hashCodec "Hash of the file" .= snd
-  where
-    toG (Nothing, _) = Nothing
-    toG (Just f, mh) = Just (Hashed f mh)
-    fromG Nothing = (Nothing, Nothing)
-    fromG (Just (Hashed f mh)) = (Just f, mh)
+ where
+  toG (Nothing, _) = Nothing
+  toG (Just f, mh) = Just (Hashed f mh)
+  fromG Nothing = (Nothing, Nothing)
+  fromG (Just (Hashed f mh)) = (Just f, mh)
 
 -- | Whether the Byron network magic is required. Enumerated so the schema lists
 -- the valid values and typos are caught at parse time.
@@ -144,7 +144,7 @@ data ProtocolConfiguration f = ProtocolConfiguration
   , startAsNonProducingNode :: !(f Bool)
   , checkpointsFile :: !(Maybe (Hashed FilePath))
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (ProtocolConfiguration Maybe)
 deriving instance Show (ProtocolConfiguration Identity)

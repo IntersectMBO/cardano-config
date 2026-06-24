@@ -1,21 +1,21 @@
 -- | Options related to storage
-module Cardano.Configuration.File.Storage (
-  adjustDbPath,
-  StorageConfiguration (..),
+module Cardano.Configuration.File.Storage
+  ( adjustDbPath
+  , StorageConfiguration (..)
 
-  -- * LedgerDB
-  LedgerDbConfiguration (..),
+    -- * LedgerDB
+  , LedgerDbConfiguration (..)
 
-  -- ** Snapshots
-  SnapshotPolicy (..),
-  SnapshotOptions (..),
-  mithrilSnapshotOptions,
-  resolveSnapshotPolicy,
-  resolveSnapshotOptions,
+    -- ** Snapshots
+  , SnapshotPolicy (..)
+  , SnapshotOptions (..)
+  , mithrilSnapshotOptions
+  , resolveSnapshotPolicy
+  , resolveSnapshotOptions
 
-  -- ** Backend
-  LedgerDbBackendSelector (..),
-) where
+    -- ** Backend
+  , LedgerDbBackendSelector (..)
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Common
@@ -32,9 +32,9 @@ import GHC.Generics
 -- | A non-zero snapshot interval, in slots: the node rejects 0.
 snapshotIntervalCodec :: JSONCodec Word64
 snapshotIntervalCodec = bimapCodec validate id codec
-  where
-    validate 0 = Left "Non-positive SnapshotInterval: 0"
-    validate w = Right w
+ where
+  validate 0 = Left "Non-positive SnapshotInterval: 0"
+  validate w = Right w
 
 -- | An explicit set of snapshot policy options. All fields are optional; when
 -- unset the node applies its own defaults.
@@ -43,7 +43,7 @@ data SnapshotOptions = SnapshotOptions
   -- ^ How many slots between attempts to write a snapshot to disk (non-zero).
   , slotOffset :: Maybe Word64
   -- ^ The slot at which the snapshot schedule is anchored: snapshots are taken
-  -- at @slotOffset + n * snapshotInterval@.
+  --     at @slotOffset + n * snapshotInterval@.
   , snapshotRateLimit :: Maybe Word64
   -- ^ The minimum wall-clock time, in seconds, between two snapshots.
   , minDelay :: Maybe Word64
@@ -67,12 +67,12 @@ instance HasCodec SnapshotOptions where
           <*> optionalField "MinDelay" "Lower bound (seconds) of the random snapshot delay" .= minDelay
           <*> optionalField "MaxDelay" "Upper bound (seconds) of the random snapshot delay" .= maxDelay
           <*> optionalField "NumOfDiskSnapshots" "How many snapshots to keep on disk" .= numOfDiskSnapshots
-    where
-      validateDelays so@SnapshotOptions {minDelay = Just lo, maxDelay = Just hi}
-        | lo > hi =
-            Left $ "Invalid snapshot delay range, MinDelay > MaxDelay: " <> show lo <> " > " <> show hi
-        | otherwise = Right so
-      validateDelays so = Right so
+   where
+    validateDelays so@SnapshotOptions{minDelay = Just lo, maxDelay = Just hi}
+      | lo > hi =
+          Left $ "Invalid snapshot delay range, MinDelay > MaxDelay: " <> show lo <> " > " <> show hi
+      | otherwise = Right so
+    validateDelays so = Right so
 
 -- | The snapshot policy: either the predefined @"Mithril"@ policy (the only
 -- named policy currently accepted) or an explicit set of options.
@@ -94,9 +94,9 @@ instance HasCodec SnapshotPolicy where
       (literalTextValueCodec MithrilSnapshotPolicy "Mithril")
       (dimapCodec CustomSnapshotPolicy id (codec @SnapshotOptions))
       selector
-    where
-      selector MithrilSnapshotPolicy = Left MithrilSnapshotPolicy
-      selector (CustomSnapshotPolicy o) = Right o
+   where
+    selector MithrilSnapshotPolicy = Left MithrilSnapshotPolicy
+    selector (CustomSnapshotPolicy o) = Right o
 
 -- | The concrete snapshot options the @"Mithril"@ policy stands for. Resolving
 -- @"Mithril"@ to these values here means every consumer (not just consensus)
@@ -136,10 +136,10 @@ data LedgerDbBackendSelector
   = -- | The in-memory backend.
     V2InMemory
   | -- | The LSM-tree backend. The first field is an optional custom path to the
-    -- database (the @LSMDatabasePath@ key); if it is not provided, the default
-    -- is used. The second field is an optional directory into which the backend
-    -- exports snapshots as it takes them (the @LSMExportPath@ key). Both are
-    -- only meaningful for the LSM backend.
+    --       database (the @LSMDatabasePath@ key); if it is not provided, the default
+    --       is used. The second field is an optional directory into which the backend
+    --       exports snapshots as it takes them (the @LSMExportPath@ key). Both are
+    --       only meaningful for the LSM backend.
     V2LSM (Maybe FilePath) (Maybe FilePath)
   deriving (Generic, Show)
 
@@ -160,14 +160,14 @@ backendCodec =
         filePathCodec
         "Directory into which the LSM backend exports snapshots (V2LSM only)"
         .= (\(_, _, e) -> e)
-  where
-    toSelector (Nothing, _, _) = Right Nothing
-    toSelector (Just "V2InMemory", _, _) = Right (Just V2InMemory)
-    toSelector (Just "V2LSM", p, e) = Right (Just (V2LSM p e))
-    toSelector (Just other, _, _) = Left $ "Malformed LedgerDB Backend: " <> T.unpack other
-    fromSelector Nothing = (Nothing, Nothing, Nothing)
-    fromSelector (Just V2InMemory) = (Just "V2InMemory", Nothing, Nothing)
-    fromSelector (Just (V2LSM p e)) = (Just "V2LSM", p, e)
+ where
+  toSelector (Nothing, _, _) = Right Nothing
+  toSelector (Just "V2InMemory", _, _) = Right (Just V2InMemory)
+  toSelector (Just "V2LSM", p, e) = Right (Just (V2LSM p e))
+  toSelector (Just other, _, _) = Left $ "Malformed LedgerDB Backend: " <> T.unpack other
+  fromSelector Nothing = (Nothing, Nothing, Nothing)
+  fromSelector (Just V2InMemory) = (Just "V2InMemory", Nothing, Nothing)
+  fromSelector (Just (V2LSM p e)) = (Just "V2LSM", p, e)
 
 -- | The Ledger DB configuration
 data LedgerDbConfiguration = LedgerDbConfiguration
@@ -201,10 +201,10 @@ adjustDbPath sc db =
     { databasePath = Identity db
     , ledgerDbConfiguration = Identity $ defaultLsmDatabasePath $ fromMaybe def $ ledgerDbConfiguration sc
     }
-  where
-    defaultLsmDatabasePath ldb = ldb {backendSelector = withLsmDefault <$> backendSelector ldb}
-    withLsmDefault (V2LSM dbPath exportPath) = V2LSM (dbPath <|> Just "lsm") exportPath
-    withLsmDefault other = other
+ where
+  defaultLsmDatabasePath ldb = ldb{backendSelector = withLsmDefault <$> backendSelector ldb}
+  withLsmDefault (V2LSM dbPath exportPath) = V2LSM (dbPath <|> Just "lsm") exportPath
+  withLsmDefault other = other
 
 -- | Resolve the snapshot policy to a concrete set of options (see
 -- 'resolveSnapshotPolicy'), so the resolved configuration never carries the bare
@@ -213,16 +213,16 @@ adjustDbPath sc db =
 -- the Mithril\/LSMExportPath rule), which flattening would erase.
 resolveSnapshotOptions :: StorageConfiguration Identity -> StorageConfiguration Identity
 resolveSnapshotOptions sc =
-  sc {ledgerDbConfiguration = fmap normalize (ledgerDbConfiguration sc)}
-  where
-    normalize ldb = ldb {snapshots = CustomSnapshotPolicy . resolveSnapshotPolicy <$> snapshots ldb}
+  sc{ledgerDbConfiguration = fmap normalize (ledgerDbConfiguration sc)}
+ where
+  normalize ldb = ldb{snapshots = CustomSnapshotPolicy . resolveSnapshotPolicy <$> snapshots ldb}
 
 -- | The storage configuration
 data StorageConfiguration f = StorageConfiguration
   { databasePath :: f NodeDatabasePaths
   , ledgerDbConfiguration :: f LedgerDbConfiguration
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (StorageConfiguration Maybe)
 deriving instance Show (StorageConfiguration Identity)

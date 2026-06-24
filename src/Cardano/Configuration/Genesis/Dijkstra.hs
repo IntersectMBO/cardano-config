@@ -9,11 +9,11 @@
 -- The on-the-wire keys match the ledger's @FromJSON@/@ToJSON@ instances for
 -- @UpgradeDijkstraPParams@ (a 'DijkstraGenesis' is a newtype around it, so its
 -- JSON is the flat object of these keys).
-module Cardano.Configuration.Genesis.Dijkstra (
-  dijkstraGenesisCodec,
-  nonZeroCodec,
-  positiveIntervalCodec,
-) where
+module Cardano.Configuration.Genesis.Dijkstra
+  ( dijkstraGenesisCodec
+  , nonZeroCodec
+  , positiveIntervalCodec
+  ) where
 
 import Autodocodec
 import Cardano.Ledger.BaseTypes (HasZero, NonZero, PositiveInterval, nonZero, unNonZero)
@@ -65,9 +65,9 @@ dijkstraGenesisCodec =
         positiveIntervalCodec
         "Multiplier applied to the reference-script cost of each successive tier"
         .= field udppRefScriptCostMultiplier
-  where
-    field f = f . dgUpgradePParams
-    mk a b c d = DijkstraGenesis (UpgradeDijkstraPParams a b c d)
+ where
+  field f = f . dgUpgradePParams
+  mk a b c d = DijkstraGenesis (UpgradeDijkstraPParams a b c d)
 
 instance HasCodec DijkstraGenesis where
   codec = dijkstraGenesisCodec

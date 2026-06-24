@@ -10,24 +10,24 @@
 -- (a flat integer array) are decoded by hand; the deeply-nested governance
 -- structures (voting thresholds, constitution, committee, delegation maps and
 -- extra config) are decoded via the ledger's aeson instances for now.
-module Cardano.Configuration.Genesis.Conway (
-  conwayGenesisCodec,
-) where
+module Cardano.Configuration.Genesis.Conway
+  ( conwayGenesisCodec
+  ) where
 
 import Autodocodec
-import Cardano.Configuration.Genesis.Ledger (
-  boundedRationalCodec,
-  coinCodec,
-  epochIntervalCodec,
- )
+import Cardano.Configuration.Genesis.Ledger
+  ( boundedRationalCodec
+  , coinCodec
+  , epochIntervalCodec
+  )
 import Cardano.Ledger.BaseTypes (Anchor (..), UnitInterval, maybeToStrictMaybe, strictMaybeToMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayExtraConfig, ConwayGenesis (..))
 import Cardano.Ledger.Conway.Governance (Committee (..), Constitution (..))
-import Cardano.Ledger.Conway.PParams (
-  DRepVotingThresholds (..),
-  PoolVotingThresholds (..),
-  UpgradeConwayPParams (..),
- )
+import Cardano.Ledger.Conway.PParams
+  ( DRepVotingThresholds (..)
+  , PoolVotingThresholds (..)
+  , UpgradeConwayPParams (..)
+  )
 import Cardano.Ledger.Plutus.CostModels (CostModel, getCostModelParams, mkCostModel)
 import Cardano.Ledger.Plutus.Language (Language (PlutusV3))
 import Data.Int (Int64)
@@ -58,7 +58,10 @@ conwayGenesisCodec =
         .= upgrade ucppDRepDeposit
       <*> requiredFieldWith "dRepActivity" epochIntervalCodec "DRep activity period"
         .= upgrade ucppDRepActivity
-      <*> requiredFieldWith "minFeeRefScriptCostPerByte" (boundedRationalCodec "minFeeRefScriptCostPerByte") "Reference-script cost per byte"
+      <*> requiredFieldWith
+        "minFeeRefScriptCostPerByte"
+        (boundedRationalCodec "minFeeRefScriptCostPerByte")
+        "Reference-script cost per byte"
         .= upgrade ucppMinFeeRefScriptCostPerByte
       <*> requiredFieldWith "plutusV3CostModel" plutusV3CostModelCodec "Plutus V3 cost model"
         .= upgrade ucppPlutusV3CostModel
@@ -66,26 +69,33 @@ conwayGenesisCodec =
         .= cgConstitution
       <*> requiredFieldWith "committee" committeeCodec "The initial constitutional committee"
         .= cgCommittee
-      <*> optionalFieldWithOmittedDefaultWith "delegs" (codecViaAeson "Delegs") mempty "Initial stake delegations"
+      <*> optionalFieldWithOmittedDefaultWith
+        "delegs"
+        (codecViaAeson "Delegs")
+        mempty
+        "Initial stake delegations"
         .= cgDelegs
-      <*> optionalFieldWithOmittedDefaultWith "initialDReps" (codecViaAeson "InitialDReps") mempty "Initial DReps"
+      <*> optionalFieldWithOmittedDefaultWith
+        "initialDReps"
+        (codecViaAeson "InitialDReps")
+        mempty
+        "Initial DReps"
         .= cgInitialDReps
       <*> extraConfigField
         .= cgExtraConfig
-  where
-    upgrade f = f . cgUpgradePParams
-    extraConfigField =
-      dimapCodec maybeToStrictMaybe strictMaybeToMaybe $
-        optionalFieldWith "extraConfig" extraConfigCodec "Extra streaming-injection configuration"
-    mk pvt drvt cms cmtl gal gad drd dra mfr pv3 constitution committee delegs initialDReps extraConfig =
-      ConwayGenesis
-        ( UpgradeConwayPParams pvt drvt cms cmtl gal gad drd dra mfr pv3
-        )
-        constitution
-        committee
-        delegs
-        initialDReps
-        extraConfig
+ where
+  upgrade f = f . cgUpgradePParams
+  extraConfigField =
+    dimapCodec maybeToStrictMaybe strictMaybeToMaybe $
+      optionalFieldWith "extraConfig" extraConfigCodec "Extra streaming-injection configuration"
+  mk pvt drvt cms cmtl gal gad drd dra mfr pv3 constitution committee delegs initialDReps extraConfig =
+    ConwayGenesis
+      (UpgradeConwayPParams pvt drvt cms cmtl gal gad drd dra mfr pv3)
+      constitution
+      committee
+      delegs
+      initialDReps
+      extraConfig
 
 -- | Pool voting thresholds: an object of five 'UnitInterval's.
 poolVotingThresholdsCodec :: JSONCodec PoolVotingThresholds
@@ -136,7 +146,8 @@ anchorCodec =
   object "Anchor" $
     Anchor
       <$> requiredFieldWith "url" (codecViaAeson "Url") "The anchor URL" .= anchorUrl
-      <*> requiredFieldWith "dataHash" (codecViaAeson "AnchorDataHash") "The anchor data hash" .= anchorDataHash
+      <*> requiredFieldWith "dataHash" (codecViaAeson "AnchorDataHash") "The anchor data hash"
+        .= anchorDataHash
 
 -- | The constitutional committee: a @members@ map (keyed by committee
 -- credential) and a @threshold@. The credential-keyed map uses the ledger's
@@ -145,18 +156,23 @@ committeeCodec :: JSONCodec (Committee era)
 committeeCodec =
   object "Committee" $
     Committee
-      <$> requiredFieldWith "members" (codecViaAeson "CommitteeMembers") "Committee members and their term expiry" .= committeeMembers
-      <*> requiredFieldWith "threshold" (boundedRationalCodec "threshold") "Committee voting threshold" .= committeeThreshold
+      <$> requiredFieldWith
+        "members"
+        (codecViaAeson "CommitteeMembers")
+        "Committee members and their term expiry"
+        .= committeeMembers
+      <*> requiredFieldWith "threshold" (boundedRationalCodec "threshold") "Committee voting threshold"
+        .= committeeThreshold
 
 -- | The PlutusV3 cost model is a flat JSON array of integers.
 plutusV3CostModelCodec :: JSONCodec CostModel
 plutusV3CostModelCodec = bimapCodec decodeCM encodeCM (codec @[Int64])
-  where
-    encodeCM = getCostModelParams
-    decodeCM params =
-      case mkCostModel PlutusV3 params of
-        Left err -> Left ("invalid PlutusV3 cost model: " <> show err)
-        Right m -> Right m
+ where
+  encodeCM = getCostModelParams
+  decodeCM params =
+    case mkCostModel PlutusV3 params of
+      Left err -> Left ("invalid PlutusV3 cost model: " <> show err)
+      Right m -> Right m
 
 -- | The extra-configuration record, decoded for now via the ledger's aeson
 -- instance.

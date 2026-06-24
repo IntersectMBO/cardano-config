@@ -8,9 +8,9 @@
 -- This type exists as an /informational placeholder/, so that the tracing key is
 -- visible in the configuration schema (rather than silently ignored) and is
 -- preserved when round-tripping a configuration through the parser.
-module Cardano.Configuration.File.Tracing (
-  TracingConfiguration (..),
-) where
+module Cardano.Configuration.File.Tracing
+  ( TracingConfiguration (..)
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Common (filePathFormatMarker)

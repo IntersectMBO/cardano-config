@@ -1,8 +1,8 @@
 -- | Values related to testing, which are unused by a real node
-module Cardano.Configuration.File.Testing (
-  TestingConfiguration (..),
-  finalizeTesting,
-) where
+module Cardano.Configuration.File.Testing
+  ( TestingConfiguration (..)
+  , finalizeTesting
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Basic (requireField)
@@ -33,7 +33,7 @@ data TestingConfiguration f = TestingConfiguration
   , testDijkstraHardForkAtVersion :: Maybe Word
   , experimentalGenesis :: Maybe (Hashed FilePath)
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (TestingConfiguration Maybe)
 deriving instance Show (TestingConfiguration Identity)

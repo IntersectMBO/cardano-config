@@ -1,11 +1,11 @@
 -- | Basic types for configuration
-module Cardano.Configuration.Basic (
-  -- * Codecs
-  diffTimeCodec,
+module Cardano.Configuration.Basic
+  ( -- * Codecs
+    diffTimeCodec
 
-  -- * Resolution
-  requireField,
-) where
+    -- * Resolution
+  , requireField
+  ) where
 
 import Autodocodec (JSONCodec, dimapCodec, scientificCodec)
 import Data.Functor.Identity (Identity (..))

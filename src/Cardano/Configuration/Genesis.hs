@@ -6,18 +6,18 @@
 --
 -- Only the Dijkstra (experimental) era is resolved here so far; the other eras
 -- will follow the same shape.
-module Cardano.Configuration.Genesis (
-  -- * Errors
-  GenesisReadError (..),
-  genesisErrorFile,
+module Cardano.Configuration.Genesis
+  ( -- * Errors
+    GenesisReadError (..)
+  , genesisErrorFile
 
-  -- * Reading genesis files
-  readGenesisFileWith,
-  readDijkstraGenesisFile,
+    -- * Reading genesis files
+  , readGenesisFileWith
+  , readDijkstraGenesisFile
 
-  -- * Resolving the configuration's genesis references
-  resolveExperimentalGenesis,
-) where
+    -- * Resolving the configuration's genesis references
+  , resolveExperimentalGenesis
+  ) where
 
 import Autodocodec (JSONCodec, parseJSONVia)
 import Cardano.Configuration.File.Protocol (Hashed (..))
@@ -36,14 +36,14 @@ data GenesisReadError
   = -- | The file could not be read.
     GenesisFileReadError FilePath IOException
   | -- | The file's @Blake2b_256@ hash did not match the expected hash from the
-    -- configuration (expected, then actual).
+    --       configuration (expected, then actual).
     GenesisHashMismatch
       FilePath
       (Hash Blake2b_256 ByteString)
       (Hash Blake2b_256 ByteString)
   | -- | The file's contents could not be decoded into the era genesis.
     GenesisDecodeError FilePath String
-  deriving (Show)
+  deriving Show
 
 -- | The path of the genesis file the error concerns.
 genesisErrorFile :: GenesisReadError -> Maybe FilePath

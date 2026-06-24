@@ -24,31 +24,31 @@
 -- tracing system (hermod/@trace-dispatcher@) reads. Its contents are neither
 -- parsed nor described here; the authoritative tracing schema lives in that
 -- package.
-module Cardano.Configuration.Schema (
-  -- * Whole configuration
-  splitConfigSchema,
-  legacyOneFileConfigSchema,
-  recognisedKeys,
-  componentPropertyNames,
+module Cardano.Configuration.Schema
+  ( -- * Whole configuration
+    splitConfigSchema
+  , legacyOneFileConfigSchema
+  , recognisedKeys
+  , componentPropertyNames
 
-  -- * Default values
-  splitConfigSchemaWithDefaults,
-  legacyOneFileConfigSchemaWithDefaults,
-  configurationSchemasWithDefaults,
+    -- * Default values
+  , splitConfigSchemaWithDefaults
+  , legacyOneFileConfigSchemaWithDefaults
+  , configurationSchemasWithDefaults
 
-  -- * Individual components
-  configurationSchemas,
-  storageSchema,
-  consensusSchema,
-  protocolSchema,
-  networkSchema,
-  localConnectionsSchema,
-  mempoolSchema,
-  testingSchema,
+    -- * Individual components
+  , configurationSchemas
+  , storageSchema
+  , consensusSchema
+  , protocolSchema
+  , networkSchema
+  , localConnectionsSchema
+  , mempoolSchema
+  , testingSchema
 
-  -- * Genesis schemas
-  genesisSchemas,
-) where
+    -- * Genesis schemas
+  , genesisSchemas
+  ) where
 
 import Autodocodec.Schema (jsonSchemaViaCodec)
 import Cardano.Configuration.Common (filePathFormatMarker)
@@ -188,15 +188,15 @@ splitConfigSchemaFrom components =
       , "type" .= ("object" :: Text)
       , "properties" .= Object (sectionRefProps <> hermodTracingProps <> envelopeProps)
       ]
-  where
-    -- Each component reachable under its section key (inline, sub-file, or list).
-    sectionRefProps =
-      KM.fromList [(K.fromText name, sectionRef name raw) | (name, raw) <- components]
-    envelopeProps =
-      KM.fromList
-        [ ("Version", versionRef)
-        , ("Configuration", configurationRef)
-        ]
+ where
+  -- Each component reachable under its section key (inline, sub-file, or list).
+  sectionRefProps =
+    KM.fromList [(K.fromText name, sectionRef name raw) | (name, raw) <- components]
+  envelopeProps =
+    KM.fromList
+      [ ("Version", versionRef)
+      , ("Configuration", configurationRef)
+      ]
 
 -- | The JSON Schema of the whole configuration in the /legacy single-file/ form:
 -- every component reads its keys directly from the top-level object, so all keys
@@ -217,10 +217,10 @@ legacyOneFileConfigSchema =
       , "type" .= ("object" :: Text)
       , "properties" .= Object singleFileProps
       ]
-  where
-    -- Every component's keys, flat at the top level, plus the lone top-level
-    -- HermodTracing key.
-    singleFileProps = foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
+ where
+  -- Every component's keys, flat at the top level, plus the lone top-level
+  -- HermodTracing key.
+  singleFileProps = foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
 
 splitDescription :: Text
 splitDescription =
@@ -259,19 +259,19 @@ sectionRef name raw =
            )
     , "anyOf" .= [pathRef desc, withTitle name raw, listRef]
     ]
-  where
-    desc = "Path to a file holding the " <> name <> " section"
-    listRef =
-      object
-        [ "type" .= ("array" :: Text)
-        , "title" .= (name <> " (list of sources)")
-        , "minItems" .= (1 :: Int)
-        , "items"
-            .= object
-              [ "title" .= (name <> " source")
-              , "anyOf" .= [pathRef desc, withTitle name raw]
-              ]
-        ]
+ where
+  desc = "Path to a file holding the " <> name <> " section"
+  listRef =
+    object
+      [ "type" .= ("array" :: Text)
+      , "title" .= (name <> " (list of sources)")
+      , "minItems" .= (1 :: Int)
+      , "items"
+          .= object
+            [ "title" .= (name <> " source")
+            , "anyOf" .= [pathRef desc, withTitle name raw]
+            ]
+      ]
 
 -- | A JSON string that is a filesystem path (tagged so 'publish' adds the
 -- @path@ format).
@@ -315,10 +315,10 @@ recognisedKeys :: [Text]
 recognisedKeys =
   nub $
     envelopeKeys <> sectionKeys <> tracingKeys <> concatMap snd componentPropertyNames
-  where
-    envelopeKeys = ["Version", "Configuration"]
-    sectionKeys = map fst componentPropertyNames
-    tracingKeys = map K.toText (KM.keys hermodTracingProps)
+ where
+  envelopeKeys = ["Version", "Configuration"]
+  sectionKeys = map fst componentPropertyNames
+  tracingKeys = map K.toText (KM.keys hermodTracingProps)
 
 -- | The property names of each component (the keys it reads at the top level in
 -- the single-file form), keyed by the component's section name. Used to detect
@@ -359,8 +359,8 @@ publish title idFile raw =
           KM.insert "$id" (String (schemaId idFile)) $
             KM.insertWith keepExisting "title" (String title) o
     other -> other
-  where
-    keepExisting _new old = old
+ where
+  keepExisting _new old = old
 
 -- | The recursive transformation applied throughout a schema tree.
 transform :: Value -> Value
@@ -370,8 +370,8 @@ transform = \case
       KM.fromList [(rename k, transform v) | (k, v) <- KM.toList o]
   Array a -> Array (transform <$> a)
   other -> other
-  where
-    rename k = if k == "$comment" then "description" else k
+ where
+  rename k = if k == "$comment" then "description" else k
 
 -- | Give each member of a @properties@ map a @title@ equal to its key (unless it
 -- already has one), so documentation tools name it rather than show "Untitled".
@@ -380,9 +380,9 @@ titleProperties o =
   case KM.lookup "properties" o of
     Just (Object props) -> KM.insert "properties" (Object (KM.mapWithKey addTitle props)) o
     _ -> o
-  where
-    addTitle k (Object c) | not (KM.member "title" c) = Object (KM.insert "title" (String (K.toText k)) c)
-    addTitle _ v = v
+ where
+  addTitle k (Object c) | not (KM.member "title" c) = Object (KM.insert "title" (String (K.toText k)) c)
+  addTitle _ v = v
 
 -- | Lift the file-path sentinel ('filePathFormatMarker') carried in a
 -- @description@ into a @"format": "path"@ annotation, stripping the sentinel.
@@ -404,22 +404,22 @@ extractPathFormat o =
 -- the alternatives rather than show "Untitled".
 titleBranches :: KM.KeyMap Value -> KM.KeyMap Value
 titleBranches o = foldr titleUnion o ["anyOf", "oneOf"]
-  where
-    titleUnion key m = case KM.lookup key m of
-      Just (Array bs) -> KM.insert key (Array (fmap addTitle bs)) m
-      _ -> m
-    addTitle (Object b)
-      | not (KM.member "title" b)
-      , Just t <- branchTitle b =
-          Object (KM.insert "title" (String t) b)
-    addTitle v = v
-    -- Name a branch by its const value or its type; leave structural branches
-    -- (e.g. a bare @{ required: [..] }@ constraint) untitled.
-    branchTitle b = case KM.lookup "const" b of
-      Just (String s) -> Just s
-      _ -> case KM.lookup "type" b of
-        Just (String t) -> Just (T.toTitle t)
-        _ -> Nothing
+ where
+  titleUnion key m = case KM.lookup key m of
+    Just (Array bs) -> KM.insert key (Array (fmap addTitle bs)) m
+    _ -> m
+  addTitle (Object b)
+    | not (KM.member "title" b)
+    , Just t <- branchTitle b =
+        Object (KM.insert "title" (String t) b)
+  addTitle v = v
+  -- Name a branch by its const value or its type; leave structural branches
+  -- (e.g. a bare @{ required: [..] }@ constraint) untitled.
+  branchTitle b = case KM.lookup "const" b of
+    Just (String s) -> Just s
+    _ -> case KM.lookup "type" b of
+      Just (String t) -> Just (T.toTitle t)
+      _ -> Nothing
 
 -- | Give a bare @const@ schema the @type@ implied by its value, so even a single
 -- enumerated alternative (e.g. the @"NoOverride"@ branch of a union) declares a
@@ -429,11 +429,11 @@ typeConst o =
   case KM.lookup "const" o of
     Just v | not (KM.member "type" o), Just t <- constType v -> KM.insert "type" (String t) o
     _ -> o
-  where
-    constType (String _) = Just "string"
-    constType (Bool _) = Just "boolean"
-    constType (Number _) = Just "number"
-    constType _ = Nothing
+ where
+  constType (String _) = Just "string"
+  constType (Bool _) = Just "boolean"
+  constType (Number _) = Just "number"
+  constType _ = Nothing
 
 -- | Collapse a @oneOf@\/@anyOf@ whose branches are all bare string @const@s into
 -- @{ "type": "string", "enum": [..] }@, so the field declares a single type.
@@ -445,16 +445,16 @@ collapseStringEnum o =
         KM.insert "enum" (toJSON consts) $
           KM.delete "oneOf" (KM.delete "anyOf" o)
     _ -> o
-  where
-    branches = case (KM.lookup "oneOf" o, KM.lookup "anyOf" o) of
-      (Just (Array a), _) -> Just (toList a)
-      (_, Just (Array a)) -> Just (toList a)
-      _ -> Nothing
-    stringConst (Object b)
-      | Just (String s) <- KM.lookup "const" b
-      , all (\k -> k == "const" || k == "type") (KM.keys b) =
-          Just s
-    stringConst _ = Nothing
+ where
+  branches = case (KM.lookup "oneOf" o, KM.lookup "anyOf" o) of
+    (Just (Array a), _) -> Just (toList a)
+    (_, Just (Array a)) -> Just (toList a)
+    _ -> Nothing
+  stringConst (Object b)
+    | Just (String s) <- KM.lookup "const" b
+    , all (\k -> k == "const" || k == "type") (KM.keys b) =
+        Just s
+  stringConst _ = Nothing
 
 -- | The @properties@ map of a schema object, if any.
 properties :: Value -> KM.KeyMap Value
@@ -510,9 +510,9 @@ defaultsOverlay :: Value -> Value
 defaultsOverlay = \case
   Object o -> object ["properties" .= Object (KM.map leaf o)]
   v -> object ["default" .= v]
-  where
-    leaf v@(Object _) = defaultsOverlay v
-    leaf v = object ["default" .= v]
+ where
+  leaf v@(Object _) = defaultsOverlay v
+  leaf v = object ["default" .= v]
 
 -- | Deep, right-biased merge of two JSON values (objects merge key by key).
 deepMerge :: Value -> Value -> Value

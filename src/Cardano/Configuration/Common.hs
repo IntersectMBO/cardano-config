@@ -1,13 +1,13 @@
 -- | Types that are common to CLI arguments and the configuration files
-module Cardano.Configuration.Common (
-  NodeDatabasePaths (..),
-  parseNodeDatabasePaths,
-  parseStartAsNonProducingNode,
+module Cardano.Configuration.Common
+  ( NodeDatabasePaths (..)
+  , parseNodeDatabasePaths
+  , parseStartAsNonProducingNode
 
-  -- * File paths
-  filePathCodec,
-  filePathFormatMarker,
-) where
+    -- * File paths
+  , filePathCodec
+  , filePathFormatMarker
+  ) where
 
 import Autodocodec
 import Data.Aeson (FromJSON, ToJSON)
@@ -38,7 +38,7 @@ data NodeDatabasePaths
   = -- | Store everything in a single directory
     SingleDB FilePath
   | -- | Store the immutable data in one (possibly slower) directory and the
-    -- volatile data in a different (possible faster) directory
+    --       volatile data in a different (possible faster) directory
     SplitDB FilePath FilePath
   deriving (Generic, Show)
 
@@ -52,14 +52,14 @@ instance HasCodec NodeDatabasePaths where
       (dimapCodec SingleDB id filePathCodec)
       (dimapCodec (uncurry SplitDB) id splitDbCodec)
       selector
-    where
-      splitDbCodec =
-        object "SplitDB" $
-          (,)
-            <$> requiredFieldWith "ImmutablePath" filePathCodec "Directory for the immutable database" .= fst
-            <*> requiredFieldWith "VolatilePath" filePathCodec "Directory for the volatile database" .= snd
-      selector (SingleDB fp) = Left fp
-      selector (SplitDB i v) = Right (i, v)
+   where
+    splitDbCodec =
+      object "SplitDB" $
+        (,)
+          <$> requiredFieldWith "ImmutablePath" filePathCodec "Directory for the immutable database" .= fst
+          <*> requiredFieldWith "VolatilePath" filePathCodec "Directory for the volatile database" .= snd
+    selector (SingleDB fp) = Left fp
+    selector (SplitDB i v) = Right (i, v)
 
 deriving via (Autodocodec NodeDatabasePaths) instance FromJSON NodeDatabasePaths
 

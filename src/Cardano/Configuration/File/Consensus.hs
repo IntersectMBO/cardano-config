@@ -1,9 +1,9 @@
 -- | Options related to the Consensus layer
-module Cardano.Configuration.File.Consensus (
-  ConsensusConfiguration (..),
-  ConsensusMode (..),
-  GenesisConfigFlags (..),
-) where
+module Cardano.Configuration.File.Consensus
+  ( ConsensusConfiguration (..)
+  , ConsensusMode (..)
+  , GenesisConfigFlags (..)
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Basic (diffTimeCodec)
@@ -41,7 +41,7 @@ deriving via
 -- (which also carries the Genesis flags) so that the codec can enumerate the
 -- valid string values in the schema and reject typos at parse time.
 data ConsensusModeName = PraosModeName | GenesisModeName
-  deriving (Eq)
+  deriving Eq
 
 consensusModeNameCodec :: JSONCodec ConsensusModeName
 consensusModeNameCodec =
@@ -61,19 +61,19 @@ instance HasCodec (ConsensusConfiguration Maybe) where
             "Which consensus mode to run (PraosMode or GenesisMode)"
             .= fst
           <*> optionalField "LowLevelGenesisOptions" "Low-level Genesis tuning (GenesisMode only)" .= snd
-    where
-      toConfig ::
-        (Maybe ConsensusModeName, Maybe GenesisConfigFlags) ->
-        Either String (ConsensusConfiguration Maybe)
-      toConfig (Just GenesisModeName, mflags) =
-        Right (ConsensusConfiguration (Just (GenesisMode (fromMaybe def mflags))))
-      toConfig (_, Just _) =
-        Left "LowLevelGenesisOptions is only valid when ConsensusMode is GenesisMode"
-      toConfig (Nothing, Nothing) = Right (ConsensusConfiguration Nothing)
-      toConfig (Just PraosModeName, Nothing) = Right (ConsensusConfiguration (Just PraosMode))
-      fromConfig (ConsensusConfiguration Nothing) = (Nothing, Nothing)
-      fromConfig (ConsensusConfiguration (Just PraosMode)) = (Just PraosModeName, Nothing)
-      fromConfig (ConsensusConfiguration (Just (GenesisMode flags))) = (Just GenesisModeName, Just flags)
+   where
+    toConfig ::
+      (Maybe ConsensusModeName, Maybe GenesisConfigFlags) ->
+      Either String (ConsensusConfiguration Maybe)
+    toConfig (Just GenesisModeName, mflags) =
+      Right (ConsensusConfiguration (Just (GenesisMode (fromMaybe def mflags))))
+    toConfig (_, Just _) =
+      Left "LowLevelGenesisOptions is only valid when ConsensusMode is GenesisMode"
+    toConfig (Nothing, Nothing) = Right (ConsensusConfiguration Nothing)
+    toConfig (Just PraosModeName, Nothing) = Right (ConsensusConfiguration (Just PraosMode))
+    fromConfig (ConsensusConfiguration Nothing) = (Nothing, Nothing)
+    fromConfig (ConsensusConfiguration (Just PraosMode)) = (Just PraosModeName, Nothing)
+    fromConfig (ConsensusConfiguration (Just (GenesisMode flags))) = (Just GenesisModeName, Just flags)
 
 -- | Configuration options for Genesis parameters
 data GenesisConfigFlags = GenesisConfigFlags

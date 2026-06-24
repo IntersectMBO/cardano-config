@@ -4,85 +4,85 @@
 -- layering engine ("Cardano.Configuration.File.Merge"), the key linting
 -- ("Cardano.Configuration.File.Lint") and the per-component parsers and genesis
 -- readers, and re-exports the public surface.
-module Cardano.Configuration.File (
-  -- * Configuration file
-  NodeConfigurationFromFile,
-  NodeConfigurationFromFileF (..),
-  parseConfigurationFiles,
+module Cardano.Configuration.File
+  ( -- * Configuration file
+    NodeConfigurationFromFile
+  , NodeConfigurationFromFileF (..)
+  , parseConfigurationFiles
 
-  -- * Warnings
-  ConfigWarning (..),
-  renderConfigWarning,
+    -- * Warnings
+  , ConfigWarning (..)
+  , renderConfigWarning
 
-  -- * Defaults
-  componentDefaults,
+    -- * Defaults
+  , componentDefaults
 
-  -- * Errors
-  ConfigurationParsingError (..),
+    -- * Errors
+  , ConfigurationParsingError (..)
 
-  -- * Specific components configurations
-  StorageConfiguration (..),
-  ConsensusConfiguration (..),
-  ProtocolConfiguration (..),
-  NetworkConfiguration (..),
-  DiffusionMode (..),
-  AcceptedConnectionsLimit (..),
-  LocalConnectionsConfig (..),
-  TestingConfiguration (..),
-  MempoolConfiguration (..),
-  TracingConfiguration (..),
+    -- * Specific components configurations
+  , StorageConfiguration (..)
+  , ConsensusConfiguration (..)
+  , ProtocolConfiguration (..)
+  , NetworkConfiguration (..)
+  , DiffusionMode (..)
+  , AcceptedConnectionsLimit (..)
+  , LocalConnectionsConfig (..)
+  , TestingConfiguration (..)
+  , MempoolConfiguration (..)
+  , TracingConfiguration (..)
 
-  -- * Resolving components
-  finalizeNetwork,
-  finalizeLocalConnections,
-  finalizeMempool,
-  finalizeTesting,
+    -- * Resolving components
+  , finalizeNetwork
+  , finalizeLocalConnections
+  , finalizeMempool
+  , finalizeTesting
 
-  -- * Network role defaults
-  BlockProducerOrRelay (..),
-  withRoleDefaults,
-  networkRoleDefaults,
-  blockProducerRoleDefaults,
-  relayRoleDefaults,
-) where
+    -- * Network role defaults
+  , BlockProducerOrRelay (..)
+  , withRoleDefaults
+  , networkRoleDefaults
+  , blockProducerRoleDefaults
+  , relayRoleDefaults
+  ) where
 
 import Autodocodec (JSONCodec)
 import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
-import Cardano.Configuration.File.Lint (
-  ConfigWarning (..),
-  configWarnings,
-  renderConfigWarning,
- )
+import Cardano.Configuration.File.Lint
+  ( ConfigWarning (..)
+  , configWarnings
+  , renderConfigWarning
+  )
 import Cardano.Configuration.File.Mempool
-import Cardano.Configuration.File.Merge (
-  decodeValueFile,
-  loadBaseDefault,
-  parseSection,
-  runCodec,
-  splitEnvelope,
- )
+import Cardano.Configuration.File.Merge
+  ( decodeValueFile
+  , loadBaseDefault
+  , parseSection
+  , runCodec
+  , splitEnvelope
+  )
 import Cardano.Configuration.File.Network
 import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
 import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
-import Cardano.Configuration.Genesis (
-  GenesisReadError,
-  genesisErrorFile,
-  readGenesisFileWith,
-  resolveExperimentalGenesis,
- )
+import Cardano.Configuration.Genesis
+  ( GenesisReadError
+  , genesisErrorFile
+  , readGenesisFileWith
+  , resolveExperimentalGenesis
+  )
 import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig, readByronGenesisConfig)
 import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
 import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Schema (componentPropertyNames)
+import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
-import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Control.Exception (throwIO)
 import Data.Aeson (Value)
 import qualified Data.Aeson.Key as K
@@ -110,8 +110,8 @@ data NodeConfigurationFromFileF f
   , mempoolConfiguration :: f (MempoolConfiguration Maybe)
   , tracingConfiguration :: TracingConfiguration
   -- ^ Tracing keys, captured opaquely; see 'TracingConfiguration'. Unlike the
-  -- other components this is never read from a sub-file: the node's tracing
-  -- system resolves its own @HermodTracing@ file indirection.
+  --     other components this is never read from a sub-file: the node's tracing
+  --     system resolves its own @HermodTracing@ file indirection.
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
   , shelleyGenesisConfig :: ShelleyGenesis
@@ -122,12 +122,12 @@ data NodeConfigurationFromFileF f
   -- ^ The parsed Conway genesis (read from the @ConwayGenesisFile@).
   , experimentalGenesisConfig :: Maybe DijkstraGenesis
   -- ^ The experimental (Dijkstra) genesis, read and decoded from the
-  -- @DijkstraGenesisFile@ referenced by the testing configuration (if any).
+  --     @DijkstraGenesisFile@ referenced by the testing configuration (if any).
   --
-  -- These are the parsed genesis values, not file paths — all genesis JSON
-  -- resolution happens here.
+  --     These are the parsed genesis values, not file paths — all genesis JSON
+  --     resolution happens here.
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (NodeConfigurationFromFileF Identity)
 
@@ -193,9 +193,12 @@ parseConfigurationVersion1 root configValue = do
       root
       (toByronReqNetworkMagic (byronReqNetworkMagic byronCfg))
       (byronGenesisFile byronCfg)
-  shelleyGenesisData <- readEraGenesisOrThrow shelleyGenesisCodec root "ShelleyGenesisFile" (shelleyGenesis protocol)
-  alonzoGenesisData <- readEraGenesisOrThrow alonzoGenesisCodec root "AlonzoGenesisFile" (alonzoGenesis protocol)
-  conwayGenesisData <- readEraGenesisOrThrow conwayGenesisCodec root "ConwayGenesisFile" (conwayGenesis protocol)
+  shelleyGenesisData <-
+    readEraGenesisOrThrow shelleyGenesisCodec root "ShelleyGenesisFile" (shelleyGenesis protocol)
+  alonzoGenesisData <-
+    readEraGenesisOrThrow alonzoGenesisCodec root "AlonzoGenesisFile" (alonzoGenesis protocol)
+  conwayGenesisData <-
+    readEraGenesisOrThrow conwayGenesisCodec root "ConwayGenesisFile" (conwayGenesis protocol)
   experimentalGenesisData <- readExperimentalGenesisOrThrow root (experimentalGenesis testing)
   pure
     NodeConfigurationFromFileV1

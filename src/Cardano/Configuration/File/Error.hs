@@ -1,7 +1,7 @@
 -- | The error type reported when reading or parsing the configuration files.
-module Cardano.Configuration.File.Error (
-  ConfigurationParsingError (..),
-) where
+module Cardano.Configuration.File.Error
+  ( ConfigurationParsingError (..)
+  ) where
 
 import Control.Exception (Exception)
 import Data.Aeson.Types (JSONPath, formatError)
@@ -11,7 +11,7 @@ import Data.Aeson.Types (JSONPath, formatError)
 data ConfigurationParsingError = ConfigurationParsingError
   { errFile :: Maybe FilePath
   -- ^ The referenced sub-file the failure occurred in, if any (otherwise the
-  -- failure was in the main configuration file).
+  --     failure was in the main configuration file).
   , errSection :: Maybe String
   -- ^ The top-level configuration section being parsed (e.g. @"StorageConfig"@).
   , errPath :: JSONPath
@@ -19,12 +19,12 @@ data ConfigurationParsingError = ConfigurationParsingError
   , errMessage :: String
   -- ^ The underlying error message.
   }
-  deriving (Eq)
+  deriving Eq
 
 instance Exception ConfigurationParsingError
 
 instance Show ConfigurationParsingError where
-  show ConfigurationParsingError {errFile, errSection, errPath, errMessage} =
+  show ConfigurationParsingError{errFile, errSection, errPath, errMessage} =
     mconcat
       [ "Error parsing the cardano-node configuration"
       , maybe "" (\s -> " (section " <> show s <> ")") errSection

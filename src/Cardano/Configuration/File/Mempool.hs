@@ -1,8 +1,8 @@
 -- | Options related to the mempool
-module Cardano.Configuration.File.Mempool (
-  MempoolConfiguration (..),
-  finalizeMempool,
-) where
+module Cardano.Configuration.File.Mempool
+  ( MempoolConfiguration (..)
+  , finalizeMempool
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Basic (diffTimeCodec)
@@ -24,7 +24,7 @@ data MempoolConfiguration f = MempoolConfiguration
   , mempoolTimeoutHard :: f DiffTime
   , mempoolTimeoutCapacity :: f DiffTime
   }
-  deriving (Generic)
+  deriving Generic
 
 deriving instance Show (MempoolConfiguration Maybe)
 deriving instance Show (MempoolConfiguration Identity)
@@ -78,7 +78,7 @@ mempoolCapacityOverrideCodec =
     eitherCodec
       (codec @Word64)
       (literalTextCodec "NoOverride")
-  where
-    toOverride = either Just (const Nothing)
-    fromOverride (Just c) = Left c
-    fromOverride Nothing = Right "NoOverride"
+ where
+  toOverride = either Just (const Nothing)
+  fromOverride (Just c) = Left c
+  fromOverride Nothing = Right "NoOverride"

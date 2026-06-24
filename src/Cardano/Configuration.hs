@@ -3,92 +3,93 @@
 -- t'Cardano.Configuration.NodeConfigurationFromFile'
 --
 -- The configuration file can be either in JSON or in YAML format.
-module Cardano.Configuration (
-  -- * Configuration
-  NodeConfiguration (..),
-  resolveConfiguration,
-  resolveConfigurationWith,
+module Cardano.Configuration
+  ( -- * Configuration
+    NodeConfiguration (..)
+  , resolveConfiguration
+  , resolveConfigurationWith
 
-  -- ** Consistency checks
-  ConfigCheck (..),
-  defaultConfigChecks,
-  ConfigResolutionError (..),
+    -- ** Consistency checks
+  , ConfigCheck (..)
+  , defaultConfigChecks
+  , ConfigResolutionError (..)
 
-  -- ** Storage
-  File.StorageConfiguration (..),
-  File.LedgerDbConfiguration (..),
-  File.SnapshotPolicy (..),
-  File.SnapshotOptions (..),
-  File.mithrilSnapshotOptions,
-  File.resolveSnapshotPolicy,
-  File.LedgerDbBackendSelector (..),
-  File.NodeDatabasePaths (..),
+    -- ** Storage
+  , File.StorageConfiguration (..)
+  , File.LedgerDbConfiguration (..)
+  , File.SnapshotPolicy (..)
+  , File.SnapshotOptions (..)
+  , File.mithrilSnapshotOptions
+  , File.resolveSnapshotPolicy
+  , File.LedgerDbBackendSelector (..)
+  , File.NodeDatabasePaths (..)
 
-  -- ** Consensus
-  File.ConsensusConfiguration (..),
-  File.ConsensusMode (..),
-  File.GenesisConfigFlags (..),
+    -- ** Consensus
+  , File.ConsensusConfiguration (..)
+  , File.ConsensusMode (..)
+  , File.GenesisConfigFlags (..)
 
-  -- ** Protocol
-  File.ProtocolConfiguration (..),
-  File.ByronGenesisConfiguration (..),
-  File.RequiresNetworkMagic (..),
-  File.Hashed (..),
-  CLI.Credentials (..),
-  CLI.KESSource (..),
+    -- ** Protocol
+  , File.ProtocolConfiguration (..)
+  , File.ByronGenesisConfiguration (..)
+  , File.RequiresNetworkMagic (..)
+  , File.Hashed (..)
+  , CLI.Credentials (..)
+  , CLI.KESSource (..)
 
-  -- ** Network
-  File.NetworkConfiguration (..),
-  File.DiffusionMode (..),
-  File.AcceptedConnectionsLimit (..),
-  File.LocalConnectionsConfig (..),
+    -- ** Network
+  , File.NetworkConfiguration (..)
+  , File.DiffusionMode (..)
+  , File.AcceptedConnectionsLimit (..)
+  , File.LocalConnectionsConfig (..)
 
-  -- ** Testing
-  File.TestingConfiguration (..),
-  CLI.TracerConnection (..),
+    -- ** Testing
+  , File.TestingConfiguration (..)
+  , CLI.TracerConnection (..)
 
-  -- ** Mempool
-  File.MempoolConfiguration (..),
+    -- ** Mempool
+  , File.MempoolConfiguration (..)
 
-  -- ** Genesis
-  -- | The era genesis types of the resolved 'NodeConfiguration' fields. The
-  -- later eras come from @cardano-ledger@ (@ShelleyGenesis@, @AlonzoGenesis@,
-  -- @ConwayGenesis@, @DijkstraGenesis@); only Byron's is defined here.
-  ByronGenesisConfig,
+    -- ** Genesis
 
-  -- ** Operational
-  CLI.ShutdownOn (..),
+    -- | The era genesis types of the resolved 'NodeConfiguration' fields. The
+    --     later eras come from @cardano-ledger@ (@ShelleyGenesis@, @AlonzoGenesis@,
+    --     @ConwayGenesis@, @DijkstraGenesis@); only Byron's is defined here.
+  , ByronGenesisConfig
 
-  -- * CLI
-  CLI.CliArgs,
-  CLI.parseCliArgs,
+    -- ** Operational
+  , CLI.ShutdownOn (..)
 
-  -- ** Reusable option parsers
-  CLI.parseConfigFile,
-  CLI.parseTopologyFile,
-  CLI.parseSocketPath,
-  CLI.parseValidateDB,
-  CLI.parseEnableRpc,
-  CLI.parseRpcSocketPath,
-  CLI.parseCredentials,
-  CLI.parseKESSource,
-  CLI.parseHostIPv4Addr,
-  CLI.parseHostIPv6Addr,
-  CLI.parsePort,
-  CLI.parseTracerSocketMode,
-  CLI.parseShutdownIPC,
-  CLI.parseShutdownOn,
-  CLI.parseNodeAddress,
-  CLI.parseHostPort,
+    -- * CLI
+  , CLI.CliArgs
+  , CLI.parseCliArgs
 
-  -- * Configuration file
-  File.NodeConfigurationFromFile,
-  File.TracingConfiguration (..),
-  File.parseConfigurationFiles,
-  File.ConfigWarning (..),
-  File.renderConfigWarning,
-  File.ConfigurationParsingError (..),
-) where
+    -- ** Reusable option parsers
+  , CLI.parseConfigFile
+  , CLI.parseTopologyFile
+  , CLI.parseSocketPath
+  , CLI.parseValidateDB
+  , CLI.parseEnableRpc
+  , CLI.parseRpcSocketPath
+  , CLI.parseCredentials
+  , CLI.parseKESSource
+  , CLI.parseHostIPv4Addr
+  , CLI.parseHostIPv6Addr
+  , CLI.parsePort
+  , CLI.parseTracerSocketMode
+  , CLI.parseShutdownIPC
+  , CLI.parseShutdownOn
+  , CLI.parseNodeAddress
+  , CLI.parseHostPort
+
+    -- * Configuration file
+  , File.NodeConfigurationFromFile
+  , File.TracingConfiguration (..)
+  , File.parseConfigurationFiles
+  , File.ConfigWarning (..)
+  , File.renderConfigWarning
+  , File.ConfigurationParsingError (..)
+  ) where
 
 import qualified Cardano.Configuration.CliArgs as CLI
 import qualified Cardano.Configuration.Common as File
@@ -131,7 +132,7 @@ data NodeConfiguration = NodeConfiguration
   -- ^ The parsed Conway genesis.
   , experimentalGenesisConfig :: Maybe DijkstraGenesis
   -- ^ The parsed experimental (Dijkstra) genesis, decoded from the
-  -- @DijkstraGenesisFile@ referenced by the testing configuration, if any.
+  --     @DijkstraGenesisFile@ referenced by the testing configuration, if any.
   , configFilePath :: FilePath
   , topologyFile :: FilePath
   , validateDatabase :: Bool
@@ -143,7 +144,7 @@ data NodeConfiguration = NodeConfiguration
   , shutdownIPC :: Maybe Fd
   , shutdownOnTarget :: Maybe CLI.ShutdownOn
   }
-  deriving (Show)
+  deriving Show
 
 -- | A single consistency check over a resolved 'NodeConfiguration': an
 -- invariant that must hold, together with a description used when it fails.
@@ -151,7 +152,7 @@ data NodeConfiguration = NodeConfiguration
 data ConfigCheck = ConfigCheck
   { checkDescription :: String
   -- ^ A description of the invariant, phrased as what must hold (used in the
-  -- error message when it does not).
+  --     error message when it does not).
   , checkHolds :: NodeConfiguration -> Bool
   -- ^ The invariant. 'True' means the configuration satisfies it.
   }
@@ -263,7 +264,7 @@ resolveConfigurationWith checks cli file = do
       NodeConfiguration
         { storageConfiguration = File.adjustDbPath sc dbPath
         , consensusConfiguration = ConsensusConfiguration (Identity consensusMode)
-        , protocolConfiguration = pc {File.startAsNonProducingNode = Identity startNonProducing}
+        , protocolConfiguration = pc{File.startAsNonProducingNode = Identity startNonProducing}
         , networkConfiguration = network
         , localConnectionsConfig = localConnections
         , testingConfiguration = testing
@@ -284,10 +285,10 @@ resolveConfigurationWith checks cli file = do
         , shutdownIPC = CLI.shutdownIPC cli
         , shutdownOnTarget = CLI.shutdownOnTarget cli
         }
-  pure resolved {storageConfiguration = File.resolveSnapshotOptions (storageConfiguration resolved)}
-  where
-    finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
-    require name = maybe (Left (name <> " has no value and no base default")) Right
+  pure resolved{storageConfiguration = File.resolveSnapshotOptions (storageConfiguration resolved)}
+ where
+  finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
+  require name = maybe (Left (name <> " has no value and no base default")) Right
 
 -- | Derive the node's role from its credentials: it is a block producer iff
 -- /any/ block-forging credential was supplied, otherwise a relay. This matches

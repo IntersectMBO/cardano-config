@@ -13,13 +13,13 @@ import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, reso
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
-import Cardano.Configuration.Schema (
-  configurationSchemas,
-  configurationSchemasWithDefaults,
-  genesisSchemas,
-  legacyOneFileConfigSchemaWithDefaults,
-  splitConfigSchemaWithDefaults,
- )
+import Cardano.Configuration.Schema
+  ( configurationSchemas
+  , configurationSchemasWithDefaults
+  , genesisSchemas
+  , legacyOneFileConfigSchemaWithDefaults
+  , splitConfigSchemaWithDefaults
+  )
 import Control.Exception (SomeException, displayException, try)
 import Data.Aeson (Value)
 import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
@@ -37,7 +37,7 @@ import System.IO (hPutStrLn, stderr)
 -- | The top-level command selected on the command line.
 data Command
   = -- | @resolve@: resolve a configuration with the given node flags, optionally
-    -- including the decoded era genesis values (the @--with-geneses@ flag).
+    --       including the decoded era genesis values (the @--with-geneses@ flag).
     Resolve CliArgs GenesisRendering
   | -- | @schema@: dump a JSON Schema.
     Schema SchemaCmd
@@ -60,13 +60,13 @@ data ConfigForm
 
 main :: IO ()
 main = execParser opts >>= run
-  where
-    opts =
-      info
-        (commandParser <**> helper)
-        ( fullDesc
-            <> progDesc "Parse, resolve and document the cardano-node configuration."
-        )
+ where
+  opts =
+    info
+      (commandParser <**> helper)
+      ( fullDesc
+          <> progDesc "Parse, resolve and document the cardano-node configuration."
+      )
 
 -- | The full command-line parser: a subcommand tree.
 commandParser :: Parser Command
@@ -96,17 +96,17 @@ commandParser =
 -- @cardano-config schema --help@.
 schemaValidationHelp :: Doc
 schemaValidationHelp = vsep (map pretty ls)
-  where
-    ls :: [String]
-    ls =
-      [ "Validate a configuration against the schema with ajv-cli (https://ajv.js.org):"
-      , ""
-      , "  cardano-config schema > config.schema.json"
-      , "  ajv validate --strict=false -s config.schema.json -d my-config.json"
-      , ""
-      , "ajv reads JSON, so convert a YAML configuration to JSON first (e.g. with yq)."
-      , "--strict=false lets ajv ignore the informational \"path\" format."
-      ]
+ where
+  ls :: [String]
+  ls =
+    [ "Validate a configuration against the schema with ajv-cli (https://ajv.js.org):"
+    , ""
+    , "  cardano-config schema > config.schema.json"
+    , "  ajv validate --strict=false -s config.schema.json -d my-config.json"
+    , ""
+    , "ajv reads JSON, so convert a YAML configuration to JSON first (e.g. with yq)."
+    , "--strict=false lets ajv ignore the informational \"path\" format."
+    ]
 
 -- | Parser for the @schema@ subcommand options.
 schemaParser :: Parser SchemaCmd
@@ -159,9 +159,9 @@ runResolve cli geneses = do
       case resolveConfiguration cli file of
         Left err -> die (displayException err)
         Right nc -> BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
-  where
-    -- Stable, readable output: keys sorted alphabetically, unset values omitted.
-    yamlConfig = setConfDropNull True (setConfCompare compare Yaml.defConfig)
+ where
+  -- Stable, readable output: keys sorted alphabetically, unset values omitted.
+  yamlConfig = setConfDropNull True (setConfCompare compare Yaml.defConfig)
 
 -- | Print a JSON Schema, or list the component names.
 runSchema :: SchemaCmd -> IO ()
@@ -186,7 +186,7 @@ runSchema (SchemaComponent name) = do
 
 -- | Print a schema with sorted keys for stable output.
 dump :: Value -> IO ()
-dump = L.putStrLn . encodePretty' defConfig {confCompare = compare}
+dump = L.putStrLn . encodePretty' defConfig{confCompare = compare}
 
 -- | Print a message to @stderr@ and exit with a failure status.
 die :: String -> IO a

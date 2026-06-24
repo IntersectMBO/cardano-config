@@ -2,11 +2,11 @@
 -- the @aeson@ JSON used by the later eras) and the genesis hash is computed over
 -- the canonical-JSON rendering, so we reuse the ledger's 'mkConfigFromFile',
 -- which reads, hashes and checks the file and builds a 'Config'.
-module Cardano.Configuration.Genesis.Byron (
-  ByronGenesisConfig,
-  readByronGenesisConfig,
-  byronGenesisToJSON,
-) where
+module Cardano.Configuration.Genesis.Byron
+  ( ByronGenesisConfig
+  , readByronGenesisConfig
+  , byronGenesisToJSON
+  ) where
 
 import Cardano.Chain.Genesis (Config, configGenesisData, mkConfigFromFile)
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashToBytes)
@@ -14,8 +14,8 @@ import qualified Cardano.Crypto.Hashing as Byron
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic)
 import qualified Cardano.Crypto.Raw as Byron
 import Control.Monad.Trans.Except (runExceptT)
-import qualified Data.Aeson as Aeson
 import Data.Aeson (Value, object, (.=))
+import qualified Data.Aeson as Aeson
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Functor.Identity (runIdentity)
@@ -54,5 +54,5 @@ byronGenesisToJSON cfg =
   case Aeson.eitherDecode (Canonical.renderCanonicalJSON canonical) of
     Right v -> v
     Left err -> object ["error" .= ("could not render the Byron genesis as JSON: " <> err)]
-  where
-    canonical = runIdentity (Canonical.toJSON (configGenesisData cfg))
+ where
+  canonical = runIdentity (Canonical.toJSON (configGenesisData cfg))

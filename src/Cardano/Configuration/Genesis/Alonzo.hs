@@ -9,9 +9,9 @@
 -- aliases (@prSteps@\/@prMem@, @exUnitsMem@\/@exUnitsSteps@) on input, matching
 -- the ledger. The PlutusV1 cost model (a large, Plutus-internal by-name table)
 -- is decoded via the ledger's @CostModels@ instance.
-module Cardano.Configuration.Genesis.Alonzo (
-  alonzoGenesisCodec,
-) where
+module Cardano.Configuration.Genesis.Alonzo
+  ( alonzoGenesisCodec
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Genesis.Ledger (boundedRationalCodec, coinCodec)
@@ -62,48 +62,48 @@ coinPerWordCodec = dimapCodec CoinPerWord unCoinPerWord coinCodec
 -- genesis it must contain exactly the PlutusV1 cost model, which we project out.
 plutusV1CostModelCodec :: JSONCodec CostModel
 plutusV1CostModelCodec = bimapCodec decodeCM encodeCM (codecViaAeson "CostModels")
-  where
-    encodeCM model = mkCostModels (Map.singleton PlutusV1 model)
-    decodeCM cms =
-      case Map.toList (costModelsValid cms) of
-        [(PlutusV1, m)] -> Right m
-        [] -> Left "expected a PlutusV1 cost model"
-        _ -> Left "only the PlutusV1 cost model is allowed in the Alonzo genesis"
+ where
+  encodeCM model = mkCostModels (Map.singleton PlutusV1 model)
+  decodeCM cms =
+    case Map.toList (costModelsValid cms) of
+      [(PlutusV1, m)] -> Right m
+      [] -> Left "expected a PlutusV1 cost model"
+      _ -> Left "only the PlutusV1 cost model is allowed in the Alonzo genesis"
 
 -- | 'Prices' — encodes @priceSteps@\/@priceMemory@, also accepts the legacy
 -- @prSteps@\/@prMem@ on input.
 pricesCodec :: JSONCodec Prices
 pricesCodec = bimapCodec decodePrices encodePrices valueCodec
-  where
-    nni = boundedRationalCodec "price"
-    encodePrices (Prices prMem' prSteps') =
-      Aeson.object
-        [ "priceSteps" Aeson..= toJSONVia nni prSteps'
-        , "priceMemory" Aeson..= toJSONVia nni prMem'
-        ]
-    decodePrices = parseEither $
-      withObject "Prices" $ \o -> do
-        stepsV <- (o Aeson..: "priceSteps") <|> (o Aeson..: "prSteps")
-        memV <- (o Aeson..: "priceMemory") <|> (o Aeson..: "prMem")
-        prSteps' <- either fail pure (parseEither (parseJSONVia nni) stepsV)
-        prMem' <- either fail pure (parseEither (parseJSONVia nni) memV)
-        pure (Prices prMem' prSteps')
+ where
+  nni = boundedRationalCodec "price"
+  encodePrices (Prices prMem' prSteps') =
+    Aeson.object
+      [ "priceSteps" Aeson..= toJSONVia nni prSteps'
+      , "priceMemory" Aeson..= toJSONVia nni prMem'
+      ]
+  decodePrices = parseEither $
+    withObject "Prices" $ \o -> do
+      stepsV <- (o Aeson..: "priceSteps") <|> (o Aeson..: "prSteps")
+      memV <- (o Aeson..: "priceMemory") <|> (o Aeson..: "prMem")
+      prSteps' <- either fail pure (parseEither (parseJSONVia nni) stepsV)
+      prMem' <- either fail pure (parseEither (parseJSONVia nni) memV)
+      pure (Prices prMem' prSteps')
 
 -- | 'ExUnits' — encodes @memory@\/@steps@, also accepts the legacy
 -- @exUnitsMem@\/@exUnitsSteps@ on input.
 exUnitsCodec :: JSONCodec ExUnits
 exUnitsCodec = bimapCodec decodeEx encodeEx valueCodec
-  where
-    encodeEx eu =
-      Aeson.object
-        [ "memory" Aeson..= exUnitsMem eu
-        , "steps" Aeson..= exUnitsSteps eu
-        ]
-    decodeEx = parseEither $
-      withObject "ExUnits" $ \o -> do
-        mem <- (o Aeson..: "memory") <|> (o Aeson..: "exUnitsMem")
-        steps <- (o Aeson..: "steps") <|> (o Aeson..: "exUnitsSteps")
-        pure (ExUnits mem steps)
+ where
+  encodeEx eu =
+    Aeson.object
+      [ "memory" Aeson..= exUnitsMem eu
+      , "steps" Aeson..= exUnitsSteps eu
+      ]
+  decodeEx = parseEither $
+    withObject "ExUnits" $ \o -> do
+      mem <- (o Aeson..: "memory") <|> (o Aeson..: "exUnitsMem")
+      steps <- (o Aeson..: "steps") <|> (o Aeson..: "exUnitsSteps")
+      pure (ExUnits mem steps)
 
 -- | The extra cost-model configuration, decoded for now via the ledger's aeson
 -- instance (it carries a full @CostModels@).

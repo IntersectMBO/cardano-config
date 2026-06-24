@@ -9,36 +9,36 @@
 -- a source distribution alike.
 module Main (main) where
 
+import Autodocodec (JSONCodec, parseJSONVia, toJSONVia)
 import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
 import Cardano.Configuration.File
-import Cardano.Configuration.File.Storage (
-  LedgerDbBackendSelector (..),
-  LedgerDbConfiguration (..),
-  SnapshotOptions (..),
-  SnapshotPolicy (..),
-  resolveSnapshotPolicy,
- )
+import Cardano.Configuration.File.Storage
+  ( LedgerDbBackendSelector (..)
+  , LedgerDbConfiguration (..)
+  , SnapshotOptions (..)
+  , SnapshotPolicy (..)
+  , resolveSnapshotPolicy
+  )
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
 import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
 import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
 import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
+import Cardano.Configuration.Schema
+  ( configurationSchemasWithDefaults
+  , genesisSchemas
+  , legacyOneFileConfigSchemaWithDefaults
+  , splitConfigSchemaWithDefaults
+  )
+import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
+import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
+import Control.Exception (SomeException, evaluate, try)
+import Data.Aeson (FromJSON, ToJSON, Value (..), eitherDecodeFileStrict', parseJSON, toJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
-import Cardano.Configuration.Schema (
-  configurationSchemasWithDefaults,
-  genesisSchemas,
-  legacyOneFileConfigSchemaWithDefaults,
-  splitConfigSchemaWithDefaults,
- )
-import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
-import Control.Exception (SomeException, evaluate, try)
-import Autodocodec (JSONCodec, parseJSONVia, toJSONVia)
-import Data.Aeson (FromJSON, ToJSON, Value (..), eitherDecodeFileStrict', parseJSON, toJSON)
 import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
@@ -165,11 +165,12 @@ shadowWarnCase = do
     Left (e :: SomeException) -> Just (show e)
     Right (_, warnings)
       | any shadowsDijkstra warnings -> Nothing
-      | otherwise -> Just ("expected a ShadowedKeys warning for DijkstraGenesisFile, got " <> show warnings)
-  where
-    shadowsDijkstra (ShadowedKeys sks) =
-      (T.pack "TestingConfig", T.pack "DijkstraGenesisFile") `elem` sks
-    shadowsDijkstra _ = False
+      | otherwise ->
+          Just ("expected a ShadowedKeys warning for DijkstraGenesisFile, got " <> show warnings)
+ where
+  shadowsDijkstra (ShadowedKeys sks) =
+    (T.pack "TestingConfig", T.pack "DijkstraGenesisFile") `elem` sks
+  shadowsDijkstra _ = False
 
 -- | Resolving a parsed configuration with default CLI arguments must succeed and
 -- produce a complete (@Identity@) configuration, which exercises that the base
@@ -446,8 +447,8 @@ genesisHashRequiredCase :: IO Bool
 genesisHashRequiredCase = do
   let label = "examples/testing-dijkstra-nohash.json (genesis file requires a hash)"
   res <-
-    decodeData "examples/testing-dijkstra-nohash.json"
-      :: IO (Either String (TestingConfiguration Maybe))
+    decodeData "examples/testing-dijkstra-nohash.json" ::
+      IO (Either String (TestingConfiguration Maybe))
   report label $ case res of
     Left err
       | "DijkstraGenesisHash" `isInfixOf` err -> Nothing
@@ -459,8 +460,8 @@ genesisHashPresentCase :: IO Bool
 genesisHashPresentCase =
   decodeCase
     "examples/testing-dijkstra.json (genesis file + hash decodes)"
-    ( decodeData "examples/testing-dijkstra.json"
-        :: IO (Either String (TestingConfiguration Maybe))
+    ( decodeData "examples/testing-dijkstra.json" ::
+        IO (Either String (TestingConfiguration Maybe))
     )
 
 -- | The Byron genesis decodes (canonical JSON) and its hash checks out via the

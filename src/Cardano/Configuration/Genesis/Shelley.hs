@@ -9,30 +9,30 @@
 -- injection data) are, for now, decoded via the ledger's aeson instances; the
 -- rest is fully field-level. These two are not exercised by the mainnet genesis
 -- and are the remaining types to hand-roll.
-module Cardano.Configuration.Genesis.Shelley (
-  shelleyGenesisCodec,
-  shelleyPParamsCodec,
-) where
+module Cardano.Configuration.Genesis.Shelley
+  ( shelleyGenesisCodec
+  , shelleyPParamsCodec
+  ) where
 
 import Autodocodec
 import Cardano.Configuration.Genesis.Ledger
 import Cardano.Crypto.Hash (hashFromTextAsHex, hashToTextAsHex)
 import Cardano.Ledger.Address (Addr, decodeAddr, serialiseAddr)
-import Cardano.Ledger.BaseTypes (
-  maybeToStrictMaybe,
-  strictMaybeToMaybe,
- )
+import Cardano.Ledger.BaseTypes
+  ( maybeToStrictMaybe
+  , strictMaybeToMaybe
+  )
 import Cardano.Ledger.Coin (Coin)
 import Cardano.Ledger.Core (PParams (..))
 import Cardano.Ledger.Hashes (GenDelegPair (..), KeyHash (..))
 import Cardano.Ledger.Shelley (ShelleyEra)
-import Cardano.Ledger.Shelley.Genesis (
-  NominalDiffTimeMicro (..),
-  ShelleyExtraConfig,
-  ShelleyGenesis (..),
-  ShelleyGenesisStaking (..),
-  emptyGenesisStaking,
- )
+import Cardano.Ledger.Shelley.Genesis
+  ( NominalDiffTimeMicro (..)
+  , ShelleyExtraConfig
+  , ShelleyGenesis (..)
+  , ShelleyGenesisStaking (..)
+  , emptyGenesisStaking
+  )
 import Cardano.Ledger.Shelley.PParams (ShelleyPParams (..))
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ListMap as LM
@@ -57,7 +57,10 @@ shelleyGenesisCodec =
         .= sgNetworkMagic
       <*> requiredFieldWith "networkId" networkCodec "Network id"
         .= sgNetworkId
-      <*> requiredFieldWith "activeSlotsCoeff" (boundedRationalCodec "activeSlotsCoeff") "Active slot coefficient"
+      <*> requiredFieldWith
+        "activeSlotsCoeff"
+        (boundedRationalCodec "activeSlotsCoeff")
+        "Active slot coefficient"
         .= sgActiveSlotsCoeff
       <*> requiredFieldWith "securityParam" (nonZeroCodec (codec @Word64)) "Security parameter k"
         .= sgSecurityParam
@@ -83,10 +86,10 @@ shelleyGenesisCodec =
         .= sgStaking
       <*> extraConfigField
         .= sgExtraConfig
-  where
-    extraConfigField =
-      dimapCodec maybeToStrictMaybe strictMaybeToMaybe $
-        optionalFieldWith "extraConfig" extraConfigCodec "Extra streaming-injection configuration"
+ where
+  extraConfigField =
+    dimapCodec maybeToStrictMaybe strictMaybeToMaybe $
+      optionalFieldWith "extraConfig" extraConfigCodec "Extra streaming-injection configuration"
 
 -- | The genesis (\"legacy\") encoding of the Shelley protocol parameters.
 shelleyPParamsCodec :: JSONCodec (PParams ShelleyEra)
@@ -117,7 +120,10 @@ shelleyPParamsCodec =
         .= field sppRho
       <*> requiredFieldWith "tau" (boundedRationalCodec "tau") "Treasury expansion"
         .= field sppTau
-      <*> requiredFieldWith "decentralisationParam" (boundedRationalCodec "decentralisationParam") "Decentralisation parameter"
+      <*> requiredFieldWith
+        "decentralisationParam"
+        (boundedRationalCodec "decentralisationParam")
+        "Decentralisation parameter"
         .= field sppD
       <*> requiredFieldWith "extraEntropy" nonceCodec "Extra entropy"
         .= field sppExtraEntropy
@@ -127,17 +133,17 @@ shelleyPParamsCodec =
         .= field sppMinUTxOValue
       <*> optionalFieldWithDefaultWith "minPoolCost" compactCoinCodec mempty "Minimum pool cost"
         .= field sppMinPoolCost
-  where
-    field f = f . unwrap
-    unwrap (PParams sp) = sp
-    mk a b c d e f g h i j k l m n o p q =
-      PParams (ShelleyPParams a b c d e f g h i j k l m n o p q)
+ where
+  field f = f . unwrap
+  unwrap (PParams sp) = sp
+  mk a b c d e f g h i j k l m n o p q =
+    PParams (ShelleyPParams a b c d e f g h i j k l m n o p q)
 
 -- | @slotLength@ is a 'NominalDiffTimeMicro' (a JSON number in seconds).
 slotLengthCodec :: JSONCodec NominalDiffTimeMicro
 slotLengthCodec = nominalDiffTimeMicroCodec NominalDiffTimeMicro unNominalDiffTimeMicro
-  where
-    unNominalDiffTimeMicro (NominalDiffTimeMicro m) = m
+ where
+  unNominalDiffTimeMicro (NominalDiffTimeMicro m) = m
 
 -- | @genDelegs@ is a JSON object keyed by genesis-key hash.
 genDelegsCodec :: JSONCodec (Map (KeyHash r) GenDelegPair)
@@ -166,11 +172,11 @@ stakingCodec =
     ShelleyGenesisStaking
       <$> requiredFieldWith "pools" poolsCodec "Initial stake pools" .= sgsPools
       <*> requiredFieldWith "stake" stakeCodec "Initial stake delegation" .= sgsStake
-  where
-    poolsCodec =
-      listMapCodec keyHashToText keyHashFromText (codecViaAeson "StakePoolParams")
-    stakeCodec =
-      listMapCodec keyHashToText keyHashFromText keyHashCodec
+ where
+  poolsCodec =
+    listMapCodec keyHashToText keyHashFromText (codecViaAeson "StakePoolParams")
+  stakeCodec =
+    listMapCodec keyHashToText keyHashFromText keyHashCodec
 
 -- | The extra-configuration record (streaming injection), decoded for now via
 -- the ledger's aeson instances.

@@ -14,10 +14,10 @@
 -- 'IncludeGeneses' is passed (the @--with-geneses@ flag of @cardano-config
 -- resolve@); otherwise only their file reference and hash appear, under
 -- @ProtocolConfig@.
-module Cardano.Configuration.Render (
-  nodeConfigurationToJSON,
-  GenesisRendering (..),
-) where
+module Cardano.Configuration.Render
+  ( nodeConfigurationToJSON
+  , GenesisRendering (..)
+  ) where
 
 import Autodocodec (toJSONVia)
 import Cardano.Configuration (NodeConfiguration (..))
@@ -36,7 +36,7 @@ import Data.Maybe (catMaybes)
 -- values.
 data GenesisRendering
   = -- | Omit the genesis values; only their file reference\/hash appears (under
-    -- @ProtocolConfig@). The default for @cardano-config resolve@.
+    --       @ProtocolConfig@). The default for @cardano-config resolve@.
     OmitGeneses
   | -- | Include the decoded genesis value of every era (the @--with-geneses@ flag).
     IncludeGeneses
@@ -58,26 +58,26 @@ nodeConfigurationToJSON geneses nc =
     , "Runtime" .= runtimeValue nc
     ]
       <> genesisFields
-  where
-    -- The resolved (parsed) era geneses, rendered through their own codecs (and,
-    -- for Byron, its canonical-JSON form), so the dump shows the decoded genesis
-    -- content rather than just the file reference and hash (which always appear
-    -- under @ProtocolConfig@). These are exactly the files read and hash-checked
-    -- while parsing the configuration. Included only under 'IncludeGeneses', as
-    -- they are large.
-    genesisFields = case geneses of
-      OmitGeneses -> []
-      IncludeGeneses ->
-        [ "ByronGenesis" .= byronGenesisToJSON (byronGenesisConfig nc)
-        , "ShelleyGenesis" .= toJSONVia shelleyGenesisCodec (shelleyGenesisConfig nc)
-        , "AlonzoGenesis" .= toJSONVia alonzoGenesisCodec (alonzoGenesisConfig nc)
-        , "ConwayGenesis" .= toJSONVia conwayGenesisCodec (conwayGenesisConfig nc)
-        ]
-          -- The experimental (Dijkstra) genesis is optional: only when referenced.
-          <> catMaybes
-            [ ("ExperimentalGenesis" .=) . toJSONVia dijkstraGenesisCodec
-                <$> experimentalGenesisConfig nc
-            ]
+ where
+  -- The resolved (parsed) era geneses, rendered through their own codecs (and,
+  -- for Byron, its canonical-JSON form), so the dump shows the decoded genesis
+  -- content rather than just the file reference and hash (which always appear
+  -- under @ProtocolConfig@). These are exactly the files read and hash-checked
+  -- while parsing the configuration. Included only under 'IncludeGeneses', as
+  -- they are large.
+  genesisFields = case geneses of
+    OmitGeneses -> []
+    IncludeGeneses ->
+      [ "ByronGenesis" .= byronGenesisToJSON (byronGenesisConfig nc)
+      , "ShelleyGenesis" .= toJSONVia shelleyGenesisCodec (shelleyGenesisConfig nc)
+      , "AlonzoGenesis" .= toJSONVia alonzoGenesisCodec (alonzoGenesisConfig nc)
+      , "ConwayGenesis" .= toJSONVia conwayGenesisCodec (conwayGenesisConfig nc)
+      ]
+        -- The experimental (Dijkstra) genesis is optional: only when referenced.
+        <> catMaybes
+          [ ("ExperimentalGenesis" .=) . toJSONVia dijkstraGenesisCodec
+              <$> experimentalGenesisConfig nc
+          ]
 
 -- | Lift a resolved (@Identity@) field back into the @Maybe@-parameterised form
 -- the component's 'ToJSON' instance expects.
@@ -93,7 +93,7 @@ weakenStorage s =
 
 weakenConsensus :: File.ConsensusConfiguration Identity -> File.ConsensusConfiguration Maybe
 weakenConsensus c =
-  File.ConsensusConfiguration {File.getConsensusConfiguration = j (File.getConsensusConfiguration c)}
+  File.ConsensusConfiguration{File.getConsensusConfiguration = j (File.getConsensusConfiguration c)}
 
 weakenProtocol :: File.ProtocolConfiguration Identity -> File.ProtocolConfiguration Maybe
 weakenProtocol p =
@@ -195,9 +195,9 @@ runtimeValue nc =
         , ("ShutdownIPC" .=) . fdNumber <$> shutdownIPC nc
         , ("ShutdownOn" .=) . shutdownOnValue <$> shutdownOnTarget nc
         ]
-  where
-    portNumber p = toJSON (toInteger p)
-    fdNumber fd = toJSON (toInteger fd)
+ where
+  portNumber p = toJSON (toInteger p)
+  fdNumber fd = toJSON (toInteger fd)
 
 credentialsValue :: CLI.Credentials -> Value
 credentialsValue c =
@@ -219,12 +219,12 @@ kesSourceValue = \case
 tracerConnectionValue :: CLI.TracerConnection -> Value
 tracerConnectionValue (CLI.TracerConnection name method) =
   object ["Name" .= name, "Method" .= methodValue method]
-  where
-    methodValue :: CLI.TracerConnectionMethod -> Value
-    methodValue = \case
-      CLI.TracerConnectViaPipe p -> object ["Pipe" .= p]
-      CLI.TracerConnectViaRemote host p ->
-        object ["Host" .= host, "Port" .= toInteger p]
+ where
+  methodValue :: CLI.TracerConnectionMethod -> Value
+  methodValue = \case
+    CLI.TracerConnectViaPipe p -> object ["Pipe" .= p]
+    CLI.TracerConnectViaRemote host p ->
+      object ["Host" .= host, "Port" .= toInteger p]
 
 shutdownOnValue :: CLI.ShutdownOn -> Value
 shutdownOnValue = \case

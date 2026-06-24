@@ -1,42 +1,42 @@
-module Cardano.Configuration.CliArgs (
-  -- * CLI Arguments
-  CliArgs (..),
-  parseCliArgs,
-  ShutdownOn (..),
+module Cardano.Configuration.CliArgs
+  ( -- * CLI Arguments
+    CliArgs (..)
+  , parseCliArgs
+  , ShutdownOn (..)
 
-  -- * Tracing
-  TracerConnectionMethod (..),
-  TracerConnection (..),
+    -- * Tracing
+  , TracerConnectionMethod (..)
+  , TracerConnection (..)
 
-  -- * Credentials
-  Credentials (..),
-  KESSource (..),
+    -- * Credentials
+  , Credentials (..)
+  , KESSource (..)
 
-  -- * Individual option parsers
+    -- * Individual option parsers
 
   -- These are exported so that other tools (e.g. @cardano-cli@) can reuse the
   -- exact same flags, metavars and help text as @cardano-node@.
-  parseConfigFile,
-  parseTopologyFile,
-  parseSocketPath,
-  parseValidateDB,
-  parseEnableRpc,
-  parseRpcSocketPath,
-  parseCredentials,
-  parseKESSource,
-  parseHostIPv4Addr,
-  parseHostIPv6Addr,
-  parsePort,
-  parseTracerSocketMode,
-  parseShutdownIPC,
-  parseShutdownOn,
+  , parseConfigFile
+  , parseTopologyFile
+  , parseSocketPath
+  , parseValidateDB
+  , parseEnableRpc
+  , parseRpcSocketPath
+  , parseCredentials
+  , parseKESSource
+  , parseHostIPv4Addr
+  , parseHostIPv6Addr
+  , parsePort
+  , parseTracerSocketMode
+  , parseShutdownIPC
+  , parseShutdownOn
 
-  -- ** Argument readers
-  parseNodeAddress,
-  parseHostPort,
-  parseNodeHostIPv4Address,
-  parseNodeHostIPv6Address,
-) where
+    -- ** Argument readers
+  , parseNodeAddress
+  , parseHostPort
+  , parseNodeHostIPv4Address
+  , parseNodeHostIPv6Address
+  ) where
 
 import Cardano.Configuration.Common
 import Control.Monad (when)
@@ -54,18 +54,18 @@ import Text.Read (readEither, readMaybe)
 data ShutdownOn
   = ShutdownAtSlot Word64
   | ShutdownAtBlock Word64
-  deriving (Show)
+  deriving Show
 
 type Host = Text
 
 data TracerConnectionMethod
   = TracerConnectViaPipe FilePath
   | TracerConnectViaRemote Host PortNumber
-  deriving (Show)
+  deriving Show
 
 data TracerConnection
   = TracerConnection String TracerConnectionMethod
-  deriving (Show)
+  deriving Show
 
 data KESSource
   = KESKeyFilePath FilePath
@@ -80,7 +80,7 @@ data Credentials = Credentials
   , shelleyOperationalCertificate :: Maybe FilePath
   , bulkCredentialsFile :: Maybe FilePath
   }
-  deriving (Show)
+  deriving Show
 
 -- | The CLI arguments, parsed with 'parseCliArgs'
 data CliArgs = CliArgs
@@ -100,7 +100,7 @@ data CliArgs = CliArgs
   , enableRpcCLI :: Maybe Bool
   , rpcSocketPathCLI :: Maybe FilePath
   }
-  deriving (Show)
+  deriving Show
 
 parseCredentials :: Parser Credentials
 parseCredentials =
@@ -349,9 +349,9 @@ parseHostPort s = do
   if 0 <= p && p <= 65535
     then Right (Text.pack host, fromInteger p)
     else Left ("parseHostPort: port " ++ show p ++ " out of range: 0 - 65535.")
-  where
-    stripBrackets ('[' : rest) | not (null rest) && last rest == ']' = init rest
-    stripBrackets other = other
+ where
+  stripBrackets ('[' : rest) | not (null rest) && last rest == ']' = init rest
+  stripBrackets other = other
 
 parseTracerSocketMode :: Parser TracerConnection
 parseTracerSocketMode =
@@ -426,10 +426,10 @@ parseShutdownOn =
           , hidden
           ]
     ]
-  where
-    bounded :: forall a. (Bounded a, Integral a, Show a) => String -> ReadM a
-    bounded t = eitherReader $ \s -> do
-      i <- readEither @Integer s
-      when (i < fromIntegral (minBound @a)) $ Left $ t <> " must not be less than " <> show (minBound @a)
-      when (i > fromIntegral (maxBound @a)) $ Left $ t <> " must not greater than " <> show (maxBound @a)
-      pure (fromIntegral i)
+ where
+  bounded :: forall a. (Bounded a, Integral a, Show a) => String -> ReadM a
+  bounded t = eitherReader $ \s -> do
+    i <- readEither @Integer s
+    when (i < fromIntegral (minBound @a)) $ Left $ t <> " must not be less than " <> show (minBound @a)
+    when (i > fromIntegral (maxBound @a)) $ Left $ t <> " must not greater than " <> show (maxBound @a)
+    pure (fromIntegral i)
