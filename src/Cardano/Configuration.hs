@@ -19,6 +19,8 @@ module Cardano.Configuration (
   File.LedgerDbConfiguration (..),
   File.SnapshotPolicy (..),
   File.SnapshotOptions (..),
+  File.mithrilSnapshotOptions,
+  File.resolveSnapshotPolicy,
   File.LedgerDbBackendSelector (..),
   File.NodeDatabasePaths (..),
 

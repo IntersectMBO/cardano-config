@@ -13,6 +13,12 @@ import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
 import Cardano.Configuration.File
+import Cardano.Configuration.File.Storage (
+  LedgerDbConfiguration (..),
+  SnapshotOptions (..),
+  SnapshotPolicy (..),
+  resolveSnapshotPolicy,
+ )
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
 import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
@@ -36,6 +42,7 @@ import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
 import qualified Data.Text as T
+import Data.Word (Word64)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
 import Paths_cardano_config (getDataFileName)
 import System.Exit (exitFailure)
@@ -74,6 +81,8 @@ main = do
       , mempoolAllSetCase
       , mempoolMixedCase
       , mempoolMixedResolveCase
+      , snapshotMithrilResolveCase
+      , snapshotResolvePolicyCase
       , dijkstraGenesisDecodeCase
       , dijkstraGenesisHashMismatchCase
       , genesisHashRequiredCase
@@ -329,6 +338,59 @@ mempoolMixedResolveCase = do
 -- needed; the parser supplies its own).
 cliArgs :: [String] -> Maybe CliArgs
 cliArgs = getParseResult . execParserPure defaultPrefs (info parseCliArgs mempty)
+
+-- | The snapshot fields, in a fixed order, for comparison.
+snapshotFields :: SnapshotOptions -> [Maybe Word64]
+snapshotFields o =
+  [ snapshotInterval o
+  , slotOffset o
+  , snapshotRateLimit o
+  , minDelay o
+  , maxDelay o
+  , numOfDiskSnapshots o
+  ]
+
+-- | The concrete values the @"Mithril"@ policy resolves to.
+mithrilFields :: [Maybe Word64]
+mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 600, Just 2]
+
+-- | End-to-end: a configuration that uses the base @"Mithril"@ default and one
+-- that sets only a couple of snapshot options both resolve to the full concrete
+-- Mithril option set (the partial one inheriting the rest).
+snapshotMithrilResolveCase :: IO Bool
+snapshotMithrilResolveCase = do
+  let label = "Mithril snapshot policy resolves to concrete values (filling partial overrides)"
+      resolvedOptions cfgFile = do
+        path <- getDataFileName cfgFile
+        cfg <- parseConfigurationFiles path
+        pure $ case cliArgs [] of
+          Nothing -> Left "could not build CLI arguments"
+          Just cli -> case resolveConfiguration cli cfg of
+            Left e -> Left (show e)
+            Right nc -> case snapshots (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
+              Just (CustomSnapshotPolicy o) -> Right (snapshotFields o)
+              other -> Left ("expected resolved custom snapshot options, got " <> show other)
+  fromMithril <- resolvedOptions "examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
+  fromPartial <- resolvedOptions "examples/fullconfig.json" -- sets 3 of 6 (= Mithril)
+  report label $ case (fromMithril, fromPartial) of
+    (Right a, Right b)
+      | a == mithrilFields && b == mithrilFields -> Nothing
+      | otherwise -> Just ("unexpected resolved options: " <> show a <> " / " <> show b)
+    (Left e, _) -> Just e
+    (_, Left e) -> Just e
+
+-- | 'resolveSnapshotPolicy': @"Mithril"@ yields its values, and a partial custom
+-- policy keeps the value it set (here a distinct @SnapshotInterval@) while the
+-- rest are inherited from Mithril.
+snapshotResolvePolicyCase :: IO Bool
+snapshotResolvePolicyCase =
+  report "resolveSnapshotPolicy fills a partial custom policy from Mithril" $
+    let mithril = snapshotFields (resolveSnapshotPolicy MithrilSnapshotPolicy)
+        partial = SnapshotOptions (Just 7777) Nothing Nothing Nothing Nothing Nothing
+        filled = snapshotFields (resolveSnapshotPolicy (CustomSnapshotPolicy partial))
+     in if mithril == mithrilFields && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 600, Just 2]
+          then Nothing
+          else Just ("unexpected: mithril=" <> show mithril <> " filled=" <> show filled)
 
 -- | The Dijkstra genesis example decodes through this library's codec (with no
 -- pinned hash, so the read succeeds without a hash check).

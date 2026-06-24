@@ -24,7 +24,10 @@ file and the CLI arguments, so that a resolved `NodeConfiguration` is complete.
   - `Storage.variants/Storage.{preview,preprod}.json` — `LedgerDB.Snapshots` as
     an explicit options object (overriding the base `Mithril` policy): mainnet
     keeps `Mithril`, while the test networks pin the snapshot interval (preview
-    864, preprod 4320) and the rest of the snapshot options.
+    864, preprod 4320) and the rest of the snapshot options. `"Mithril"` is not
+    opaque: `resolveConfiguration` expands it to a concrete set of snapshot
+    options (and fills any an options object leaves unset), so every consumer
+    sees the same values without re-deriving them.
   - `Testing.variants/Testing.preview.json` — preview forces the Shelley…Alonzo
     hard forks at epoch 0 (it launched with those eras already active).
   - `Network.variants/Network.{relay,blockproducer}.json` — the deadline peer

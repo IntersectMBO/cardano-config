@@ -9,6 +9,8 @@ module Cardano.Configuration.File.Storage (
   -- ** Snapshots
   SnapshotPolicy (..),
   SnapshotOptions (..),
+  mithrilSnapshotOptions,
+  resolveSnapshotPolicy,
 
   -- ** Backend
   LedgerDbBackendSelector (..),
@@ -16,6 +18,7 @@ module Cardano.Configuration.File.Storage (
 
 import Autodocodec
 import Cardano.Configuration.Common
+import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default
 import Data.Functor.Identity
@@ -94,6 +97,39 @@ instance HasCodec SnapshotPolicy where
       selector MithrilSnapshotPolicy = Left MithrilSnapshotPolicy
       selector (CustomSnapshotPolicy o) = Right o
 
+-- | The concrete snapshot options the @"Mithril"@ policy stands for. Resolving
+-- @"Mithril"@ to these values here means every consumer (not just consensus)
+-- gets the same numbers without re-deriving them. These mirror the values
+-- consensus uses for the Mithril policy; a test pins them so they cannot drift
+-- silently.
+mithrilSnapshotOptions :: SnapshotOptions
+mithrilSnapshotOptions =
+  SnapshotOptions
+    { snapshotInterval = Just 432000
+    , slotOffset = Just 388800
+    , snapshotRateLimit = Just 600
+    , minDelay = Just 300
+    , maxDelay = Just 600
+    , numOfDiskSnapshots = Just 2
+    }
+
+-- | Resolve a snapshot policy to a concrete, fully-populated set of options:
+-- @"Mithril"@ becomes 'mithrilSnapshotOptions', and a custom (possibly partial)
+-- policy keeps every value the user set while the Mithril values fill in any it
+-- left unset. So a configuration that overrides only a couple of snapshot
+-- options still ends up with all of them resolved.
+resolveSnapshotPolicy :: SnapshotPolicy -> SnapshotOptions
+resolveSnapshotPolicy MithrilSnapshotPolicy = mithrilSnapshotOptions
+resolveSnapshotPolicy (CustomSnapshotPolicy user) =
+  SnapshotOptions
+    { snapshotInterval = snapshotInterval user <|> snapshotInterval mithrilSnapshotOptions
+    , slotOffset = slotOffset user <|> slotOffset mithrilSnapshotOptions
+    , snapshotRateLimit = snapshotRateLimit user <|> snapshotRateLimit mithrilSnapshotOptions
+    , minDelay = minDelay user <|> minDelay mithrilSnapshotOptions
+    , maxDelay = maxDelay user <|> maxDelay mithrilSnapshotOptions
+    , numOfDiskSnapshots = numOfDiskSnapshots user <|> numOfDiskSnapshots mithrilSnapshotOptions
+    }
+
 -- | Selector for the backend that keeps track of differences in the UTxO set.
 data LedgerDbBackendSelector
   = -- | The in-memory backend.
@@ -154,12 +190,18 @@ instance Default LedgerDbConfiguration where
   def = LedgerDbConfiguration Nothing Nothing Nothing
 
 -- | Finally resolve the storage configuration with a final 'NodeDatabasePaths'.
+-- The snapshot policy is resolved to concrete options too (see
+-- 'resolveSnapshotPolicy'), so the resolved configuration never carries the bare
+-- @"Mithril"@ policy or a partially-specified options object.
 adjustDbPath :: StorageConfiguration Maybe -> NodeDatabasePaths -> StorageConfiguration Identity
 adjustDbPath sc db =
   sc
     { databasePath = Identity db
-    , ledgerDbConfiguration = Identity $ fromMaybe def $ ledgerDbConfiguration sc
+    , ledgerDbConfiguration = Identity $ resolveSnapshots $ fromMaybe def $ ledgerDbConfiguration sc
     }
+  where
+    resolveSnapshots ldb =
+      ldb {snapshots = CustomSnapshotPolicy . resolveSnapshotPolicy <$> snapshots ldb}
 
 -- | The storage configuration
 data StorageConfiguration f = StorageConfiguration

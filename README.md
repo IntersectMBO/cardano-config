@@ -242,11 +242,11 @@ network).
 **Every other key is optional**: it either has a default (applied from the
 `defaults/` layer — see [Defaults and layering](#defaults-and-layering)) or is
 optional by nature, meaning "unset" is a valid state (the `*Hash` keys,
-`PBftSignatureThreshold`, `CheckpointsFile`, `LedgerDB.Snapshots`,
+`PBftSignatureThreshold`, `CheckpointsFile`,
 `SocketPath`/`RpcSocketPath`, `MempoolCapacityBytesOverride`, the experimental
 `DijkstraGenesisFile`, and the `Test<Era>HardForkAt*` knobs).
 
-Two groups of keys are resolved by a cross-field rule rather than plain
+Three groups of keys are resolved by a cross-field rule rather than plain
 layering:
 
 - the **deadline peer targets** (`TargetNumberOf*`) and `PeerSharing` default to
@@ -256,6 +256,13 @@ layering:
 - the three **mempool timeouts** (`MempoolTimeoutSoft`/`Hard`/`Capacity`) are
   all-or-nothing: give all three or none. All-unset takes the coupled default of
   `(1, 1.5, 5)` seconds; a partial set is rejected.
+- the **snapshot policy** (`LedgerDB.Snapshots`) accepts either the named
+  `"Mithril"` policy or an options object. Resolution expands it to a concrete
+  set of options: `"Mithril"` becomes its fixed values, and an options object
+  that sets only some fields inherits the rest from the Mithril values — so a
+  resolved configuration always has every snapshot option set. (Consumers can
+  reuse the values directly via `mithrilSnapshotOptions` /
+  `resolveSnapshotPolicy`.)
 
 ### Tracing is *not* parsed
 

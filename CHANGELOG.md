@@ -49,3 +49,9 @@
 * The three mempool timeouts (`MempoolTimeoutSoft`/`Hard`/`Capacity`) are
   resolved all-or-nothing: set all three or none. All-unset takes the coupled
   default of `(1, 1.5, 5)` seconds; a partial set is a resolution error.
+* The snapshot policy (`LedgerDB.Snapshots`) is resolved to a concrete set of
+  options: the named `"Mithril"` policy expands to its fixed values, and an
+  options object that sets only some fields inherits the rest from Mithril, so a
+  resolved configuration always has every snapshot option set. The values are
+  exposed as `mithrilSnapshotOptions` / `resolveSnapshotPolicy` so non-consensus
+  consumers need not re-derive them.
