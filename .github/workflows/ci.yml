@@ -49,28 +49,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ghc: ['9.6', '9.8', '9.10', '9.12', '9.14']
+        ghc: ['9.6.7', '9.8.4', '9.10.2', '9.12.2', '9.14.1']
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: haskell-actions/setup@v2
-        id: setup
+      - name: Install Haskell
+        uses: input-output-hk/actions/haskell@latest
+        id: setup-haskell
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: '3.16.1.0'
+
+      # The cardano cryptography C libraries (libsodium, secp256k1, blst) that
+      # cardano-crypto-class / cardano-ledger link against.
+      - name: Install system dependencies
+        uses: input-output-hk/actions/base@latest
+
+      - uses: actions/checkout@v4
+
+      - name: Update package indices
+        run: cabal update
 
       - name: Cache cabal store and build artifacts
         uses: actions/cache@v4
         with:
           path: |
-            ${{ steps.setup.outputs.cabal-store }}
+            ${{ steps.setup-haskell.outputs.cabal-store }}
             dist-newstyle
           key: ${{ runner.os }}-ghc${{ matrix.ghc }}-${{ hashFiles('cabal.project', '**/*.cabal') }}
           restore-keys: |
             ${{ runner.os }}-ghc${{ matrix.ghc }}-
-
-      - name: Update package indices
-        run: cabal update
 
       - name: Build
         run: cabal build all
