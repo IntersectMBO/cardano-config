@@ -343,9 +343,9 @@ checkUnknownKeys :: UnknownKeyPolicy -> FilePath -> Value -> IO ()
 checkUnknownKeys policy cfgFile value =
   case value of
     Object o -> do
-      let unknown = [k | k <- map K.toText (KM.keys o), k `notElem` recognisedKeys]
+      let unknown = [K.toString k | k <- KM.keys o, K.toText k `notElem` recognisedKeys]
       unless (null unknown) $ do
-        let msg = "unrecognised configuration key(s): " <> intercalate ", " (map T.unpack unknown)
+        let msg = "unrecognised configuration key(s): " <> intercalate ", " unknown
         case policy of
           RejectUnknownKeys -> throwIO $ ConfigurationParsingError (Just cfgFile) Nothing [] msg
           WarnUnknownKeys -> hPutStrLn stderr ("Warning: " <> msg <> " (ignored)")
