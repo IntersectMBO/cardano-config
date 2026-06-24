@@ -32,14 +32,16 @@
 * Optional `{ Version, Configuration }` envelope for forward-compatibility.
 * Structured parse errors (`ConfigurationParsingError`) and resolution-time
   cross-field checks (`ConfigCheck` / `ConfigResolutionError`).
-* Unrecognised top-level keys warn by default; `RejectUnknownKeys` makes them an
-  error.
+* `parseConfigurationFiles` returns the parsed configuration together with a list
+  of `ConfigWarning`s rather than printing or failing on them itself, so each
+  consumer chooses how to surface them (`renderConfigWarning` gives the default
+  text). The warnings are: unrecognised top-level keys (`UnrecognisedKeys`,
+  typos, ignored); keys shadowed by a component supplied as its own section
+  (`ShadowedKeys`, ignored — the section wins); and use of the legacy single-file
+  form (`LegacySingleFileFormat`).
 * The split-file and legacy single-file schemas are kept separate, so neither
   offers both placements for a component; mixing the forms is caught at parse
-  time (see shadowed keys below) rather than by a JSON Schema validator.
-* Shadowed top-level keys (a component supplied as its own section while one of
-  its keys also appears at the top level, where it is then ignored) warn by
-  default and are rejected under `RejectUnknownKeys`.
+  time (the shadowed-keys warning) rather than by a JSON Schema validator.
 * `resolveConfiguration` derives the networking role from credential presence: a
   node given block-forging credentials uses the block-producer deadline
   peer-selection targets and disables `PeerSharing`; a node without uses the

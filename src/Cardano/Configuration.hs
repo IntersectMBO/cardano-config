@@ -79,8 +79,8 @@ module Cardano.Configuration (
   File.NodeConfigurationFromFile,
   File.TracingConfiguration (..),
   File.parseConfigurationFiles,
-  File.parseConfigurationFilesWith,
-  File.UnknownKeyPolicy (..),
+  File.ConfigWarning (..),
+  File.renderConfigWarning,
   File.ConfigurationParsingError (..),
 ) where
 

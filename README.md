@@ -231,17 +231,23 @@ $ cardano-config resolve --config mainnet-config.yaml --with-geneses
 `Cardano.Configuration.Render`; its `GenesisRendering` argument selects whether
 the genesis values are included.)
 
-Keys that none of the parsers below recognise produce a **warning** by default
-(so typos are noticed); `parseConfigurationFilesWith RejectUnknownKeys` turns
-them into a hard error instead.
+`parseConfigurationFiles` returns the parsed configuration **together with a list
+of `ConfigWarning`s** — it does not print or fail on them itself, so each consumer
+decides how to surface them (the `cardano-config` executable prints them to
+`stderr`; a node might route them through its tracer; a stricter caller can treat
+a non-empty list as fatal). `renderConfigWarning` gives the default human text.
+The warnings are:
 
-The same policy governs **shadowed keys**: if a component is given as its own
-section (e.g. a `TestingConfig` section key) *and* one of that component's keys also
-appears at the top level (e.g. a top-level `DijkstraGenesisFile`), the top-level
-value is ignored — the section wins. That is almost always a mistake, so it
-warns by default and is rejected under `RejectUnknownKeys`. (This concerns only
-the keys you write; the per-component defaults are merged separately and never
-trigger it.)
+- **unrecognised keys** — top-level keys no parser claims (typically typos); they
+  are ignored (`UnrecognisedKeys`);
+- **shadowed keys** — if a component is given as its own section (e.g. a
+  `TestingConfig` section key) *and* one of that component's keys also appears at
+  the top level (e.g. a top-level `DijkstraGenesisFile`), the top-level value is
+  ignored — the section wins — which is almost always a mistake (`ShadowedKeys`).
+  (This concerns only the keys you write; the per-component defaults are merged
+  separately and never trigger it.)
+- **legacy single-file form** — the configuration uses the flat top-level form
+  rather than the split-file form (`LegacySingleFileFormat`).
 
 The shadowed-key check is a runtime one: the split-file and legacy schemas are
 kept separate precisely so that neither even *offers* both placements for a

@@ -72,7 +72,6 @@ main = do
       , parseCase "examples/split-all.json"
       , listMergeCase
       , shadowWarnCase
-      , shadowRejectCase
       , resolveCase
       , genesisRenderCase
       , roleVariantParityCase
@@ -147,7 +146,7 @@ listMergeCase = do
   res <- try (parseConfigurationFiles path)
   case res of
     Left (e :: SomeException) -> report label (Just (show e))
-    Right c ->
+    Right (c, _) ->
       let active = deadlineTargetOfActivePeers (runIdentity (networkConfiguration c))
        in if active == Just 99
             then report label Nothing
@@ -155,29 +154,22 @@ listMergeCase = do
 
 -- | A top-level key belonging to a component that is also supplied as its own
 -- section (here a top-level @DijkstraGenesisFile@ alongside a @TestingConfig@
--- section) is shadowed. Under the default policy this only warns, so parsing
--- succeeds.
+-- section) is shadowed. Parsing still succeeds, and a 'ShadowedKeys' warning
+-- naming the offending key is returned for the caller to surface.
 shadowWarnCase :: IO Bool
 shadowWarnCase = do
-  let label = "examples/shadow.json (shadowed top-level key warns, still parses)"
+  let label = "examples/shadow.json (shadowed top-level key returns a warning, still parses)"
   path <- getDataFileName "examples/shadow.json"
-  res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
+  res <- try (parseConfigurationFiles path)
   report label $ case res of
     Left (e :: SomeException) -> Just (show e)
-    Right _ -> Nothing
-
--- | The same shadowed key is a hard error under 'RejectUnknownKeys', and the
--- error names the offending key.
-shadowRejectCase :: IO Bool
-shadowRejectCase = do
-  let label = "examples/shadow.json (shadowed top-level key rejected under strict policy)"
-  path <- getDataFileName "examples/shadow.json"
-  res <- try (parseConfigurationFilesWith RejectUnknownKeys path)
-  case res of
-    Left (e :: SomeException)
-      | "DijkstraGenesisFile" `isInfixOf` show e -> report label Nothing
-      | otherwise -> report label (Just ("rejected, but with an unexpected error: " <> show e))
-    Right _ -> report label (Just "expected rejection under RejectUnknownKeys, but parsing succeeded")
+    Right (_, warnings)
+      | any shadowsDijkstra warnings -> Nothing
+      | otherwise -> Just ("expected a ShadowedKeys warning for DijkstraGenesisFile, got " <> show warnings)
+  where
+    shadowsDijkstra (ShadowedKeys sks) =
+      (T.pack "TestingConfig", T.pack "DijkstraGenesisFile") `elem` sks
+    shadowsDijkstra _ = False
 
 -- | Resolving a parsed configuration with default CLI arguments must succeed and
 -- produce a complete (@Identity@) configuration, which exercises that the base
@@ -186,7 +178,7 @@ resolveCase :: IO Bool
 resolveCase = do
   let label = "resolveConfiguration examples/fullconfig.json"
   path <- getDataFileName "examples/fullconfig.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   case getParseResult (execParserPure defaultPrefs (info parseCliArgs mempty) []) of
     Nothing -> report label (Just "could not build default CLI arguments")
     Just cli -> case resolveConfiguration cli cfg of
@@ -202,7 +194,7 @@ genesisRenderCase = do
   let label = "resolve renders era geneses only with IncludeGeneses"
       eras = ["ByronGenesis", "ShelleyGenesis", "AlonzoGenesis", "ConwayGenesis"]
   path <- getDataFileName "examples/fullconfig.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   case cliArgs [] of
     Nothing -> report label (Just "could not build CLI arguments")
     Just cli -> case resolveConfiguration cli cfg of
@@ -246,7 +238,7 @@ roleSelectionCase :: IO Bool
 roleSelectionCase = do
   let label = "network role defaults selected from credential presence"
   path <- getDataFileName "examples/fullconfig.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   case (cliArgs ["--shelley-vrf-key", "vrf.skey"], cliArgs []) of
     (Just bpCli, Just relayCli) ->
       case (resolveConfiguration bpCli cfg, resolveConfiguration relayCli cfg) of
@@ -276,7 +268,7 @@ rolePrecedenceCase :: IO Bool
 rolePrecedenceCase = do
   let label = "explicit file value overrides the role default"
   path <- getDataFileName "examples/role-precedence.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   case cliArgs ["--shelley-vrf-key", "vrf.skey"] of
     Nothing -> report label (Just "could not build CLI arguments")
     Just cli -> case resolveConfiguration cli cfg of
@@ -330,7 +322,7 @@ mempoolMixedResolveCase :: IO Bool
 mempoolMixedResolveCase = do
   let label = "examples/mempool-mixed.json (partial mempool timeouts rejected on resolve)"
   path <- getDataFileName "examples/mempool-mixed.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   case cliArgs [] of
     Nothing -> report label (Just "could not build CLI arguments")
     Just cli -> report label $ case resolveConfiguration cli cfg of
@@ -365,7 +357,7 @@ snapshotMithrilResolveCase = do
   let label = "Mithril snapshot policy resolves to concrete values (filling partial overrides)"
       resolvedOptions cfgFile = do
         path <- getDataFileName cfgFile
-        cfg <- parseConfigurationFiles path
+        (cfg, _) <- parseConfigurationFiles path
         pure $ case cliArgs [] of
           Nothing -> Left "could not build CLI arguments"
           Just cli -> case resolveConfiguration cli cfg of
@@ -402,7 +394,7 @@ mithrilRequiresExportCase :: IO Bool
 mithrilRequiresExportCase = do
   let label = "Mithril + V2LSM without LSMExportPath is rejected"
   path <- getDataFileName "examples/lsm-mithril-no-export.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   report label $ case cliArgs [] of
     Nothing -> Just "could not build CLI arguments"
     Just cli -> case resolveConfiguration cli cfg of
@@ -415,7 +407,7 @@ lsmDatabasePathDefaultCase :: IO Bool
 lsmDatabasePathDefaultCase = do
   let label = "V2LSM defaults LSMDatabasePath to \"lsm\" when unset"
   path <- getDataFileName "examples/lsm-mithril-export.json"
-  cfg <- parseConfigurationFiles path
+  (cfg, _) <- parseConfigurationFiles path
   report label $ case cliArgs [] of
     Nothing -> Just "could not build CLI arguments"
     Just cli -> case resolveConfiguration cli cfg of

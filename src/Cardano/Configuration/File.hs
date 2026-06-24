@@ -9,8 +9,10 @@ module Cardano.Configuration.File (
   NodeConfigurationFromFile,
   NodeConfigurationFromFileF (..),
   parseConfigurationFiles,
-  parseConfigurationFilesWith,
-  UnknownKeyPolicy (..),
+
+  -- * Warnings
+  ConfigWarning (..),
+  renderConfigWarning,
 
   -- * Defaults
   componentDefaults,
@@ -48,9 +50,9 @@ import Autodocodec (JSONCodec)
 import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Configuration.File.Lint (
-  UnknownKeyPolicy (..),
-  checkShadowedKeys,
-  checkUnknownKeys,
+  ConfigWarning (..),
+  configWarnings,
+  renderConfigWarning,
  )
 import Cardano.Configuration.File.Mempool
 import Cardano.Configuration.File.Merge (
@@ -140,26 +142,22 @@ componentDefaults =
       (\name -> fmap (name,) <$> loadBaseDefault (T.unpack name))
       (map fst componentPropertyNames)
 
--- | Parse the configuration file and any sub-files referenced from it.
+-- | Parse the configuration file and any sub-files referenced from it, together
+-- with any non-fatal 'ConfigWarning's (unrecognised keys, shadowed keys, use of
+-- the legacy single-file form).
 --
--- The configuration may be given in JSON or YAML. Errors are reported as
+-- The configuration may be given in JSON or YAML. Failures are thrown as a
 -- 'ConfigurationParsingError', identifying the offending file, section and
--- location. Unrecognised top-level keys produce a warning; use
--- 'parseConfigurationFilesWith' to reject them instead.
-parseConfigurationFiles :: HasCallStack => FilePath -> IO NodeConfigurationFromFile
-parseConfigurationFiles = parseConfigurationFilesWith WarnUnknownKeys
-
--- | As 'parseConfigurationFiles', but with control over how unrecognised
--- top-level keys are handled.
-parseConfigurationFilesWith ::
-  HasCallStack => UnknownKeyPolicy -> FilePath -> IO NodeConfigurationFromFile
-parseConfigurationFilesWith policy cfgFile = do
+-- location. The warnings are /returned/, not emitted: the caller decides whether
+-- to print them, log them, or treat them as fatal (see 'renderConfigWarning').
+parseConfigurationFiles ::
+  HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
+parseConfigurationFiles cfgFile = do
   mainValue <- decodeValueFile Nothing cfgFile
   (version, configValue) <- splitEnvelope mainValue
-  checkUnknownKeys policy cfgFile configValue
-  checkShadowedKeys policy cfgFile configValue
-  let root = takeDirectory cfgFile
-  case version of
+  let warnings = configWarnings configValue
+      root = takeDirectory cfgFile
+  config <- case version of
     1 -> parseConfigurationVersion1 root configValue
     n ->
       throwIO $
@@ -168,6 +166,7 @@ parseConfigurationFilesWith policy cfgFile = do
           Nothing
           [Key "Version"]
           ("unsupported configuration version: " <> show n)
+  pure (config, warnings)
 
 -- | Parse a version-1 configuration object, reading each component either
 -- inline or from its referenced sub-file.

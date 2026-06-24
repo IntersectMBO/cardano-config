@@ -9,7 +9,7 @@
 --     whole configuration or a single component), derived from the same codecs.
 module Main (main) where
 
-import Cardano.Configuration (parseConfigurationFiles, resolveConfiguration)
+import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, resolveConfiguration)
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
@@ -154,9 +154,11 @@ runResolve cli geneses = do
   result <- try (parseConfigurationFiles (configFilePath cli))
   case result of
     Left err -> die (displayException (err :: SomeException))
-    Right file -> case resolveConfiguration cli file of
-      Left err -> die (displayException err)
-      Right nc -> BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
+    Right (file, warnings) -> do
+      mapM_ (\w -> hPutStrLn stderr ("Warning: " <> renderConfigWarning w)) warnings
+      case resolveConfiguration cli file of
+        Left err -> die (displayException err)
+        Right nc -> BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
   where
     -- Stable, readable output: keys sorted alphabetically, unset values omitted.
     yamlConfig = setConfDropNull True (setConfCompare compare Yaml.defConfig)
