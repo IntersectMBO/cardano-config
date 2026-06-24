@@ -54,4 +54,7 @@
   options object that sets only some fields inherits the rest from Mithril, so a
   resolved configuration always has every snapshot option set. The values are
   exposed as `mithrilSnapshotOptions` / `resolveSnapshotPolicy` so non-consensus
-  consumers need not re-derive them.
+  consumers need not re-derive them. The snapshot policy is resolved after the
+  consistency checks, so the "Mithril under V2LSM requires an LSMExportPath"
+  check still sees the requested policy. Under the `V2LSM` backend,
+  `LSMDatabasePath` defaults to `lsm` when unset.

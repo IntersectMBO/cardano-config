@@ -246,7 +246,7 @@ optional by nature, meaning "unset" is a valid state (the `*Hash` keys,
 `SocketPath`/`RpcSocketPath`, `MempoolCapacityBytesOverride`, the experimental
 `DijkstraGenesisFile`, and the `Test<Era>HardForkAt*` knobs).
 
-Three groups of keys are resolved by a cross-field rule rather than plain
+A few groups of keys are resolved by a cross-field rule rather than plain
 layering:
 
 - the **deadline peer targets** (`TargetNumberOf*`) and `PeerSharing` default to
@@ -262,7 +262,9 @@ layering:
   that sets only some fields inherits the rest from the Mithril values — so a
   resolved configuration always has every snapshot option set. (Consumers can
   reuse the values directly via `mithrilSnapshotOptions` /
-  `resolveSnapshotPolicy`.)
+  `resolveSnapshotPolicy`.) The Mithril policy under the `V2LSM` backend requires
+  an `LSMExportPath` (a `ConfigCheck`); under `V2LSM`, `LSMDatabasePath` defaults
+  to `lsm` when unset.
 
 ### Tracing is *not* parsed
 

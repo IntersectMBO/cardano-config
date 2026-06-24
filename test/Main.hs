@@ -14,6 +14,7 @@ import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.File.Storage (
+  LedgerDbBackendSelector (..),
   LedgerDbConfiguration (..),
   SnapshotOptions (..),
   SnapshotPolicy (..),
@@ -83,6 +84,8 @@ main = do
       , mempoolMixedResolveCase
       , snapshotMithrilResolveCase
       , snapshotResolvePolicyCase
+      , mithrilRequiresExportCase
+      , lsmDatabasePathDefaultCase
       , dijkstraGenesisDecodeCase
       , dijkstraGenesisHashMismatchCase
       , genesisHashRequiredCase
@@ -391,6 +394,35 @@ snapshotResolvePolicyCase =
      in if mithril == mithrilFields && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 600, Just 2]
           then Nothing
           else Just ("unexpected: mithril=" <> show mithril <> " filled=" <> show filled)
+
+-- | The Mithril policy under the V2LSM backend requires an @LSMExportPath@; a
+-- configuration that omits it must be rejected by the consistency checks (which
+-- run before the Mithril policy is resolved away).
+mithrilRequiresExportCase :: IO Bool
+mithrilRequiresExportCase = do
+  let label = "Mithril + V2LSM without LSMExportPath is rejected"
+  path <- getDataFileName "examples/lsm-mithril-no-export.json"
+  cfg <- parseConfigurationFiles path
+  report label $ case cliArgs [] of
+    Nothing -> Just "could not build CLI arguments"
+    Just cli -> case resolveConfiguration cli cfg of
+      Left _ -> Nothing
+      Right _ -> Just "expected rejection (Mithril needs an LSMExportPath under V2LSM)"
+
+-- | The V2LSM backend defaults its database path to @"lsm"@ when the
+-- configuration leaves @LSMDatabasePath@ unset.
+lsmDatabasePathDefaultCase :: IO Bool
+lsmDatabasePathDefaultCase = do
+  let label = "V2LSM defaults LSMDatabasePath to \"lsm\" when unset"
+  path <- getDataFileName "examples/lsm-mithril-export.json"
+  cfg <- parseConfigurationFiles path
+  report label $ case cliArgs [] of
+    Nothing -> Just "could not build CLI arguments"
+    Just cli -> case resolveConfiguration cli cfg of
+      Left e -> Just ("resolve failed: " <> show e)
+      Right nc -> case backendSelector (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
+        Just (V2LSM (Just "lsm") (Just "export-dir")) -> Nothing
+        other -> Just ("unexpected backend: " <> show other)
 
 -- | The Dijkstra genesis example decodes through this library's codec (with no
 -- pinned hash, so the read succeeds without a hash check).

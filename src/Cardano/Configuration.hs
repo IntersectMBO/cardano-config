@@ -249,31 +249,36 @@ resolveConfigurationWith checks cli file = do
       require
         "StartAsNonProducingNode"
         (CLI.startAsNonProducingNode cli <|> File.startAsNonProducingNode pc)
-  runConfigChecks checks $
-    NodeConfiguration
-      { storageConfiguration = File.adjustDbPath sc dbPath
-      , consensusConfiguration = ConsensusConfiguration (Identity consensusMode)
-      , protocolConfiguration = pc {File.startAsNonProducingNode = Identity startNonProducing}
-      , networkConfiguration = network
-      , localConnectionsConfig = localConnections
-      , testingConfiguration = testing
-      , mempoolConfiguration = mempool
-      , byronGenesisConfig = File.byronGenesisConfig file
-      , shelleyGenesisConfig = File.shelleyGenesisConfig file
-      , alonzoGenesisConfig = File.alonzoGenesisConfig file
-      , conwayGenesisConfig = File.conwayGenesisConfig file
-      , experimentalGenesisConfig = File.experimentalGenesisConfig file
-      , configFilePath = CLI.configFilePath cli
-      , topologyFile = CLI.topologyFile cli
-      , validateDatabase = CLI.validateDatabase cli
-      , credentials = CLI.credentials cli
-      , hostAddr = CLI.hostAddr cli
-      , hostIPv6Addr = CLI.hostIPv6Addr cli
-      , port = CLI.port cli
-      , tracerSocket = CLI.tracerSocket cli
-      , shutdownIPC = CLI.shutdownIPC cli
-      , shutdownOnTarget = CLI.shutdownOnTarget cli
-      }
+  -- Run the consistency checks while the snapshot policy is still its requested
+  -- form (the Mithril/LSMExportPath check needs to see "Mithril"), then resolve
+  -- it to concrete options so the result carries no bare "Mithril" policy.
+  resolved <-
+    runConfigChecks checks $
+      NodeConfiguration
+        { storageConfiguration = File.adjustDbPath sc dbPath
+        , consensusConfiguration = ConsensusConfiguration (Identity consensusMode)
+        , protocolConfiguration = pc {File.startAsNonProducingNode = Identity startNonProducing}
+        , networkConfiguration = network
+        , localConnectionsConfig = localConnections
+        , testingConfiguration = testing
+        , mempoolConfiguration = mempool
+        , byronGenesisConfig = File.byronGenesisConfig file
+        , shelleyGenesisConfig = File.shelleyGenesisConfig file
+        , alonzoGenesisConfig = File.alonzoGenesisConfig file
+        , conwayGenesisConfig = File.conwayGenesisConfig file
+        , experimentalGenesisConfig = File.experimentalGenesisConfig file
+        , configFilePath = CLI.configFilePath cli
+        , topologyFile = CLI.topologyFile cli
+        , validateDatabase = CLI.validateDatabase cli
+        , credentials = CLI.credentials cli
+        , hostAddr = CLI.hostAddr cli
+        , hostIPv6Addr = CLI.hostIPv6Addr cli
+        , port = CLI.port cli
+        , tracerSocket = CLI.tracerSocket cli
+        , shutdownIPC = CLI.shutdownIPC cli
+        , shutdownOnTarget = CLI.shutdownOnTarget cli
+        }
+  pure resolved {storageConfiguration = File.resolveSnapshotOptions (storageConfiguration resolved)}
   where
     finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
     require name = maybe (Left (name <> " has no value and no base default")) Right

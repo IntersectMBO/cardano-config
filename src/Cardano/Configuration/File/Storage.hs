@@ -11,6 +11,7 @@ module Cardano.Configuration.File.Storage (
   SnapshotOptions (..),
   mithrilSnapshotOptions,
   resolveSnapshotPolicy,
+  resolveSnapshotOptions,
 
   -- ** Backend
   LedgerDbBackendSelector (..),
@@ -190,18 +191,31 @@ instance Default LedgerDbConfiguration where
   def = LedgerDbConfiguration Nothing Nothing Nothing
 
 -- | Finally resolve the storage configuration with a final 'NodeDatabasePaths'.
--- The snapshot policy is resolved to concrete options too (see
--- 'resolveSnapshotPolicy'), so the resolved configuration never carries the bare
--- @"Mithril"@ policy or a partially-specified options object.
+-- The V2LSM backend's database path defaults to @"lsm"@ when unset (the export
+-- path stays optional). The snapshot policy is /not/ resolved here — that happens
+-- in 'resolveSnapshotOptions', after the consistency checks, which need to see
+-- the originally-requested @"Mithril"@ policy.
 adjustDbPath :: StorageConfiguration Maybe -> NodeDatabasePaths -> StorageConfiguration Identity
 adjustDbPath sc db =
   sc
     { databasePath = Identity db
-    , ledgerDbConfiguration = Identity $ resolveSnapshots $ fromMaybe def $ ledgerDbConfiguration sc
+    , ledgerDbConfiguration = Identity $ defaultLsmDatabasePath $ fromMaybe def $ ledgerDbConfiguration sc
     }
   where
-    resolveSnapshots ldb =
-      ldb {snapshots = CustomSnapshotPolicy . resolveSnapshotPolicy <$> snapshots ldb}
+    defaultLsmDatabasePath ldb = ldb {backendSelector = withLsmDefault <$> backendSelector ldb}
+    withLsmDefault (V2LSM dbPath exportPath) = V2LSM (dbPath <|> Just "lsm") exportPath
+    withLsmDefault other = other
+
+-- | Resolve the snapshot policy to a concrete set of options (see
+-- 'resolveSnapshotPolicy'), so the resolved configuration never carries the bare
+-- @"Mithril"@ policy or a partially-specified options object. Run /after/ the
+-- consistency checks: those still need to see which policy was requested (e.g.
+-- the Mithril\/LSMExportPath rule), which flattening would erase.
+resolveSnapshotOptions :: StorageConfiguration Identity -> StorageConfiguration Identity
+resolveSnapshotOptions sc =
+  sc {ledgerDbConfiguration = fmap normalize (ledgerDbConfiguration sc)}
+  where
+    normalize ldb = ldb {snapshots = CustomSnapshotPolicy . resolveSnapshotPolicy <$> snapshots ldb}
 
 -- | The storage configuration
 data StorageConfiguration f = StorageConfiguration
