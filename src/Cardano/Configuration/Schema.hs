@@ -70,6 +70,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
 import Data.List (nub)
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -465,9 +466,10 @@ wholeConfigSchemaWithDefaults defs =
 -- @defaults\/<Component>.json@ (when one is supplied).
 configurationSchemasWithDefaults :: [(Text, Value)] -> [(Text, Value)]
 configurationSchemasWithDefaults defs =
-  [ (name, maybe s (\d -> withDefaults d s) (lookup name defs))
-  | (name, s) <- configurationSchemas
-  ]
+  let defsMap = Map.fromList defs
+   in [ (name, maybe s (`withDefaults` s) (Map.lookup name defsMap))
+      | (name, s) <- configurationSchemas
+      ]
 
 -- | Fill in the @default@ keywords of a schema from a defaults object (a config
 -- object keyed by the configuration keys). Each value is placed at
