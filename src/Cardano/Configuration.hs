@@ -166,7 +166,7 @@ instance Exception ConfigResolutionError
 defaultConfigChecks :: [ConfigCheck]
 defaultConfigChecks =
   [ ConfigCheck
-      "enabling the gRPC endpoint requires a gRPC socket path, or a node socket path to derive one from"
+      "Enabling the gRPC endpoint requires a gRPC socket path, or a node socket path to derive one from"
       ( \nc ->
           let lcc = localConnectionsConfig nc
            in not
@@ -176,7 +176,7 @@ defaultConfigChecks =
                 )
       )
   , ConfigCheck
-      "the Mithril snapshot policy requires the V2LSM backend with an LSMExportPath, or the V2InMemory backend"
+      "The Mithril snapshot policy requires the V2LSM backend with an LSMExportPath, or the V2InMemory backend"
       ( \nc ->
           let ldb = runIdentity (File.ledgerDbConfiguration (storageConfiguration nc))
            in case File.snapshots ldb of
