@@ -161,8 +161,8 @@ runtimeValue nc =
         , ("ShutdownOn" .=) . shutdownOnValue <$> shutdownOnTarget nc
         ]
   where
-    portNumber p = toJSON (fromIntegral p :: Integer)
-    fdNumber fd = toJSON (fromIntegral fd :: Integer)
+    portNumber p = toJSON (toInteger p)
+    fdNumber fd = toJSON (toInteger fd)
 
 credentialsValue :: CLI.Credentials -> Value
 credentialsValue c =
@@ -189,7 +189,7 @@ tracerConnectionValue (CLI.TracerConnection name method) =
     methodValue = \case
       CLI.TracerConnectViaPipe p -> object ["Pipe" .= p]
       CLI.TracerConnectViaRemote host p ->
-        object ["Host" .= host, "Port" .= (fromIntegral p :: Integer)]
+        object ["Host" .= host, "Port" .= toInteger p]
 
 shutdownOnValue :: CLI.ShutdownOn -> Value
 shutdownOnValue = \case
