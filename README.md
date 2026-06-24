@@ -74,19 +74,6 @@ $ cardano-config schema NetworkConfig
 ...
 ```
 
-### ... see the schema for the whole config (deprecated, please use sub-files)
-
-```console
-$ cardano-config schema
-{
-    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/master/cardano-config/schemas/config.schema.json",
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The cardano-node configuration. Each component's keys may be given directly at the top level (single-file form) or, per component, under that component's section key ... (split-file form); ...",
-    "properties": {
-        "AcceptedConnectionsLimit": {
-...
-```
-
 ### ... modify my configuration and check that it is well-formed
 
 ```console
@@ -338,25 +325,3 @@ from lowest to highest precedence, is:
 `cardano-config` is the *origin* of these default files, but each is ultimately
 owned by the layer that implements the component (networking, consensus, …); a CI
 check keeps the copies here aligned with upstream.
-
-## Design principles
-
-To keep new fields from each making an ad-hoc choice:
-
-- **Where defaults live.** A field that has a real default carries it in the
-  `defaults/` files, not in the codecs; defaults are applied by layering. The
-  schema's `default` keywords are filled in from those same files, so the
-  documented default is exactly the one the resolver applies. A field whose
-  "unset" state is meaningful (an override, a hash, a feature toggle) stays
-  `Maybe` and its default simply *is* "none". The sole exception is the
-  `LowLevelGenesisOptions` toggles (`EnableCSJ`, …): they only apply in
-  `GenesisMode` (the default mode is `PraosMode`), so they cannot live in the
-  base files and keep their defaults in the codec.
-- **Where validation lives.** Structural validation of a single value lives in
-  its codec (and thus in the schema). Cross-field validation — constraints that
-  span CLI and file values or several components — lives in `resolveConfiguration`
-  as a list of `ConfigCheck`s; consumers can add their own with
-  `resolveConfigurationWith`.
-- **Errors.** File/JSON failures are reported as `ConfigurationParsingError`,
-  which records the offending file, section and JSON path. Resolution failures
-  are reported as `ConfigResolutionError`, listing the violated checks.
