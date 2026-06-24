@@ -137,9 +137,9 @@ weakenMempool :: File.MempoolConfiguration Identity -> File.MempoolConfiguration
 weakenMempool m =
   File.MempoolConfiguration
     { File.mempoolCapacityOverride = File.mempoolCapacityOverride m
-    , File.mempoolTimeoutSoft = File.mempoolTimeoutSoft m
-    , File.mempoolTimeoutHard = File.mempoolTimeoutHard m
-    , File.mempoolTimeoutCapacity = File.mempoolTimeoutCapacity m
+    , File.mempoolTimeoutSoft = j (File.mempoolTimeoutSoft m)
+    , File.mempoolTimeoutHard = j (File.mempoolTimeoutHard m)
+    , File.mempoolTimeoutCapacity = j (File.mempoolTimeoutCapacity m)
     }
 
 -- | The operational arguments that come only from the CLI. Unset optional values

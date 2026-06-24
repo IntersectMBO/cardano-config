@@ -6,11 +6,19 @@ module Cardano.Configuration.File.Network (
   LocalConnectionsConfig (..),
   finalizeNetwork,
   finalizeLocalConnections,
+
+  -- * Role defaults
+  BlockProducerOrRelay (..),
+  withRoleDefaults,
+  networkRoleDefaults,
+  blockProducerRoleDefaults,
+  relayRoleDefaults,
 ) where
 
 import Autodocodec
 import Cardano.Configuration.Basic (diffTimeCodec, requireField)
 import Cardano.Configuration.Common (filePathCodec)
+import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
@@ -216,6 +224,117 @@ finalizeNetwork c = do
       experimental
       txLogic
       txInitDelay
+
+-- | Whether the node is a block producer or a relay. Derived from whether the
+-- operator supplied block-forging credentials (see
+-- @Cardano.Configuration.roleFromCredentials@); it selects the deadline
+-- peer-selection targets and the @PeerSharing@ default.
+data BlockProducerOrRelay
+  = IsBlockProducer
+  | IsRelay
+  deriving (Eq, Show)
+
+-- | Merge the role-derived defaults /underneath/ the user's partial network
+-- configuration: the user value (from the file; these fields have no base default
+-- and no CLI flag) wins, and the role default only fills a field the user left
+-- unset. Only the eight fields the role variants set are touched — they are
+-- exactly the ones the base @Network.json@ leaves unset; every other field
+-- already carries its base default and is passed through unchanged.
+withRoleDefaults ::
+  -- | The role defaults (block producer or relay).
+  NetworkConfiguration Maybe ->
+  -- | The user\/file\/base partial.
+  NetworkConfiguration Maybe ->
+  NetworkConfiguration Maybe
+withRoleDefaults role user =
+  user
+    { deadlineTargetOfRootPeers = deadlineTargetOfRootPeers user <|> deadlineTargetOfRootPeers role
+    , deadlineTargetOfKnownPeers = deadlineTargetOfKnownPeers user <|> deadlineTargetOfKnownPeers role
+    , deadlineTargetOfEstablishedPeers =
+        deadlineTargetOfEstablishedPeers user <|> deadlineTargetOfEstablishedPeers role
+    , deadlineTargetOfActivePeers = deadlineTargetOfActivePeers user <|> deadlineTargetOfActivePeers role
+    , deadlineTargetOfKnownBigLedgerPeers =
+        deadlineTargetOfKnownBigLedgerPeers user <|> deadlineTargetOfKnownBigLedgerPeers role
+    , deadlineTargetOfEstablishedBigLedgerPeers =
+        deadlineTargetOfEstablishedBigLedgerPeers user <|> deadlineTargetOfEstablishedBigLedgerPeers role
+    , deadlineTargetOfActiveBigLedgerPeers =
+        deadlineTargetOfActiveBigLedgerPeers user <|> deadlineTargetOfActiveBigLedgerPeers role
+    , peerSharing = peerSharing user <|> peerSharing role
+    }
+
+-- | The role defaults for the given role.
+networkRoleDefaults :: BlockProducerOrRelay -> NetworkConfiguration Maybe
+networkRoleDefaults IsBlockProducer = blockProducerRoleDefaults
+networkRoleDefaults IsRelay = relayRoleDefaults
+
+-- | A wholly-unset partial network configuration: every field 'Nothing'. The
+-- starting point for the role-default literals below, which set only the eight
+-- role fields.
+emptyNetworkConfiguration :: NetworkConfiguration Maybe
+emptyNetworkConfiguration =
+  NetworkConfiguration
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+    Nothing
+
+-- | The block-producer role defaults. These must equal
+-- @defaults\/NetworkConfig.variants\/NetworkConfig.blockproducer.json@ (asserted
+-- by a test) and the node's @Ouroboros.defaultDeadlineTargets BlockProducer@ /
+-- @PeerSharingDisabled@.
+blockProducerRoleDefaults :: NetworkConfiguration Maybe
+blockProducerRoleDefaults =
+  emptyNetworkConfiguration
+    { deadlineTargetOfRootPeers = Just 100
+    , deadlineTargetOfKnownPeers = Just 100
+    , deadlineTargetOfEstablishedPeers = Just 30
+    , deadlineTargetOfActivePeers = Just 20
+    , deadlineTargetOfKnownBigLedgerPeers = Just 15
+    , deadlineTargetOfEstablishedBigLedgerPeers = Just 10
+    , deadlineTargetOfActiveBigLedgerPeers = Just 5
+    , peerSharing = Just False
+    }
+
+-- | The relay role defaults. These must equal
+-- @defaults\/NetworkConfig.variants\/NetworkConfig.relay.json@ (asserted by a
+-- test) and the node's @Ouroboros.defaultDeadlineTargets Relay@ /
+-- @PeerSharingEnabled@.
+relayRoleDefaults :: NetworkConfiguration Maybe
+relayRoleDefaults =
+  emptyNetworkConfiguration
+    { deadlineTargetOfRootPeers = Just 60
+    , deadlineTargetOfKnownPeers = Just 150
+    , deadlineTargetOfEstablishedPeers = Just 30
+    , deadlineTargetOfActivePeers = Just 20
+    , deadlineTargetOfKnownBigLedgerPeers = Just 15
+    , deadlineTargetOfEstablishedBigLedgerPeers = Just 10
+    , deadlineTargetOfActiveBigLedgerPeers = Just 5
+    , peerSharing = Just True
+    }
 
 -- | Connections for local clients. @EnableRpc@ has a default; the socket paths
 -- are optional.

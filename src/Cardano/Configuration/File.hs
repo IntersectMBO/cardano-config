@@ -35,6 +35,13 @@ module Cardano.Configuration.File (
   finalizeLocalConnections,
   finalizeMempool,
   finalizeTesting,
+
+  -- * Network role defaults
+  BlockProducerOrRelay (..),
+  withRoleDefaults,
+  networkRoleDefaults,
+  blockProducerRoleDefaults,
+  relayRoleDefaults,
 ) where
 
 import Autodocodec (JSONCodec)

@@ -10,7 +10,8 @@
 module Main (main) where
 
 import Cardano.Configuration (resolveConfiguration)
-import Cardano.Configuration.CliArgs (parseCliArgs)
+import qualified Cardano.Configuration as C
+import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
 import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
@@ -62,6 +63,13 @@ main = do
       , shadowWarnCase
       , shadowRejectCase
       , resolveCase
+      , roleVariantParityCase
+      , roleSelectionCase
+      , rolePrecedenceCase
+      , mempoolAllUnsetCase
+      , mempoolAllSetCase
+      , mempoolMixedCase
+      , mempoolMixedResolveCase
       , dijkstraGenesisDecodeCase
       , dijkstraGenesisHashMismatchCase
       , genesisHashRequiredCase
@@ -168,6 +176,130 @@ resolveCase = do
     Just cli -> case resolveConfiguration cli cfg of
       Left err -> report label (Just (show err))
       Right nc -> evaluate (length (show nc)) >> report label Nothing
+
+-- | The inline role-default partials must equal the committed variant JSON
+-- (Option B parity): they are encoded through the same codec and compared to the
+-- raw files, so the Haskell literals cannot drift from the data files.
+roleVariantParityCase :: IO Bool
+roleVariantParityCase = do
+  let label = "network role defaults match the committed variant JSON"
+  bpPath <- getDataFileName "defaults/NetworkConfig.variants/NetworkConfig.blockproducer.json"
+  relayPath <- getDataFileName "defaults/NetworkConfig.variants/NetworkConfig.relay.json"
+  bp <- eitherDecodeFileStrict' bpPath :: IO (Either String Value)
+  relay <- eitherDecodeFileStrict' relayPath :: IO (Either String Value)
+  report label $ case (bp, relay) of
+    (Left e, _) -> Just ("could not read blockproducer.json: " <> e)
+    (_, Left e) -> Just ("could not read relay.json: " <> e)
+    (Right bpV, Right relayV)
+      | toJSON blockProducerRoleDefaults /= bpV ->
+          Just "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json"
+      | toJSON relayRoleDefaults /= relayV ->
+          Just "relayRoleDefaults differs from NetworkConfig.relay.json"
+      | otherwise -> Nothing
+
+-- | The networking role defaults are chosen by credential presence: a credential
+-- (here a VRF key) yields the block-producer targets (root 100, known 100,
+-- PeerSharing off); no credential yields the relay targets (root 60, known 150,
+-- PeerSharing on). These values are the node's @defaultDeadlineTargets@ oracle.
+roleSelectionCase :: IO Bool
+roleSelectionCase = do
+  let label = "network role defaults selected from credential presence"
+  path <- getDataFileName "examples/fullconfig.json"
+  cfg <- parseConfigurationFiles path
+  case (cliArgs ["--shelley-vrf-key", "vrf.skey"], cliArgs []) of
+    (Just bpCli, Just relayCli) ->
+      case (resolveConfiguration bpCli cfg, resolveConfiguration relayCli cfg) of
+        (Left e, _) -> report label (Just ("block-producer resolve failed: " <> show e))
+        (_, Left e) -> report label (Just ("relay resolve failed: " <> show e))
+        (Right bpNc, Right relayNc) ->
+          let bn = C.networkConfiguration bpNc
+              rn = C.networkConfiguration relayNc
+              ok =
+                deadlineTargetOfRootPeers bn == Just 100
+                  && deadlineTargetOfKnownPeers bn == Just 100
+                  && peerSharing bn == Just False
+                  && deadlineTargetOfRootPeers rn == Just 60
+                  && deadlineTargetOfKnownPeers rn == Just 150
+                  && peerSharing rn == Just True
+           in report label $
+                if ok
+                  then Nothing
+                  else Just "resolved role targets do not match the expected block-producer/relay values"
+    _ -> report label (Just "could not build CLI arguments")
+
+-- | An explicit file value for a role field wins over the role default, even
+-- when credentials are present (block producer). Here PeerSharing and
+-- TargetNumberOfRootPeers are set in the file; the remaining role fields still
+-- come from the (block-producer) role default.
+rolePrecedenceCase :: IO Bool
+rolePrecedenceCase = do
+  let label = "explicit file value overrides the role default"
+  path <- getDataFileName "examples/role-precedence.json"
+  cfg <- parseConfigurationFiles path
+  case cliArgs ["--shelley-vrf-key", "vrf.skey"] of
+    Nothing -> report label (Just "could not build CLI arguments")
+    Just cli -> case resolveConfiguration cli cfg of
+      Left e -> report label (Just ("resolve failed: " <> show e))
+      Right nc ->
+        let n = C.networkConfiguration nc
+         in report label $
+              if peerSharing n == Just True -- file wins over block-producer's False
+                && deadlineTargetOfRootPeers n == Just 999 -- file wins over 100
+                && deadlineTargetOfKnownPeers n == Just 100 -- unset in file, block-producer default
+                then Nothing
+                else Just "explicit file values did not take precedence over the role default"
+
+-- | All three mempool timeouts unset resolves to the coupled default (1, 1.5, 5).
+mempoolAllUnsetCase :: IO Bool
+mempoolAllUnsetCase =
+  report "mempool timeouts: all-unset takes the coupled (1, 1.5, 5) default" $
+    case finalizeMempool (MempoolConfiguration Nothing Nothing Nothing Nothing) of
+      Left e -> Just ("unexpected rejection: " <> e)
+      Right c
+        | runIdentity (mempoolTimeoutSoft c) == 1
+        , runIdentity (mempoolTimeoutHard c) == 1.5
+        , runIdentity (mempoolTimeoutCapacity c) == 5 ->
+            Nothing
+        | otherwise -> Just "wrong coupled-default timeout values"
+
+-- | All three mempool timeouts set are preserved unchanged.
+mempoolAllSetCase :: IO Bool
+mempoolAllSetCase =
+  report "mempool timeouts: all-set are preserved" $
+    case finalizeMempool (MempoolConfiguration Nothing (Just 2) (Just 3) (Just 4)) of
+      Left e -> Just ("unexpected rejection: " <> e)
+      Right c
+        | runIdentity (mempoolTimeoutSoft c) == 2
+        , runIdentity (mempoolTimeoutHard c) == 3
+        , runIdentity (mempoolTimeoutCapacity c) == 4 ->
+            Nothing
+        | otherwise -> Just "set timeout values were not preserved"
+
+-- | A mix of set and unset mempool timeouts is rejected by 'finalizeMempool'.
+mempoolMixedCase :: IO Bool
+mempoolMixedCase =
+  report "mempool timeouts: a partial set is rejected" $
+    case finalizeMempool (MempoolConfiguration Nothing (Just 1) Nothing Nothing) of
+      Left _ -> Nothing
+      Right _ -> Just "expected a partial set of timeouts to be rejected"
+
+-- | The all-or-nothing rule surfaces end-to-end: a configuration that sets only
+-- one timeout makes 'resolveConfiguration' fail with a 'ConfigResolutionError'.
+mempoolMixedResolveCase :: IO Bool
+mempoolMixedResolveCase = do
+  let label = "examples/mempool-mixed.json (partial mempool timeouts rejected on resolve)"
+  path <- getDataFileName "examples/mempool-mixed.json"
+  cfg <- parseConfigurationFiles path
+  case cliArgs [] of
+    Nothing -> report label (Just "could not build CLI arguments")
+    Just cli -> report label $ case resolveConfiguration cli cfg of
+      Left _ -> Nothing
+      Right _ -> Just "expected resolution to reject a partial set of mempool timeouts"
+
+-- | Parse @cardano-node@-style CLI arguments for a test (no defaults file is
+-- needed; the parser supplies its own).
+cliArgs :: [String] -> Maybe CliArgs
+cliArgs = getParseResult . execParserPure defaultPrefs (info parseCliArgs mempty)
 
 -- | The Dijkstra genesis example decodes through this library's codec (with no
 -- pinned hash, so the read succeeds without a hash check).

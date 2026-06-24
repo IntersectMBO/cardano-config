@@ -10,10 +10,10 @@ file and the CLI arguments, so that a resolved `NodeConfiguration` is complete.
 - `<Component>.json` — the component's role- and network-agnostic defaults. This
   base file is **always** read as the bottom layer during resolution.
 - `<Component>.variants/<Component>.<variant>.json` — overrides for a particular
-  **network** or node **role**, kept in a `.variants/` subdirectory to make clear
-  they are opt-in overlays. A configuration selects one (or several) by
-  referencing them, and they are deep-merged on top of the base file. Present
-  variants:
+  **network** or node **role**, kept in a `.variants/` subdirectory. The network
+  variants are selected automatically (see the `Network` role variants below);
+  the rest are opt-in overlays a configuration selects by referencing them. Both
+  are deep-merged on top of the base file. Present variants:
   - `Protocol.variants/Protocol.{mainnet,preview,preprod}.json` — the
     network-specific genesis files/hashes, `RequiresNetworkMagic` and
     `LastKnownBlockVersion-*` (these legitimately differ per network, so they
@@ -30,6 +30,9 @@ file and the CLI arguments, so that a resolved `NodeConfiguration` is complete.
   - `Network.variants/Network.{relay,blockproducer}.json` — the deadline peer
     targets and `PeerSharing`, which differ between a relay and a
     block-producing node (`defaultDeadlineTargets` / `defaultPeerSharing`).
+    `resolveConfiguration` applies one of these **automatically**, chosen by
+    whether block-forging credentials were supplied, as a layer *below* the
+    configuration file (so an explicit value still wins).
 
 Because divergence spans several components, selecting a network means
 referencing its variant in *each* affected section (e.g. preview pulls in
@@ -91,8 +94,13 @@ parses the configuration, while the *values* are owned upstream.
 
 Within a resolved component, a field is one of:
 
-- **Resolved (`Identity`)** — has a default here (base or variant), so it always
-  has a value after resolution. Most fields.
+- **Resolved (`Identity`)** — has a default, so it always has a value after
+  resolution. Most fields. The default usually comes from a `defaults/` file
+  (base or variant), with two exceptions resolved by a cross-field rule:
+  - the deadline peer targets (`TargetNumberOf*`) and `PeerSharing`, filled by
+    the credential-derived role variant (above);
+  - the three mempool timeouts, which are all-or-nothing — set all three or take
+    the coupled `(1, 1.5, 5)`-second default (applied in `finalizeMempool`).
 - **Optional (`Maybe`)** — "unset" is a real, intended state, so it stays
   `Maybe` and its default simply *is* "none":
   - the `*GenesisHash` fields
@@ -101,5 +109,4 @@ Within a resolved component, a field is one of:
   - `SocketPath`
   - `RpcSocketPath`
   - `MempoolCapacityBytesOverride` (`NoOverride`)
-  - the three mempool timeouts (the node's default is no timeout),
   - the Testing `Test<Era>HardForkAt*` / `DijkstraGenesis*` knobs.

@@ -12,15 +12,17 @@ import Data.Time.Clock (DiffTime)
 import Data.Word
 import GHC.Generics (Generic)
 
--- | The mempool configuration. Every field is optional by nature (the node's
--- default is "no override" / "no timeout"), so the @f@ parameter is phantom and
--- the fields stay @Maybe@ in both the partial and resolved forms. See
--- "Cardano.Configuration.File" for the @f@-parameter convention.
+-- | The mempool configuration. @mempoolCapacityOverride@ is optional by nature
+-- (the node's default is "no override"), so it stays @Maybe@ in both forms. The
+-- three timeouts, however, are resolved /together/: they must be either all set
+-- or all unset, and all-unset takes a coupled default (see 'finalizeMempool'),
+-- so they carry the @f@ parameter — @Maybe@ in the partial form, @Identity@ in
+-- the resolved form. See "Cardano.Configuration.File" for the @f@ convention.
 data MempoolConfiguration f = MempoolConfiguration
   { mempoolCapacityOverride :: Maybe Word64
-  , mempoolTimeoutSoft :: Maybe DiffTime
-  , mempoolTimeoutHard :: Maybe DiffTime
-  , mempoolTimeoutCapacity :: Maybe DiffTime
+  , mempoolTimeoutSoft :: f DiffTime
+  , mempoolTimeoutHard :: f DiffTime
+  , mempoolTimeoutCapacity :: f DiffTime
   }
   deriving (Generic)
 
@@ -54,17 +56,19 @@ instance HasCodec (MempoolConfiguration Maybe) where
         <*> optionalFieldWith "MempoolTimeoutCapacity" diffTimeCodec "Capacity mempool timeout, in seconds"
           .= mempoolTimeoutCapacity
 
--- | Resolve a partial mempool configuration. All fields are optional, so this
--- cannot fail.
+-- | Resolve a partial mempool configuration. The three timeouts are coupled:
+-- they must be either all set or all unset. All-unset takes the node's coupled
+-- default of @(1, 1.5, 5)@ seconds (soft, hard, capacity); a mix of set and
+-- unset is rejected. @mempoolCapacityOverride@ is independent and passes through.
 finalizeMempool :: MempoolConfiguration Maybe -> Either String (MempoolConfiguration Identity)
 finalizeMempool c =
-  Right
-    MempoolConfiguration
-      { mempoolCapacityOverride = mempoolCapacityOverride c
-      , mempoolTimeoutSoft = mempoolTimeoutSoft c
-      , mempoolTimeoutHard = mempoolTimeoutHard c
-      , mempoolTimeoutCapacity = mempoolTimeoutCapacity c
-      }
+  case (mempoolTimeoutSoft c, mempoolTimeoutHard c, mempoolTimeoutCapacity c) of
+    (Just s, Just h, Just cap) ->
+      Right (MempoolConfiguration (mempoolCapacityOverride c) (Identity s) (Identity h) (Identity cap))
+    (Nothing, Nothing, Nothing) ->
+      Right (MempoolConfiguration (mempoolCapacityOverride c) (Identity 1) (Identity 1.5) (Identity 5))
+    _ ->
+      Left "mempool timeouts (Soft, Hard, Capacity) must be all set or all unset"
 
 -- | The mempool capacity override is either a byte count or the string
 -- @"NoOverride"@ (which, like omitting the key, means \"use the default\").

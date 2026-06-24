@@ -213,7 +213,14 @@ resolveConfigurationWith ::
 resolveConfigurationWith checks cli file = do
   -- Components with an always-applied defaults layer are finalized to their
   -- complete 'Identity' form; a missing default surfaces as a resolution error.
-  network <- finalize $ File.finalizeNetwork (runIdentity (File.networkConfiguration file))
+  --
+  -- The networking role defaults (deadline peer targets and PeerSharing) are
+  -- derived from whether the operator supplied block-forging credentials and
+  -- merged underneath the user's network partial, so an explicit file value
+  -- still wins (see 'File.withRoleDefaults').
+  let roleDefaults = File.networkRoleDefaults (roleFromCredentials (CLI.credentials cli))
+      netUser = runIdentity (File.networkConfiguration file)
+  network <- finalize $ File.finalizeNetwork (File.withRoleDefaults roleDefaults netUser)
   testing <- finalize $ File.finalizeTesting (runIdentity (File.testingConfiguration file))
   mempool <- finalize $ File.finalizeMempool (runIdentity (File.mempoolConfiguration file))
   -- Local connections additionally take CLI overrides before being finalized.
@@ -268,3 +275,21 @@ resolveConfigurationWith checks cli file = do
   where
     finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
     require name = maybe (Left (name <> " has no value and no base default")) Right
+
+-- | Derive the node's role from its credentials: it is a block producer iff
+-- /any/ block-forging credential was supplied, otherwise a relay. This matches
+-- @cardano-node@'s @hasProtocolFile@ semantics and selects the network role
+-- defaults (see 'File.withRoleDefaults').
+roleFromCredentials :: CLI.Credentials -> File.BlockProducerOrRelay
+roleFromCredentials c
+  | any
+      isJust
+      [ () <$ CLI.byronDelegationCertificate c
+      , () <$ CLI.byronSigningKey c
+      , () <$ CLI.shelleyKES c
+      , () <$ CLI.shelleyVRFKey c
+      , () <$ CLI.shelleyOperationalCertificate c
+      , () <$ CLI.bulkCredentialsFile c
+      ] =
+      File.IsBlockProducer
+  | otherwise = File.IsRelay

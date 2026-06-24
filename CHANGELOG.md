@@ -14,8 +14,8 @@
     (e.g. `jsonschema2md`) render names rather than `Untitled`/`undefined`. Each
     key's `default` is filled in from the `defaults/` files (the single source of
     truth for defaults), so the documented default matches the applied one. The
-    whole-configuration schema covers both the single-file and split-file forms
-    and the version envelope.
+    default whole-configuration schema describes the split-file form (plus the
+    version envelope); `--legacy-one-file` dumps the legacy single-file form.
   * `cardano-config resolve` resolves a configuration (defaults + file + CLI
     flags) and prints the complete result as YAML, using the documented
     configuration keys (`Cardano.Configuration.Render` exposes this as
@@ -32,9 +32,18 @@
   cross-field checks (`ConfigCheck` / `ConfigResolutionError`).
 * Unrecognised top-level keys warn by default; `RejectUnknownKeys` makes them an
   error.
-* The whole-configuration schema encodes section/top-level exclusivity: a
-  component must be given either under its section key or as its top-level keys,
-  not both, so a generic JSON Schema validator flags the combination too.
+* The split-file and legacy single-file schemas are kept separate, so neither
+  offers both placements for a component; mixing the forms is caught at parse
+  time (see shadowed keys below) rather than by a JSON Schema validator.
 * Shadowed top-level keys (a component supplied as its own section while one of
   its keys also appears at the top level, where it is then ignored) warn by
   default and are rejected under `RejectUnknownKeys`.
+* `resolveConfiguration` derives the networking role from credential presence: a
+  node given block-forging credentials uses the block-producer deadline
+  peer-selection targets and disables `PeerSharing`; a node without uses the
+  relay targets and enables it. An explicit file value for any of those fields
+  still wins. (Matches the node's former `defaultDeadlineTargets` / role
+  `PeerSharing` derivation.)
+* The three mempool timeouts (`MempoolTimeoutSoft`/`Hard`/`Capacity`) are
+  resolved all-or-nothing: set all three or none. All-unset takes the coupled
+  default of `(1, 1.5, 5)` seconds; a partial set is a resolution error.

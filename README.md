@@ -232,9 +232,19 @@ network).
 `defaults/` layer — see [Defaults and layering](#defaults-and-layering)) or is
 optional by nature, meaning "unset" is a valid state (the `*Hash` keys,
 `PBftSignatureThreshold`, `CheckpointsFile`, `LedgerDB.Snapshots`,
-`SocketPath`/`RpcSocketPath`, `MempoolCapacityBytesOverride`, the mempool
-timeouts, the experimental `DijkstraGenesisFile`, and the `Test<Era>HardForkAt*`
-knobs).
+`SocketPath`/`RpcSocketPath`, `MempoolCapacityBytesOverride`, the experimental
+`DijkstraGenesisFile`, and the `Test<Era>HardForkAt*` knobs).
+
+Two groups of keys are resolved by a cross-field rule rather than plain
+layering:
+
+- the **deadline peer targets** (`TargetNumberOf*`) and `PeerSharing` default to
+  the block-producer or relay values depending on whether block-forging
+  credentials were supplied; an explicit value still wins. See
+  [Defaults and layering](#defaults-and-layering).
+- the three **mempool timeouts** (`MempoolTimeoutSoft`/`Hard`/`Capacity`) are
+  all-or-nothing: give all three or none. All-unset takes the coupled default of
+  `(1, 1.5, 5)` seconds; a partial set is rejected.
 
 ### Tracing is *not* parsed
 
@@ -330,11 +340,20 @@ Every component ships a **default file** under [`defaults/`](defaults/) (see
 from lowest to highest precedence, is:
 
 1. the package's base default (`defaults/<Component>.json`), always applied;
-2. the component's value in the configuration file (an inline object, a sub-file
-   path, or a list of them merged in order — including the opt-in
+2. for the `Network` component only, a **role layer** chosen automatically from
+   credential presence: the block-producer or relay variant
+   (`defaults/NetworkConfig.variants/NetworkConfig.{blockproducer,relay}.json`)
+   fills the deadline peer targets and `PeerSharing` when the configuration
+   leaves them unset (so it sits *below* the file value);
+3. the component's value in the configuration file (an inline object, a sub-file
+   path, or a list of them merged in order — including any
    `defaults/<Component>.variants/*` overlays the configuration chooses to
-   reference);
-3. the matching CLI flag, where one exists.
+   reference explicitly);
+4. the matching CLI flag, where one exists.
+
+The role layer applies the same values the variant files hold, so referencing a
+variant explicitly and letting the credential-derived default apply give the same
+result.
 
 `cardano-config` is the *origin* of these default files, but each is ultimately
 owned by the layer that implements the component (networking, consensus, …); a CI
