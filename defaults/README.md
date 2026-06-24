@@ -82,16 +82,10 @@ mis-configure other networks.
 
 ## Ownership
 
-`cardano-config` is currently the *origin* of these files, but each component is
-ultimately **owned by the layer that implements it** (networking owns
-`Network*.json`, consensus owns `Consensus.json`, and so on). The intended flow:
-
-1. We author the initial defaults here.
-2. They are copied out to the owning layers, which adopt them as the canonical
-   defaults for their component.
-3. A CI check keeps the copies here byte-for-byte aligned with the upstream ones,
-   so this package stays the single place that parses the configuration while the
-   *values* are owned upstream.
+`cardano-config` is the *origin* of these files, but each component is ultimately
+**owned by the layer that implements it** (networking owns `Network*.json`,
+consensus owns `Consensus.json`, and so on): this package is the single place that
+parses the configuration, while the *values* are owned upstream.
 
 ## Field classification
 
@@ -109,16 +103,3 @@ Within a resolved component, a field is one of:
   - `MempoolCapacityBytesOverride` (`NoOverride`)
   - the three mempool timeouts (the node's default is no timeout),
   - the Testing `Test<Era>HardForkAt*` / `DijkstraGenesis*` knobs.
-
-## Provenance / TODO
-
-**Placeholder values to be confirmed by the owning layer** (currently
-best-effort so the type can be fully resolved; JSON cannot carry comments):
-
-- `Network.json`:
-  - `ProtocolIdleTimeout` (5),
-  - `TimeWaitTimeout` (60),
-  - `TxSubmissionInitDelay` (0),
-  - `MinBigLedgerPeersForTrustedState` (5),
-  - `TxSubmissionLogicVersion` (`"V1"`),
-  - `ResponderCoreAffinityPolicy` (`"Disabled"`).
