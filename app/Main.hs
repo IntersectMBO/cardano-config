@@ -12,7 +12,7 @@ module Main (main) where
 import Cardano.Configuration (parseConfigurationFiles, resolveConfiguration)
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
-import Cardano.Configuration.Render (nodeConfigurationToJSON)
+import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema (
   configurationSchemas,
   configurationSchemasWithDefaults,
@@ -36,8 +36,9 @@ import System.IO (hPutStrLn, stderr)
 
 -- | The top-level command selected on the command line.
 data Command
-  = -- | @resolve@: resolve a configuration with the given node flags.
-    Resolve CliArgs
+  = -- | @resolve@: resolve a configuration with the given node flags, optionally
+    -- including the decoded era genesis values (the @--with-geneses@ flag).
+    Resolve CliArgs GenesisRendering
   | -- | @schema@: dump a JSON Schema.
     Schema SchemaCmd
 
@@ -74,7 +75,7 @@ commandParser =
     ( command
         "resolve"
         ( info
-            (Resolve <$> parseCliArgs)
+            (Resolve <$> parseCliArgs <*> withGenesesFlag)
             ( progDesc
                 ( "Resolve a cardano-node configuration (defaults + configuration file + CLI flags) "
                     <> "and print the complete result as YAML."
@@ -131,20 +132,31 @@ schemaParser =
               )
         )
 
+-- | The @--with-geneses@ flag of @resolve@: include the (large) decoded era
+-- genesis values in the output.
+withGenesesFlag :: Parser GenesisRendering
+withGenesesFlag =
+  flag
+    OmitGeneses
+    IncludeGeneses
+    ( long "with-geneses"
+        <> help "Include the decoded era genesis values in the output (large; off by default)."
+    )
+
 -- | Execute the selected command.
 run :: Command -> IO ()
-run (Resolve cli) = runResolve cli
+run (Resolve cli geneses) = runResolve cli geneses
 run (Schema cmd) = runSchema cmd
 
 -- | Resolve a configuration and print it as YAML.
-runResolve :: CliArgs -> IO ()
-runResolve cli = do
+runResolve :: CliArgs -> GenesisRendering -> IO ()
+runResolve cli geneses = do
   result <- try (parseConfigurationFiles (configFilePath cli))
   case result of
     Left err -> die (displayException (err :: SomeException))
     Right file -> case resolveConfiguration cli file of
       Left err -> die (displayException err)
-      Right nc -> BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON nc))
+      Right nc -> BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
   where
     -- Stable, readable output: keys sorted alphabetically, unset values omitted.
     yamlConfig = setConfDropNull True (setConfCompare compare Yaml.defConfig)

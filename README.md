@@ -176,8 +176,19 @@ the CLI-only operational arguments grouped under `Runtime`):
 $ cardano-config resolve --config mainnet-config.yaml
 ```
 
+By default the genesis files appear only as their path and hash (under
+`ProtocolConfig`). Pass `--with-geneses` to additionally embed the decoded
+genesis value of every era (`ByronGenesis`, `ShelleyGenesis`, `AlonzoGenesis`,
+`ConwayGenesis`, and `ExperimentalGenesis` when present) — these are the very
+files that were read and hash-checked while parsing:
+
+```console
+$ cardano-config resolve --config mainnet-config.yaml --with-geneses
+```
+
 (The library exposes this rendering as `nodeConfigurationToJSON` in
-`Cardano.Configuration.Render`.)
+`Cardano.Configuration.Render`; its `GenesisRendering` argument selects whether
+the genesis values are included.)
 
 Keys that none of the parsers below recognise produce a **warning** by default
 (so typos are noticed); `parseConfigurationFilesWith RejectUnknownKeys` turns

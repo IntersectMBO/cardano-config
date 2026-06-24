@@ -79,6 +79,7 @@ library
     cardano-ledger-dijkstra,
     cardano-ledger-shelley,
     cardano-slotting,
+    canonical-json,
     containers,
     data-default,
     transformers,

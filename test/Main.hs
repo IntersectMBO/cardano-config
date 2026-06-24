@@ -18,6 +18,9 @@ import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
 import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
 import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
+import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Configuration.Schema (
   configurationSchemasWithDefaults,
@@ -28,7 +31,7 @@ import Cardano.Configuration.Schema (
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Control.Exception (SomeException, evaluate, try)
 import Autodocodec (JSONCodec, parseJSONVia, toJSONVia)
-import Data.Aeson (FromJSON, ToJSON, Value, eitherDecodeFileStrict', parseJSON, toJSON)
+import Data.Aeson (FromJSON, ToJSON, Value (..), eitherDecodeFileStrict', parseJSON, toJSON)
 import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
@@ -63,6 +66,7 @@ main = do
       , shadowWarnCase
       , shadowRejectCase
       , resolveCase
+      , genesisRenderCase
       , roleVariantParityCase
       , roleSelectionCase
       , rolePrecedenceCase
@@ -176,6 +180,31 @@ resolveCase = do
     Just cli -> case resolveConfiguration cli cfg of
       Left err -> report label (Just (show err))
       Right nc -> evaluate (length (show nc)) >> report label Nothing
+
+-- | With 'IncludeGeneses' the resolved configuration renders the decoded value
+-- of every era genesis (Byron via its canonical-JSON form, the rest via their
+-- codecs), not just the file references; with 'OmitGeneses' none appear. These
+-- are the files read and hash-checked at parse time.
+genesisRenderCase :: IO Bool
+genesisRenderCase = do
+  let label = "resolve renders era geneses only with IncludeGeneses"
+      eras = ["ByronGenesis", "ShelleyGenesis", "AlonzoGenesis", "ConwayGenesis"]
+  path <- getDataFileName "examples/fullconfig.json"
+  cfg <- parseConfigurationFiles path
+  case cliArgs [] of
+    Nothing -> report label (Just "could not build CLI arguments")
+    Just cli -> case resolveConfiguration cli cfg of
+      Left e -> report label (Just ("resolve failed: " <> show e))
+      Right nc ->
+        let keysOf r = case nodeConfigurationToJSON r nc of
+              Object o -> [k | k <- eras, maybe False nonEmpty (KM.lookup (K.fromString k) o)]
+              _ -> []
+            nonEmpty (Object m) = not (KM.null m)
+            nonEmpty _ = False
+         in report label $
+              if keysOf IncludeGeneses == eras && null (keysOf OmitGeneses)
+                then Nothing
+                else Just "geneses not gated correctly by IncludeGeneses/OmitGeneses"
 
 -- | The inline role-default partials must equal the committed variant JSON
 -- (Option B parity): they are encoded through the same codec and compared to the

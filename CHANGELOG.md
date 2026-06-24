@@ -19,7 +19,9 @@
   * `cardano-config resolve` resolves a configuration (defaults + file + CLI
     flags) and prints the complete result as YAML, using the documented
     configuration keys (`Cardano.Configuration.Render` exposes this as
-    `nodeConfigurationToJSON`).
+    `nodeConfigurationToJSON`). With `--with-geneses` it also embeds the decoded
+    genesis value of every era (the files read and hash-checked at parse time);
+    by default only their path and hash appear under `ProtocolConfig`.
 * Configuration sources are layered with a deep merge: an always-applied
   per-component default (`defaults/`), then the configuration file (a value, a
   sub-file path, or a list of them), then CLI flags.

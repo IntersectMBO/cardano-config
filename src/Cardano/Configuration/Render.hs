@@ -9,23 +9,44 @@
 -- the keys stay in sync with the parsers. The operational arguments that come
 -- only from the CLI (credentials, host\/port, shutdown, …) are grouped under a
 -- @Runtime@ key.
+--
+-- The decoded era genesis values are large, so they are included only when
+-- 'IncludeGeneses' is passed (the @--with-geneses@ flag of @cardano-config
+-- resolve@); otherwise only their file reference and hash appear, under
+-- @ProtocolConfig@.
 module Cardano.Configuration.Render (
   nodeConfigurationToJSON,
+  GenesisRendering (..),
 ) where
 
 import Autodocodec (toJSONVia)
 import Cardano.Configuration (NodeConfiguration (..))
 import qualified Cardano.Configuration.CliArgs as CLI
 import qualified Cardano.Configuration.File as File
+import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
+import Cardano.Configuration.Genesis.Byron (byronGenesisToJSON)
+import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
 import Cardano.Configuration.Genesis.Dijkstra (dijkstraGenesisCodec)
+import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Data.Aeson (Value, object, toJSON, (.=))
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Maybe (catMaybes)
 
+-- | Whether the rendered configuration includes the (large) decoded era genesis
+-- values.
+data GenesisRendering
+  = -- | Omit the genesis values; only their file reference\/hash appears (under
+    -- @ProtocolConfig@). The default for @cardano-config resolve@.
+    OmitGeneses
+  | -- | Include the decoded genesis value of every era (the @--with-geneses@ flag).
+    IncludeGeneses
+  deriving (Eq, Show)
+
 -- | Render the complete resolved configuration: each component under its name,
--- plus the operational CLI-only arguments under @Runtime@.
-nodeConfigurationToJSON :: NodeConfiguration -> Value
-nodeConfigurationToJSON nc =
+-- plus the operational CLI-only arguments under @Runtime@. With 'IncludeGeneses'
+-- the decoded era genesis values are added too.
+nodeConfigurationToJSON :: GenesisRendering -> NodeConfiguration -> Value
+nodeConfigurationToJSON geneses nc =
   object $
     [ "StorageConfig" .= toJSON (weakenStorage (storageConfiguration nc))
     , "ConsensusConfig" .= toJSON (weakenConsensus (consensusConfiguration nc))
@@ -36,13 +57,27 @@ nodeConfigurationToJSON nc =
     , "TestingConfig" .= toJSON (weakenTesting (testingConfiguration nc))
     , "Runtime" .= runtimeValue nc
     ]
-      -- The resolved (parsed) experimental genesis, rendered through its own
-      -- codec, so the dump shows the decoded genesis rather than just the file
-      -- reference (which still appears under @TestingConfig@).
-      <> catMaybes
-        [ ("ExperimentalGenesis" .=) . toJSONVia dijkstraGenesisCodec
-            <$> experimentalGenesisConfig nc
+      <> genesisFields
+  where
+    -- The resolved (parsed) era geneses, rendered through their own codecs (and,
+    -- for Byron, its canonical-JSON form), so the dump shows the decoded genesis
+    -- content rather than just the file reference and hash (which always appear
+    -- under @ProtocolConfig@). These are exactly the files read and hash-checked
+    -- while parsing the configuration. Included only under 'IncludeGeneses', as
+    -- they are large.
+    genesisFields = case geneses of
+      OmitGeneses -> []
+      IncludeGeneses ->
+        [ "ByronGenesis" .= byronGenesisToJSON (byronGenesisConfig nc)
+        , "ShelleyGenesis" .= toJSONVia shelleyGenesisCodec (shelleyGenesisConfig nc)
+        , "AlonzoGenesis" .= toJSONVia alonzoGenesisCodec (alonzoGenesisConfig nc)
+        , "ConwayGenesis" .= toJSONVia conwayGenesisCodec (conwayGenesisConfig nc)
         ]
+          -- The experimental (Dijkstra) genesis is optional: only when referenced.
+          <> catMaybes
+            [ ("ExperimentalGenesis" .=) . toJSONVia dijkstraGenesisCodec
+                <$> experimentalGenesisConfig nc
+            ]
 
 -- | Lift a resolved (@Identity@) field back into the @Maybe@-parameterised form
 -- the component's 'ToJSON' instance expects.

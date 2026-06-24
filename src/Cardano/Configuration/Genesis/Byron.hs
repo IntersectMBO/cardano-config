@@ -5,16 +5,21 @@
 module Cardano.Configuration.Genesis.Byron (
   ByronGenesisConfig,
   readByronGenesisConfig,
+  byronGenesisToJSON,
 ) where
 
-import Cardano.Chain.Genesis (Config, mkConfigFromFile)
+import Cardano.Chain.Genesis (Config, configGenesisData, mkConfigFromFile)
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashToBytes)
 import qualified Cardano.Crypto.Hashing as Byron
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic)
 import qualified Cardano.Crypto.Raw as Byron
 import Control.Monad.Trans.Except (runExceptT)
+import qualified Data.Aeson as Aeson
+import Data.Aeson (Value, object, (.=))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
+import Data.Functor.Identity (runIdentity)
+import qualified Text.JSON.Canonical as Canonical
 
 -- | The parsed Byron genesis (data, hash, network-magic requirement and UTxO
 -- configuration), as the ledger represents it.
@@ -37,3 +42,17 @@ readByronGenesisConfig rnm expected fp = do
   let expectedRaw :: Byron.Hash Byron.Raw
       expectedRaw = Byron.unsafeAbstractHashFromBytes (hashToBytes expected)
   first show <$> runExceptT (mkConfigFromFile rnm fp expectedRaw)
+
+-- | Render a parsed Byron genesis as an (aeson) JSON 'Value'. Byron genesis is
+-- /canonical/ JSON (not the @aeson@ JSON of the later eras), so we re-encode the
+-- genesis data through the ledger's canonical-JSON instance and reparse it as
+-- aeson — reproducing the on-disk genesis (the bytes the genesis hash is
+-- computed over). Used to render the resolved configuration; there is no
+-- matching parser.
+byronGenesisToJSON :: ByronGenesisConfig -> Value
+byronGenesisToJSON cfg =
+  case Aeson.eitherDecode (Canonical.renderCanonicalJSON canonical) of
+    Right v -> v
+    Left err -> object ["error" .= ("could not render the Byron genesis as JSON: " <> err)]
+  where
+    canonical = runIdentity (Canonical.toJSON (configGenesisData cfg))
