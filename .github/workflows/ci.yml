@@ -44,15 +44,19 @@ jobs:
         run: ./scripts/cabal-format.sh
 
   test:
-    name: Build & test
+    name: Build & test (GHC ${{ matrix.ghc }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ghc: ['9.6', '9.8', '9.10', '9.12', '9.14']
     steps:
       - uses: actions/checkout@v4
 
       - uses: haskell-actions/setup@v2
         id: setup
         with:
-          ghc-version: '9.14.1'
+          ghc-version: ${{ matrix.ghc }}
           cabal-version: '3.16.1.0'
 
       - name: Cache cabal store and build artifacts
@@ -61,9 +65,9 @@ jobs:
           path: |
             ${{ steps.setup.outputs.cabal-store }}
             dist-newstyle
-          key: ${{ runner.os }}-ghc9.14.1-${{ hashFiles('cabal.project', '**/*.cabal') }}
+          key: ${{ runner.os }}-ghc${{ matrix.ghc }}-${{ hashFiles('cabal.project', '**/*.cabal') }}
           restore-keys: |
-            ${{ runner.os }}-ghc9.14.1-
+            ${{ runner.os }}-ghc${{ matrix.ghc }}-
 
       - name: Update package indices
         run: cabal update

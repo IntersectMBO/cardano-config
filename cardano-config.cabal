@@ -14,6 +14,9 @@ copyright:
 
 category: Data
 build-type: Simple
+tested-with:
+  ghc ==9.6 || ==9.8 || ==9.10 || ==9.12 || ==9.14
+
 extra-doc-files:
   CHANGELOG.md
 
