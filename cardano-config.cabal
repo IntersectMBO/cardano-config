@@ -31,9 +31,7 @@ library
   import: warnings
   exposed-modules:
     Cardano.Configuration
-    Cardano.Configuration.Basic
     Cardano.Configuration.CliArgs
-    Cardano.Configuration.Common
     Cardano.Configuration.File
     Cardano.Configuration.File.Consensus
     Cardano.Configuration.File.Mempool
@@ -56,6 +54,8 @@ library
     Paths_cardano_config
 
   other-modules:
+    Cardano.Configuration.Basic
+    Cardano.Configuration.Common
     Paths_cardano_config
 
   build-depends:
