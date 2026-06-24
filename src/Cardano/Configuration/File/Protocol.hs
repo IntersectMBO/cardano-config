@@ -167,5 +167,11 @@ instance HasCodec (ProtocolConfiguration Maybe) where
         <*> hashedFileObjectCodec "ShelleyGenesisFile" "ShelleyGenesisHash" .= shelleyGenesis
         <*> hashedFileObjectCodec "AlonzoGenesisFile" "AlonzoGenesisHash" .= alonzoGenesis
         <*> hashedFileObjectCodec "ConwayGenesisFile" "ConwayGenesisHash" .= conwayGenesis
-        <*> optionalField "StartAsNonProducingNode" "Start without producing blocks" .= startAsNonProducingNode
+        <*> optionalField
+          "StartAsNonProducingNode"
+          ( "Start the node without block production even when block-forging credentials are supplied. "
+              <> "false (the default) behaves normally — producing blocks if credentials were supplied, "
+              <> "otherwise just running as a relay; true suppresses block production even with credentials present."
+          )
+          .= startAsNonProducingNode
         <*> checkpointsObjectCodec .= checkpointsFile
