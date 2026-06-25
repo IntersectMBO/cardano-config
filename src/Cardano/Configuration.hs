@@ -225,11 +225,13 @@ resolveConfigurationWith checks cli file = do
   --
   -- The networking role defaults (deadline peer targets and PeerSharing) are
   -- derived from whether the operator supplied block-forging credentials and
-  -- merged underneath the user's network partial, so an explicit file value
-  -- still wins (see 'File.withRoleDefaults').
+  -- slotted into the resolution order base < role < user, so an explicit file
+  -- value wins and the role default beats the base default (see
+  -- 'File.withRoleDefaults').
   let roleDefaults = File.networkRoleDefaults (roleFromCredentials (CLI.credentials cli))
-      netUser = runIdentity (File.networkConfiguration file)
-  network <- finalize $ File.finalizeNetwork (File.withRoleDefaults roleDefaults netUser)
+      netMerged = runIdentity (File.networkConfiguration file)
+      netUser = runIdentity (File.networkUserLayer file)
+  network <- finalize $ File.finalizeNetwork (File.withRoleDefaults roleDefaults netUser netMerged)
   testing <- finalize $ File.finalizeTesting (runIdentity (File.testingConfiguration file))
   mempool <- finalize $ File.finalizeMempool (runIdentity (File.mempoolConfiguration file))
   -- Local connections additionally take CLI overrides before being finalized.

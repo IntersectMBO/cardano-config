@@ -77,6 +77,7 @@ main = do
       , roleVariantParityCase
       , roleSelectionCase
       , rolePrecedenceCase
+      , roleBeatsBaseDefaultCase
       , mempoolAllUnsetCase
       , mempoolAllSetCase
       , mempoolMixedCase
@@ -282,6 +283,28 @@ rolePrecedenceCase = do
                 && deadlineTargetOfKnownPeers n == Just 100 -- unset in file, block-producer default
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
+
+-- | The role default beats a /base/ default for a role field the user did not
+-- set: resolution is @base \< role \< user@, so a value present only in the base
+-- defaults must not shadow the role default. The base @Network.json@ omits the
+-- role fields today, so this pins the ordering rather than relying on that.
+roleBeatsBaseDefaultCase :: IO Bool
+roleBeatsBaseDefaultCase =
+  report "role default overrides a base default (base < role < user)" $
+    if peerSharing resolved == Just False -- role's False beats the base's True
+      && deadlineTargetOfRootPeers resolved == Just 100 -- role's 100 beats the base's 7
+      then Nothing
+      else Just ("role default did not override the base default: " <> show resolved)
+ where
+  -- A base default that sets two role fields, with the user setting nothing. The
+  -- merged layer (base defaults plus the user layer) then equals the base here.
+  base =
+    emptyNetworkConfiguration
+      { peerSharing = Just True
+      , deadlineTargetOfRootPeers = Just 7
+      }
+  user = emptyNetworkConfiguration
+  resolved = withRoleDefaults blockProducerRoleDefaults user base
 
 -- | All three mempool timeouts unset resolves to the coupled default (1, 1.5, 5).
 mempoolAllUnsetCase :: IO Bool

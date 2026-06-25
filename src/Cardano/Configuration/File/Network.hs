@@ -13,6 +13,7 @@ module Cardano.Configuration.File.Network
   , networkRoleDefaults
   , blockProducerRoleDefaults
   , relayRoleDefaults
+  , emptyNetworkConfiguration
   ) where
 
 import Autodocodec
@@ -234,33 +235,42 @@ data BlockProducerOrRelay
   | IsRelay
   deriving (Eq, Show)
 
--- | Merge the role-derived defaults /underneath/ the user's partial network
--- configuration: the user value (from the file; these fields have no base default
--- and no CLI flag) wins, and the role default only fills a field the user left
--- unset. Only the eight fields the role variants set are touched — they are
--- exactly the ones the base @Network.json@ leaves unset; every other field
--- already carries its base default and is passed through unchanged.
+-- | Slot the role-derived defaults into the resolution order @base \< role \<
+-- user@ for the eight fields the role variants set (the deadline peer targets
+-- and @PeerSharing@; they have no CLI flag). For each such field the value the
+-- user wrote wins, then the role default, then the base default — so an explicit
+-- file value always wins, and the role default beats the base default rather than
+-- the other way around.
+--
+-- This needs the user's layer (no base) /and/ the full base-with-user merge: when
+-- the user set a field, @user@ supplies it (and equals @merged@); when the user
+-- did not, @merged@ holds the base value, so @role \<|\> merged@ lets the role
+-- default override it. Every other field has no role default and is passed
+-- through from @merged@ unchanged.
 withRoleDefaults ::
   -- | The role defaults (block producer or relay).
   NetworkConfiguration Maybe ->
-  -- | The user\/file\/base partial.
+  -- | The user-supplied layer alone (no base defaults merged in).
+  NetworkConfiguration Maybe ->
+  -- | The full merge of the base defaults with the user layer on top.
   NetworkConfiguration Maybe ->
   NetworkConfiguration Maybe
-withRoleDefaults role user =
-  user
-    { deadlineTargetOfRootPeers = deadlineTargetOfRootPeers user <|> deadlineTargetOfRootPeers role
-    , deadlineTargetOfKnownPeers = deadlineTargetOfKnownPeers user <|> deadlineTargetOfKnownPeers role
-    , deadlineTargetOfEstablishedPeers =
-        deadlineTargetOfEstablishedPeers user <|> deadlineTargetOfEstablishedPeers role
-    , deadlineTargetOfActivePeers = deadlineTargetOfActivePeers user <|> deadlineTargetOfActivePeers role
-    , deadlineTargetOfKnownBigLedgerPeers =
-        deadlineTargetOfKnownBigLedgerPeers user <|> deadlineTargetOfKnownBigLedgerPeers role
-    , deadlineTargetOfEstablishedBigLedgerPeers =
-        deadlineTargetOfEstablishedBigLedgerPeers user <|> deadlineTargetOfEstablishedBigLedgerPeers role
-    , deadlineTargetOfActiveBigLedgerPeers =
-        deadlineTargetOfActiveBigLedgerPeers user <|> deadlineTargetOfActiveBigLedgerPeers role
-    , peerSharing = peerSharing user <|> peerSharing role
+withRoleDefaults role user merged =
+  merged
+    { deadlineTargetOfRootPeers = pick deadlineTargetOfRootPeers
+    , deadlineTargetOfKnownPeers = pick deadlineTargetOfKnownPeers
+    , deadlineTargetOfEstablishedPeers = pick deadlineTargetOfEstablishedPeers
+    , deadlineTargetOfActivePeers = pick deadlineTargetOfActivePeers
+    , deadlineTargetOfKnownBigLedgerPeers = pick deadlineTargetOfKnownBigLedgerPeers
+    , deadlineTargetOfEstablishedBigLedgerPeers = pick deadlineTargetOfEstablishedBigLedgerPeers
+    , deadlineTargetOfActiveBigLedgerPeers = pick deadlineTargetOfActiveBigLedgerPeers
+    , peerSharing = pick peerSharing
     }
+ where
+  -- user value (if any) wins, then the role default, then the base value (held in
+  -- the merge when the user left the field unset).
+  pick :: (NetworkConfiguration Maybe -> Maybe a) -> Maybe a
+  pick f = f user <|> f role <|> f merged
 
 -- | The role defaults for the given role.
 networkRoleDefaults :: BlockProducerOrRelay -> NetworkConfiguration Maybe

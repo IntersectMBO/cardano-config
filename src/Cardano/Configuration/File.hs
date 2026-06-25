@@ -44,6 +44,7 @@ module Cardano.Configuration.File
   , networkRoleDefaults
   , blockProducerRoleDefaults
   , relayRoleDefaults
+  , emptyNetworkConfiguration
   ) where
 
 import Autodocodec (JSONCodec)
@@ -60,6 +61,7 @@ import Cardano.Configuration.File.Merge
   , loadBaseDefault
   , parseSection
   , runCodec
+  , sectionUserLayer
   , splitEnvelope
   )
 import Cardano.Configuration.File.Network
@@ -105,6 +107,13 @@ data NodeConfigurationFromFileF f
   , consensusConfiguration :: f (ConsensusConfiguration Maybe)
   , protocolConfiguration :: f (ProtocolConfiguration Maybe)
   , networkConfiguration :: f (NetworkConfiguration Maybe)
+  , networkUserLayer :: f (NetworkConfiguration Maybe)
+  -- ^ The user-supplied network layer alone, /without/ the base defaults merged
+  --     in (unlike 'networkConfiguration', which is the full merge of the base
+  --     defaults with the user layer on top).
+  --     Resolution needs to tell a value the user actually wrote from one that
+  --     only came from the base defaults, so the role defaults can sit between
+  --     them (@base \< role \< user@); see 'withRoleDefaults'.
   , localConnectionsConfig :: f (LocalConnectionsConfig Maybe)
   , testingConfiguration :: f (TestingConfiguration Maybe)
   , mempoolConfiguration :: f (MempoolConfiguration Maybe)
@@ -181,6 +190,10 @@ parseConfigurationVersion1 root configValue = do
   consensus <- parseSection root configValue "ConsensusConfig"
   protocol <- parseSection root configValue "ProtocolConfig"
   network <- parseSection root configValue "NetworkConfig"
+  -- The user's network layer on its own (no base defaults), so resolution can
+  -- distinguish a user-set field from a base default (see 'withRoleDefaults').
+  networkUser <-
+    sectionUserLayer root configValue "NetworkConfig" >>= runCodec Nothing "NetworkConfig"
   localConnections <- parseSection root configValue "LocalConnectionsConfig"
   testing <- parseSection root configValue "TestingConfig"
   mempool <- parseSection root configValue "MempoolConfig"
@@ -206,6 +219,7 @@ parseConfigurationVersion1 root configValue = do
       , consensusConfiguration = Identity consensus
       , protocolConfiguration = Identity protocol
       , networkConfiguration = Identity network
+      , networkUserLayer = Identity networkUser
       , localConnectionsConfig = Identity localConnections
       , testingConfiguration = Identity testing
       , mempoolConfiguration = Identity mempool
