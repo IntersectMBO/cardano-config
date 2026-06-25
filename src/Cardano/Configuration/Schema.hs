@@ -341,7 +341,7 @@ draftURI = "http://json-schema.org/draft-07/schema#"
 -- | The @$id@ for a committed schema file, where it is published in the repo.
 schemaId :: FilePath -> Text
 schemaId file =
-  "https://raw.githubusercontent.com/IntersectMBO/cardano-base/master/cardano-config/schemas/"
+  "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/"
     <> T.pack file
 
 -- | Post-process a component's raw schema into its published form.

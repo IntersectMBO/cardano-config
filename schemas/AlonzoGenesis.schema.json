@@ -1,5 +1,5 @@
 {
-    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/master/cardano-config/schemas/AlonzoGenesis.schema.json",
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/AlonzoGenesis.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
     "description": "AlonzoGenesis",
     "properties": {
