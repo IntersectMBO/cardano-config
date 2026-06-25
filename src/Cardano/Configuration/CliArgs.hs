@@ -236,7 +236,7 @@ parseNodeHostIPv6Address s =
 parsePort :: Parser PortNumber
 parsePort =
   option
-    (fromIntegral <$> auto @Int)
+    (bounded "PORT")
     $ mconcat
       [ long "port"
       , metavar "PORT"
@@ -426,10 +426,15 @@ parseShutdownOn =
           , hidden
           ]
     ]
- where
-  bounded :: forall a. (Bounded a, Integral a, Show a) => String -> ReadM a
-  bounded t = eitherReader $ \s -> do
-    i <- readEither @Integer s
-    when (i < fromIntegral (minBound @a)) $ Left $ t <> " must not be less than " <> show (minBound @a)
-    when (i > fromIntegral (maxBound @a)) $ Left $ t <> " must not greater than " <> show (maxBound @a)
-    pure (fromIntegral i)
+
+-- | An 'option' reader that parses an integer and rejects values outside the
+-- target type's bounds, rather than silently wrapping (as @fromIntegral <$> auto@
+-- would). The string argument names the value in the error message.
+bounded :: forall a. (Bounded a, Integral a, Show a) => String -> ReadM a
+bounded t = eitherReader $ \s -> do
+  i <- readEither @Integer s
+  when (i < fromIntegral (minBound @a)) $ Left $ t <> " must not be less than " <> show (minBound @a)
+  when (i > fromIntegral (maxBound @a)) $
+    Left $
+      t <> " must not be greater than " <> show (maxBound @a)
+  pure (fromIntegral i)
