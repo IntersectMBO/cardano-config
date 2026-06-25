@@ -51,6 +51,9 @@ import Options.Applicative
 import System.Posix.Types (Fd (..))
 import Text.Read (readEither, readMaybe)
 
+-- | A condition under which the node shuts itself down once the chain database
+-- has synced up to the given point: a slot (@--shutdown-on-slot-synced@) or a
+-- block number (@--shutdown-on-block-synced@).
 data ShutdownOn
   = ShutdownAtSlot Word64
   | ShutdownAtBlock Word64
@@ -58,20 +61,32 @@ data ShutdownOn
 
 type Host = Text
 
+-- | How the node reaches @cardano-tracer@: over a local socket\/named pipe
+-- ('TracerConnectViaPipe') or a network address ('TracerConnectViaRemote').
 data TracerConnectionMethod
   = TracerConnectViaPipe FilePath
   | TracerConnectViaRemote Host PortNumber
   deriving Show
 
+-- | A tracer connection: the socket mode (@"Accept"@ to accept an incoming
+-- @cardano-tracer@ connection, @"Connect"@ to dial out to a listening one)
+-- paired with the 'TracerConnectionMethod' to use.
 data TracerConnection
   = TracerConnection String TracerConnectionMethod
   deriving Show
 
+-- | Where the Shelley KES signing key comes from: a key file on disk
+-- ('KESKeyFilePath') or a running KES agent's socket ('KESAgentSocketPath').
 data KESSource
   = KESKeyFilePath FilePath
   | KESAgentSocketPath FilePath
   deriving (Eq, Show)
 
+-- | The block-forging credentials supplied on the command line: the Byron
+-- delegation certificate and signing key, the Shelley KES\/VRF keys and
+-- operational certificate, or a single bulk credentials file. All are optional;
+-- their presence is what makes the node a block producer (see
+-- @roleFromCredentials@).
 data Credentials = Credentials
   { byronDelegationCertificate :: Maybe FilePath
   , byronSigningKey :: Maybe FilePath
