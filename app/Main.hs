@@ -20,7 +20,8 @@ import Cardano.Configuration.Schema
   , legacyOneFileConfigSchemaWithDefaults
   , splitConfigSchemaWithDefaults
   )
-import Control.Exception (SomeException, displayException, try)
+import Control.Exception (SomeException, displayException)
+import Control.Exception.Safe (try)
 import Data.Aeson (Value)
 import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
 import qualified Data.ByteString as BS
@@ -151,14 +152,15 @@ run (Schema cmd) = runSchema cmd
 -- | Resolve a configuration and print it as YAML.
 runResolve :: CliArgs -> GenesisRendering -> IO ()
 runResolve cli geneses = do
-  result <- try (parseConfigurationFiles (configFilePath cli))
-  case result of
-    Left err -> die (displayException (err :: SomeException))
-    Right (file, warnings) -> do
-      mapM_ (\w -> hPutStrLn stderr ("Warning: " <> renderConfigWarning w)) warnings
-      case resolveConfiguration cli file of
-        Left err -> die (displayException err)
-        Right nc -> BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
+  -- 'try' here is from "Control.Exception.Safe": it catches only synchronous
+  -- exceptions, so a Ctrl-C (an async exception) still aborts the process
+  -- rather than being turned into a 'die' message.
+  (file, warnings) <-
+    either (\err -> die (displayException (err :: SomeException))) pure
+      =<< try (parseConfigurationFiles (configFilePath cli))
+  mapM_ (\w -> hPutStrLn stderr ("Warning: " <> renderConfigWarning w)) warnings
+  nc <- either (die . displayException) pure (resolveConfiguration cli file)
+  BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
  where
   -- Stable, readable output: keys sorted alphabetically, unset values omitted.
   yamlConfig = setConfDropNull True (setConfCompare compare Yaml.defConfig)

@@ -141,6 +141,7 @@ executable cardano-config
     bytestring,
     cardano-config:internal,
     optparse-applicative,
+    safe-exceptions,
     text,
     yaml,
 
