@@ -21,6 +21,6 @@
     "TimeWaitTimeout": 60,
     "TxSubmissionInitDelay": 0,
     "MinBigLedgerPeersForTrustedState": 5,
-    "TxSubmissionLogicVersion": "V1",
-    "ResponderCoreAffinityPolicy": "Disabled"
+    "TxSubmissionLogicVersion": "TxSubmissionLogicV1",
+    "ResponderCoreAffinityPolicy": "NoResponderCoreAffinity"
 }

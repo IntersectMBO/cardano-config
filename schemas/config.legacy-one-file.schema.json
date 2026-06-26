@@ -432,8 +432,12 @@
             "type": "string"
         },
         "ResponderCoreAffinityPolicy": {
-            "default": "Disabled",
+            "default": "NoResponderCoreAffinity",
             "description": "Whether responders are pinned to a core",
+            "enum": [
+                "NoResponderCoreAffinity",
+                "ResponderCoreAffinity"
+            ],
             "title": "ResponderCoreAffinityPolicy",
             "type": "string"
         },
@@ -682,8 +686,12 @@
             "type": "number"
         },
         "TxSubmissionLogicVersion": {
-            "default": "V1",
+            "default": "TxSubmissionLogicV1",
             "description": "Which tx-submission inbound logic to run",
+            "enum": [
+                "TxSubmissionLogicV1",
+                "TxSubmissionLogicV2"
+            ],
             "title": "TxSubmissionLogicVersion",
             "type": "string"
         }

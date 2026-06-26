@@ -2,6 +2,8 @@
 module Cardano.Configuration.File.Network
   ( NetworkConfiguration (..)
   , DiffusionMode (..)
+  , ResponderCoreAffinityPolicy (..)
+  , TxSubmissionLogicVersion (..)
   , AcceptedConnectionsLimit (..)
   , LocalConnectionsConfig (..)
   , finalizeNetwork
@@ -36,6 +38,33 @@ data DiffusionMode
   deriving (FromJSON, ToJSON) via (Autodocodec DiffusionMode)
 
 instance HasCodec DiffusionMode where
+  codec = shownBoundedEnumCodec
+
+-- | Whether mux responders are pinned to a CPU core. Enumerated (rather than a
+-- free 'String') so the schema lists the valid values and typos are caught at
+-- parse time. The spellings match the node's @ResponderCoreAffinityPolicy@
+-- constructors (@cardano-node@'s @Cardano.Node.Configuration.POM@), which is
+-- what consumes this value.
+data ResponderCoreAffinityPolicy
+  = NoResponderCoreAffinity
+  | ResponderCoreAffinity
+  deriving (Generic, Show, Eq, Enum, Bounded)
+  deriving (FromJSON, ToJSON) via (Autodocodec ResponderCoreAffinityPolicy)
+
+instance HasCodec ResponderCoreAffinityPolicy where
+  codec = shownBoundedEnumCodec
+
+-- | Which tx-submission inbound logic the node runs. Enumerated (rather than a
+-- free 'String') so the schema lists the valid values and typos are caught at
+-- parse time. The spellings match @ouroboros-network@'s
+-- @TxSubmissionLogicVersion@ constructors, which is what consumes this value.
+data TxSubmissionLogicVersion
+  = TxSubmissionLogicV1
+  | TxSubmissionLogicV2
+  deriving (Generic, Show, Eq, Enum, Bounded)
+  deriving (FromJSON, ToJSON) via (Autodocodec TxSubmissionLogicVersion)
+
+instance HasCodec TxSubmissionLogicVersion where
   codec = shownBoundedEnumCodec
 
 -- | Limits on the number of accepted connections.
@@ -83,9 +112,9 @@ data NetworkConfiguration f = NetworkConfiguration
   , syncTargetOfActiveBigLedgerPeers :: f Int
   , minBigLedgerPeersForTrustedState :: f Int
   , peerSharing :: Maybe Bool
-  , responderCoreAffinityPolicy :: f String
+  , responderCoreAffinityPolicy :: f ResponderCoreAffinityPolicy
   , experimentalProtocolsEnabled :: f Bool
-  , txSubmissionLogicVersion :: f String
+  , txSubmissionLogicVersion :: f TxSubmissionLogicVersion
   , txSubmissionInitDelay :: f DiffTime
   }
   deriving Generic
