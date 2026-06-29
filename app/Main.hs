@@ -20,12 +20,13 @@ import Cardano.Configuration.Schema
   , legacyOneFileConfigSchemaWithDefaults
   , splitConfigSchemaWithDefaults
   )
-import Control.Exception (SomeException, displayException)
-import Control.Exception.Safe (try)
+import Control.Exception (displayException, throwIO)
+import Control.Exception.Safe (handleAny)
 import Data.Aeson (Value)
 import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy.Char8 as L
+import Data.Foldable (for_)
 import Data.List (intercalate)
 import qualified Data.Text as T
 import Data.Yaml.Pretty (encodePretty, setConfCompare, setConfDropNull)
@@ -151,19 +152,14 @@ run (Schema cmd) = runSchema cmd
 
 -- | Resolve a configuration and print it as YAML.
 runResolve :: CliArgs -> GenesisRendering -> IO ()
-runResolve cli geneses = do
-  -- 'try' here is from "Control.Exception.Safe": it catches only synchronous
-  -- exceptions, so a Ctrl-C (an async exception) still aborts the process
-  -- rather than being turned into a 'die' message.
-  (file, warnings) <-
-    either (\err -> die (displayException (err :: SomeException))) pure
-      =<< try (parseConfigurationFiles (configFilePath cli))
-  mapM_ (\w -> hPutStrLn stderr ("Warning: " <> renderConfigWarning w)) warnings
-  nc <- either (die . displayException) pure (resolveConfiguration cli file)
-  BS.putStr (encodePretty yamlConfig (nodeConfigurationToJSON geneses nc))
+runResolve cli geneses = handleAny (die . displayException) $ do
+  (file, warnings) <- parseConfigurationFiles (configFilePath cli)
+  for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
+  nc <- either throwIO pure $ resolveConfiguration cli file
+  BS.putStr $ encodePretty yamlConfig (nodeConfigurationToJSON geneses nc)
  where
   -- Stable, readable output: keys sorted alphabetically, unset values omitted.
-  yamlConfig = setConfDropNull True (setConfCompare compare Yaml.defConfig)
+  yamlConfig = setConfDropNull True $ setConfCompare compare Yaml.defConfig
 
 -- | Print a JSON Schema, or list the component names.
 runSchema :: SchemaCmd -> IO ()

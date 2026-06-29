@@ -36,7 +36,7 @@ data GenesisReadError
   = -- | The file could not be read.
     GenesisFileReadError FilePath IOException
   | -- | The file's @Blake2b_256@ hash did not match the expected hash from the
-    --       configuration (expected, then actual).
+    -- configuration (expected, then actual).
     GenesisHashMismatch
       FilePath
       (Hash Blake2b_256 ByteString)
@@ -60,20 +60,19 @@ readGenesisFileWith ::
   -- | The codec to decode the genesis with.
   JSONCodec a ->
   -- | The expected file hash, if the configuration pinned one.
-  Maybe (Hash Blake2b_256 ByteString) ->
+  Hash Blake2b_256 ByteString ->
   -- | The file to read.
   FilePath ->
   IO (Either GenesisReadError a)
-readGenesisFileWith genesisCodec mExpected fp = do
+readGenesisFileWith genesisCodec expected fp = do
   result <- try (BS.readFile fp)
   pure $ case result of
     Left e -> Left (GenesisFileReadError fp e)
     Right bytes ->
       let actual = hashWith id bytes
-       in case mExpected of
-            Just expected
-              | expected /= actual -> Left (GenesisHashMismatch fp expected actual)
-            _ ->
+       in if expected /= actual
+          then Left (GenesisHashMismatch fp expected actual)
+          else
               case Aeson.eitherDecodeStrict' bytes of
                 Left err -> Left (GenesisDecodeError fp err)
                 Right value ->
@@ -83,7 +82,7 @@ readGenesisFileWith genesisCodec mExpected fp = do
 
 -- | Read and decode a Dijkstra-era genesis file.
 readDijkstraGenesisFile ::
-  Maybe (Hash Blake2b_256 ByteString) ->
+  Hash Blake2b_256 ByteString ->
   FilePath ->
   IO (Either GenesisReadError DijkstraGenesis)
 readDijkstraGenesisFile = readGenesisFileWith dijkstraGenesisCodec

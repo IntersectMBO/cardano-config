@@ -37,7 +37,8 @@ snapshotIntervalCodec = bimapCodec validate id codec
   validate w = Right w
 
 -- | An explicit set of snapshot policy options. All fields are optional; when
--- unset the node applies its own defaults.
+-- unset the node applies its own defaults (which are the Mithril values in
+-- @mithrilSnapshotOptions@).
 data SnapshotOptions = SnapshotOptions
   { snapshotInterval :: Maybe Word64
   -- ^ How many slots between attempts to write a snapshot to disk (non-zero).
@@ -135,12 +136,14 @@ resolveSnapshotPolicy (CustomSnapshotPolicy user) =
 data LedgerDbBackendSelector
   = -- | The in-memory backend.
     V2InMemory
-  | -- | The LSM-tree backend. The first field is an optional custom path to the
-    --       database (the @LSMDatabasePath@ key); if it is not provided, the default
-    --       is used. The second field is an optional directory into which the backend
-    --       exports snapshots as it takes them (the @LSMExportPath@ key). Both are
-    --       only meaningful for the LSM backend.
-    V2LSM (Maybe FilePath) (Maybe FilePath)
+  | -- | The LSM-tree backend.
+    V2LSM
+      -- | An optional custom path to the
+      -- database (the @LSMDatabasePath@ key)
+      (Maybe FilePath)
+      -- | An optional directory into which the backend
+      -- exports snapshots as it takes them (the @LSMExportPath@ key)
+      (Maybe FilePath)
   deriving (Generic, Show)
 
 -- | The @Backend@, @LSMDatabasePath@ and @LSMExportPath@ keys, parsed together

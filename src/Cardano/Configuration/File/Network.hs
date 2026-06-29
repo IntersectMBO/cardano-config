@@ -19,7 +19,7 @@ module Cardano.Configuration.File.Network
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (diffTimeCodec, requireField)
+import Cardano.Configuration.Basic (diffTimeCodec, requireField, ErrorMessage)
 import Cardano.Configuration.Common (filePathCodec)
 import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
@@ -68,7 +68,11 @@ instance HasCodec TxSubmissionLogicVersion where
   codec = shownBoundedEnumCodec
 
 -- | Limits on the number of accepted connections.
-data AcceptedConnectionsLimit = AcceptedConnectionsLimit Word32 Word32 DiffTime
+data AcceptedConnectionsLimit = AcceptedConnectionsLimit {
+  hardLimit :: Word32,
+  softLimit :: Word32,
+  delayOnSoftLimit :: DiffTime
+  }
   deriving (Generic, Show)
   deriving (FromJSON, ToJSON) via (Autodocodec AcceptedConnectionsLimit)
 
@@ -77,11 +81,11 @@ instance HasCodec AcceptedConnectionsLimit where
     object "AcceptedConnectionsLimit" $
       AcceptedConnectionsLimit
         <$> requiredField "hardLimit" "Hard limit on the number of connections"
-          .= (\(AcceptedConnectionsLimit h _ _) -> h)
+          .= hardLimit
         <*> requiredField "softLimit" "Soft limit on the number of connections"
-          .= (\(AcceptedConnectionsLimit _ s _) -> s)
+          .= softLimit
         <*> requiredFieldWith "delay" diffTimeCodec "Delay, in seconds, applied once the soft limit is reached"
-          .= (\(AcceptedConnectionsLimit _ _ d) -> d)
+          .= delayOnSoftLimit
 
 -- | Options related to networking. Fields that have an always-applied default
 -- (see @defaults\/Network.json@) carry the @f@ parameter; the deadline peer
@@ -197,7 +201,7 @@ instance HasCodec (NetworkConfiguration Maybe) where
 
 -- | Resolve a partial network configuration, taking the defaulted fields from
 -- the (always-applied) base defaults.
-finalizeNetwork :: NetworkConfiguration Maybe -> Either String (NetworkConfiguration Identity)
+finalizeNetwork :: NetworkConfiguration Maybe -> Either ErrorMessage (NetworkConfiguration Identity)
 finalizeNetwork c = do
   diffusionMode' <- requireField "DiffusionMode" (diffusionMode c)
   maxBulk <- requireField "MaxConcurrencyBulkSync" (maxConcurrencyBulkSync c)
@@ -226,34 +230,35 @@ finalizeNetwork c = do
   txInitDelay <- requireField "TxSubmissionInitDelay" (txSubmissionInitDelay c)
   pure $
     NetworkConfiguration
-      diffusionMode'
-      maxBulk
-      maxDeadline
-      protocolIdle
-      timeWait
-      egress
-      chainSyncIdle
-      acceptedLimit
-      (deadlineTargetOfRootPeers c)
-      (deadlineTargetOfKnownPeers c)
-      (deadlineTargetOfEstablishedPeers c)
-      (deadlineTargetOfActivePeers c)
-      (deadlineTargetOfKnownBigLedgerPeers c)
-      (deadlineTargetOfEstablishedBigLedgerPeers c)
-      (deadlineTargetOfActiveBigLedgerPeers c)
-      syncRoot
-      syncKnown
-      syncEstablished
-      syncActive
-      syncKnownBig
-      syncEstBig
-      syncActiveBig
-      minBigTrusted
-      (peerSharing c)
-      responderCore
-      experimental
-      txLogic
-      txInitDelay
+     { diffusionMode = diffusionMode'
+     , maxConcurrencyBulkSync = maxBulk
+     , maxConcurrencyDeadline = maxDeadline
+     , protocolIdleTimeout = protocolIdle
+     , timeWaitTimeout = timeWait
+     , egressPollInterval = egress
+     , chainSyncIdleTimeout = chainSyncIdle
+     , acceptedConnectionsLimit = acceptedLimit
+     , deadlineTargetOfRootPeers = deadlineTargetOfRootPeers c
+     , deadlineTargetOfKnownPeers = deadlineTargetOfKnownPeers c
+     , deadlineTargetOfEstablishedPeers = deadlineTargetOfEstablishedPeers c
+     , deadlineTargetOfActivePeers = deadlineTargetOfActivePeers c
+     , deadlineTargetOfKnownBigLedgerPeers = deadlineTargetOfKnownBigLedgerPeers c
+     , deadlineTargetOfEstablishedBigLedgerPeers = deadlineTargetOfEstablishedBigLedgerPeers c
+     , deadlineTargetOfActiveBigLedgerPeers = deadlineTargetOfActiveBigLedgerPeers c
+     , syncTargetOfRootPeers = syncRoot
+     , syncTargetOfKnownPeers = syncKnown
+     , syncTargetOfEstablishedPeers = syncEstablished
+     , syncTargetOfActivePeers = syncActive
+     , syncTargetOfKnownBigLedgerPeers = syncKnownBig
+     , syncTargetOfEstablishedBigLedgerPeers = syncEstBig
+     , syncTargetOfActiveBigLedgerPeers = syncActiveBig
+     , minBigLedgerPeersForTrustedState = minBigTrusted
+     , peerSharing = peerSharing c
+     , responderCoreAffinityPolicy = responderCore
+     , experimentalProtocolsEnabled = experimental
+     , txSubmissionLogicVersion = txLogic
+     , txSubmissionInitDelay = txInitDelay
+     }
 
 -- | Whether the node is a block producer or a relay. Derived from whether the
 -- operator supplied block-forging credentials (see
@@ -281,7 +286,7 @@ withRoleDefaults ::
   NetworkConfiguration Maybe ->
   -- | The user-supplied layer alone (no base defaults merged in).
   NetworkConfiguration Maybe ->
-  -- | The full merge of the base defaults with the user layer on top.
+  -- | The base defaults.
   NetworkConfiguration Maybe ->
   NetworkConfiguration Maybe
 withRoleDefaults role user merged =
@@ -408,7 +413,7 @@ instance HasCodec (LocalConnectionsConfig Maybe) where
 -- | Resolve a partial local-connections configuration, taking @EnableRpc@ from
 -- the (always-applied) defaults.
 finalizeLocalConnections ::
-  LocalConnectionsConfig Maybe -> Either String (LocalConnectionsConfig Identity)
+  LocalConnectionsConfig Maybe -> Either ErrorMessage (LocalConnectionsConfig Identity)
 finalizeLocalConnections c = do
   rpc <- requireField "EnableRpc" (enableRpc c)
   pure $ LocalConnectionsConfig (socketPath c) rpc (rpcSocketPath c)

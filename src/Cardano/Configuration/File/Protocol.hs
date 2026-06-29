@@ -5,7 +5,7 @@ module Cardano.Configuration.File.Protocol
 
     -- * Hashed files
   , Hashed (..)
-  , optionalHashedFileObjectCodec
+  , MaybeHashed (..)
   , optionalHashedGenesisObjectCodec
 
     -- * Particular eras
@@ -19,16 +19,22 @@ import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex, hashToTextAsHe
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString (ByteString)
 import Data.Functor.Identity (Identity)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word
 import GHC.Generics
 
--- | A maybe hashed entity, possibly a file.
+-- | A hashed entity, possibly a file.
 data Hashed a = Hashed
   { hashed :: a
-  , hash :: Maybe (Hash Blake2b_256 ByteString)
+  , hash :: Hash Blake2b_256 ByteString
+  }
+  deriving (Generic, Show)
+
+-- | A maybe hashed entity, possibly a file.
+data MaybeHashed a = MaybeHashed
+  { maybeHashed :: a
+  , maybeHash :: Maybe (Hash Blake2b_256 ByteString)
   }
   deriving (Generic, Show)
 
@@ -47,19 +53,14 @@ hashCodec =
     (codec @Text)
     <?> "Blake2b_256 hash"
 
--- | An object-codec fragment reading a file path and its optional hash from two
--- sibling keys of the enclosing object.
 -- | A required genesis file together with its (mandatory) hash: a genesis file
 -- must always be pinned to a hash, so the hash key is required whenever the file
 -- is present. The hash is stored as @'Just'@.
-hashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Hashed FilePath)
-hashedFileObjectCodec fileKey hashKey =
+hashedGenesisObjectCodec :: Text -> Text -> JSONObjectCodec (Hashed FilePath)
+hashedGenesisObjectCodec fileKey hashKey =
   Hashed
     <$> requiredFieldWith fileKey filePathCodec "Path to the genesis file" .= hashed
-    <*> dimapCodec Just (fromMaybe noHash) (requiredFieldWith hashKey hashCodec "Hash of the genesis file")
-      .= hash
- where
-  noHash = error (T.unpack hashKey <> " unexpectedly absent")
+    <*> requiredFieldWith hashKey hashCodec "Hash of the genesis file" .= hash
 
 -- | An optional genesis file whose hash is mandatory once the file is given:
 -- 'Nothing' when the file key is absent, but if the file key is present the hash
@@ -73,16 +74,16 @@ optionalHashedGenesisObjectCodec fileKey hashKey =
       <*> optionalFieldWith hashKey hashCodec "Hash of the genesis file" .= snd
  where
   toG (Nothing, Nothing) = Right Nothing
-  toG (Just f, Just h) = Right (Just (Hashed f (Just h)))
+  toG (Just f, Just h) = Right (Just (Hashed f h))
   toG (Just _, Nothing) =
     Left (T.unpack hashKey <> " is required when " <> T.unpack fileKey <> " is provided")
   toG (Nothing, Just _) =
     Left (T.unpack hashKey <> " was given without " <> T.unpack fileKey)
   fromG Nothing = (Nothing, Nothing)
-  fromG (Just (Hashed f mh)) = (Just f, mh)
+  fromG (Just (Hashed f mh)) = (Just f, Just mh)
 
--- | An optional hashed file: 'Nothing' when the file key is absent.
-optionalHashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (Hashed FilePath))
+-- | An optional (optionally hashed) file: 'Nothing' when the file key is absent.
+optionalHashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (MaybeHashed FilePath))
 optionalHashedFileObjectCodec fileKey hashKey =
   dimapCodec toG fromG $
     (,)
@@ -90,9 +91,9 @@ optionalHashedFileObjectCodec fileKey hashKey =
       <*> optionalFieldWith hashKey hashCodec "Hash of the file" .= snd
  where
   toG (Nothing, _) = Nothing
-  toG (Just f, mh) = Just (Hashed f mh)
+  toG (Just f, mh) = Just (MaybeHashed f mh)
   fromG Nothing = (Nothing, Nothing)
-  fromG (Just (Hashed f mh)) = (Just f, mh)
+  fromG (Just (MaybeHashed f mh)) = (Just f, mh)
 
 -- | Whether the Byron network magic is required. Enumerated so the schema lists
 -- the valid values and typos are caught at parse time.
@@ -119,7 +120,7 @@ data ByronGenesisConfiguration = ByronGenesisConfiguration
 byronGenesisObjectCodec :: JSONObjectCodec ByronGenesisConfiguration
 byronGenesisObjectCodec =
   ByronGenesisConfiguration
-    <$> hashedFileObjectCodec "ByronGenesisFile" "ByronGenesisHash" .= byronGenesisFile
+    <$> hashedGenesisObjectCodec "ByronGenesisFile" "ByronGenesisHash" .= byronGenesisFile
     <*> optionalField "RequiresNetworkMagic" "Whether network magic is required"
       .= byronReqNetworkMagic
     <*> optionalFieldWith "PBftSignatureThreshold" doubleCodec "Byron PBFT signature threshold"
@@ -132,7 +133,7 @@ byronGenesisObjectCodec =
       .= byronSupportedProtocolVersionAlt
 
 -- | The genesis file (and optional hash) for the checkpoints.
-checkpointsObjectCodec :: JSONObjectCodec (Maybe (Hashed FilePath))
+checkpointsObjectCodec :: JSONObjectCodec (Maybe (MaybeHashed FilePath))
 checkpointsObjectCodec = optionalHashedFileObjectCodec "CheckpointsFile" "CheckpointsFileHash"
 
 -- | Configuration for the protocol
@@ -142,7 +143,7 @@ data ProtocolConfiguration f = ProtocolConfiguration
   , alonzoGenesis :: !(Hashed FilePath)
   , conwayGenesis :: !(Hashed FilePath)
   , startAsNonProducingNode :: !(f Bool)
-  , checkpointsFile :: !(Maybe (Hashed FilePath))
+  , checkpointsFile :: !(Maybe (MaybeHashed FilePath))
   }
   deriving Generic
 
@@ -164,9 +165,9 @@ instance HasCodec (ProtocolConfiguration Maybe) where
     object "ProtocolConfiguration" $
       ProtocolConfiguration
         <$> byronGenesisObjectCodec .= byronGenesis
-        <*> hashedFileObjectCodec "ShelleyGenesisFile" "ShelleyGenesisHash" .= shelleyGenesis
-        <*> hashedFileObjectCodec "AlonzoGenesisFile" "AlonzoGenesisHash" .= alonzoGenesis
-        <*> hashedFileObjectCodec "ConwayGenesisFile" "ConwayGenesisHash" .= conwayGenesis
+        <*> hashedGenesisObjectCodec "ShelleyGenesisFile" "ShelleyGenesisHash" .= shelleyGenesis
+        <*> hashedGenesisObjectCodec "AlonzoGenesisFile" "AlonzoGenesisHash" .= alonzoGenesis
+        <*> hashedGenesisObjectCodec "ConwayGenesisFile" "ConwayGenesisHash" .= conwayGenesis
         <*> optionalField
           "StartAsNonProducingNode"
           ( "Start the node without block production even when block-forging credentials are supplied. "

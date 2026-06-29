@@ -4,6 +4,7 @@ module Cardano.Configuration.Basic
     diffTimeCodec
 
     -- * Resolution
+  , ErrorMessage
   , requireField
   ) where
 
@@ -11,10 +12,12 @@ import Autodocodec (JSONCodec, dimapCodec, scientificCodec)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
 
+type ErrorMessage = String
+
 -- | Turn an @f@-parameter field into its resolved 'Identity' form. The value is
 -- expected to have been supplied by the always-applied base defaults, so a
 -- missing one is a configuration-packaging error and is reported by name.
-requireField :: String -> Maybe a -> Either String (Identity a)
+requireField :: String -> Maybe a -> Either ErrorMessage (Identity a)
 requireField name = maybe (Left ("missing default value for " <> name)) (Right . Identity)
 
 -- | A codec for 'DiffTime', represented in JSON as a (possibly fractional)

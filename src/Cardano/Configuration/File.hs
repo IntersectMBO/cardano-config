@@ -109,18 +109,19 @@ data NodeConfigurationFromFileF f
   , networkConfiguration :: f (NetworkConfiguration Maybe)
   , networkUserLayer :: f (NetworkConfiguration Maybe)
   -- ^ The user-supplied network layer alone, /without/ the base defaults merged
-  --     in (unlike 'networkConfiguration', which is the full merge of the base
-  --     defaults with the user layer on top).
-  --     Resolution needs to tell a value the user actually wrote from one that
-  --     only came from the base defaults, so the role defaults can sit between
-  --     them (@base \< role \< user@); see 'withRoleDefaults'.
+  -- in (unlike 'networkConfiguration', which is the full merge of the base
+  -- defaults with the user layer on top).
+  --
+  -- Resolution needs to tell a value the user actually wrote from one that only
+  -- came from the base defaults, so the role defaults can sit between them
+  -- (@base \< role \< user@); see 'withRoleDefaults'.
   , localConnectionsConfig :: f (LocalConnectionsConfig Maybe)
   , testingConfiguration :: f (TestingConfiguration Maybe)
   , mempoolConfiguration :: f (MempoolConfiguration Maybe)
   , tracingConfiguration :: TracingConfiguration
   -- ^ Tracing keys, captured opaquely; see 'TracingConfiguration'. Unlike the
-  --     other components this is never read from a sub-file: the node's tracing
-  --     system resolves its own @HermodTracing@ file indirection.
+  -- other components this is never read from a sub-file: the node's tracing
+  -- system resolves its own @HermodTracing@ file indirection.
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
   , shelleyGenesisConfig :: ShelleyGenesis
@@ -131,10 +132,10 @@ data NodeConfigurationFromFileF f
   -- ^ The parsed Conway genesis (read from the @ConwayGenesisFile@).
   , experimentalGenesisConfig :: Maybe DijkstraGenesis
   -- ^ The experimental (Dijkstra) genesis, read and decoded from the
-  --     @DijkstraGenesisFile@ referenced by the testing configuration (if any).
+  -- @DijkstraGenesisFile@ referenced by the testing configuration (if any).
   --
-  --     These are the parsed genesis values, not file paths — all genesis JSON
-  --     resolution happens here.
+  -- These are the parsed genesis values, not file paths — all genesis JSON
+  -- resolution happens here.
   }
   deriving Generic
 
@@ -254,26 +255,17 @@ readEraGenesisOrThrow genesisCodec root fileKey (Hashed file mHash) = do
 -- 'ConfigurationParsingError' on failure.
 readByronGenesisOrThrow ::
   FilePath -> Byron.RequiresNetworkMagic -> Hashed FilePath -> IO ByronGenesisConfig
-readByronGenesisOrThrow root rnm (Hashed file mHash) =
-  case mHash of
-    Nothing ->
+readByronGenesisOrThrow root rnm (Hashed file expected) = do
+  result <- readByronGenesisConfig rnm expected (root </> file)
+  case result of
+    Left err ->
       throwIO $
         ConfigurationParsingError
           (Just (root </> file))
           (Just "ProtocolConfig")
-          [Key "ByronGenesisHash"]
-          "a Byron genesis file requires a ByronGenesisHash"
-    Just expected -> do
-      result <- readByronGenesisConfig rnm expected (root </> file)
-      case result of
-        Left err ->
-          throwIO $
-            ConfigurationParsingError
-              (Just (root </> file))
-              (Just "ProtocolConfig")
-              [Key "ByronGenesisFile"]
-              err
-        Right cfg -> pure cfg
+          [Key "ByronGenesisFile"]
+          err
+    Right cfg -> pure cfg
 
 -- | Read and decode the experimental (Dijkstra) genesis referenced by the
 -- testing configuration, turning a read\/hash\/decode failure into a
@@ -283,13 +275,8 @@ readExperimentalGenesisOrThrow ::
 readExperimentalGenesisOrThrow root mRef = do
   result <- resolveExperimentalGenesis root mRef
   case result of
-    Left err -> throwIO (genesisReadErrorToParsingError err)
+    Left err -> throwIO (genesisReadErrorAt "TestingConfig" "DijkstraGenesisFile" err)
     Right genesis -> pure genesis
-
--- | Render a 'GenesisReadError' as a 'ConfigurationParsingError' attributed to
--- the @TestingConfig@ section and the offending @DijkstraGenesisFile@.
-genesisReadErrorToParsingError :: GenesisReadError -> ConfigurationParsingError
-genesisReadErrorToParsingError = genesisReadErrorAt "TestingConfig" "DijkstraGenesisFile"
 
 -- | Render a 'GenesisReadError' as a 'ConfigurationParsingError' attributed to
 -- the given section and file key.

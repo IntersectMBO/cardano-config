@@ -5,7 +5,7 @@ module Cardano.Configuration.File.Mempool
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (diffTimeCodec)
+import Cardano.Configuration.Basic (diffTimeCodec, ErrorMessage)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
@@ -60,7 +60,7 @@ instance HasCodec (MempoolConfiguration Maybe) where
 -- they must be either all set or all unset. All-unset takes the node's coupled
 -- default of @(1, 1.5, 5)@ seconds (soft, hard, capacity); a mix of set and
 -- unset is rejected. @mempoolCapacityOverride@ is independent and passes through.
-finalizeMempool :: MempoolConfiguration Maybe -> Either String (MempoolConfiguration Identity)
+finalizeMempool :: MempoolConfiguration Maybe -> Either ErrorMessage (MempoolConfiguration Identity)
 finalizeMempool c =
   case (mempoolTimeoutSoft c, mempoolTimeoutHard c, mempoolTimeoutCapacity c) of
     (Just s, Just h, Just cap) ->

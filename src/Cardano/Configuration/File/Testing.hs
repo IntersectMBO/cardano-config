@@ -5,7 +5,7 @@ module Cardano.Configuration.File.Testing
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (requireField)
+import Cardano.Configuration.Basic (requireField, ErrorMessage)
 import Cardano.Configuration.File.Protocol
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
@@ -50,7 +50,7 @@ deriving via
 
 instance HasCodec (TestingConfiguration Maybe) where
   codec =
-    object "TestingConfiguration" $
+    object "TestingConfiguration" $ do
       TestingConfiguration
         <$> optionalField "ExperimentalHardForksEnabled" "Enable the experimental eras"
           .= experimentalHardForksEnabled
@@ -88,24 +88,25 @@ instance HasCodec (TestingConfiguration Maybe) where
 
 -- | Resolve a partial testing configuration, taking @ExperimentalHardForksEnabled@
 -- from the (always-applied) defaults.
-finalizeTesting :: TestingConfiguration Maybe -> Either String (TestingConfiguration Identity)
+finalizeTesting :: TestingConfiguration Maybe -> Either ErrorMessage (TestingConfiguration Identity)
 finalizeTesting c = do
   enabled <- requireField "ExperimentalHardForksEnabled" (experimentalHardForksEnabled c)
   pure $
     TestingConfiguration
-      enabled
-      (testShelleyHardForkAtEpoch c)
-      (testShelleyHardForkAtVersion c)
-      (testAllegraHardForkAtEpoch c)
-      (testAllegraHardForkAtVersion c)
-      (testMaryHardForkAtEpoch c)
-      (testMaryHardForkAtVersion c)
-      (testAlonzoHardForkAtEpoch c)
-      (testAlonzoHardForkAtVersion c)
-      (testBabbageHardForkAtEpoch c)
-      (testBabbageHardForkAtVersion c)
-      (testConwayHardForkAtEpoch c)
-      (testConwayHardForkAtVersion c)
-      (testDijkstraHardForkAtEpoch c)
-      (testDijkstraHardForkAtVersion c)
-      (experimentalGenesis c)
+      { experimentalHardForksEnabled = enabled
+      , testShelleyHardForkAtEpoch = testShelleyHardForkAtEpoch c
+      , testShelleyHardForkAtVersion = testShelleyHardForkAtVersion c
+      , testAllegraHardForkAtEpoch = testAllegraHardForkAtEpoch c
+      , testAllegraHardForkAtVersion = testAllegraHardForkAtVersion c
+      , testMaryHardForkAtEpoch = testMaryHardForkAtEpoch c
+      , testMaryHardForkAtVersion = testMaryHardForkAtVersion c
+      , testAlonzoHardForkAtEpoch = testAlonzoHardForkAtEpoch c
+      , testAlonzoHardForkAtVersion = testAlonzoHardForkAtVersion c
+      , testBabbageHardForkAtEpoch = testBabbageHardForkAtEpoch c
+      , testBabbageHardForkAtVersion = testBabbageHardForkAtVersion c
+      , testConwayHardForkAtEpoch = testConwayHardForkAtEpoch c
+      , testConwayHardForkAtVersion = testConwayHardForkAtVersion c
+      , testDijkstraHardForkAtEpoch = testDijkstraHardForkAtEpoch c
+      , testDijkstraHardForkAtVersion = testDijkstraHardForkAtVersion c
+      , experimentalGenesis = experimentalGenesis c
+      }

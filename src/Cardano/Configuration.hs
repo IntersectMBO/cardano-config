@@ -176,11 +176,9 @@ defaultConfigChecks =
       "Enabling the gRPC endpoint requires a gRPC socket path, or a node socket path to derive one from"
       ( \nc ->
           let lcc = localConnectionsConfig nc
-           in not
-                ( runIdentity (File.enableRpc lcc)
-                    && isNothing (File.rpcSocketPath lcc)
-                    && isNothing (File.socketPath lcc)
-                )
+           in not (runIdentity (File.enableRpc lcc))
+                || isJust (File.rpcSocketPath lcc)
+                || isJust (File.socketPath lcc)
       )
   , ConfigCheck
       "The Mithril snapshot policy requires the V2LSM backend with an LSMExportPath, or the V2InMemory backend"

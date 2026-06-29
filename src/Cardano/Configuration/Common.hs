@@ -38,7 +38,7 @@ data NodeDatabasePaths
   = -- | Store everything in a single directory
     SingleDB FilePath
   | -- | Store the immutable data in one (possibly slower) directory and the
-    --       volatile data in a different (possible faster) directory
+    -- volatile data in a different (possible faster) directory
     SplitDB FilePath FilePath
   deriving (Generic, Show)
 

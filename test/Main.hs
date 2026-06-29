@@ -42,6 +42,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
+import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Word (Word64)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
@@ -446,7 +447,12 @@ dijkstraGenesisDecodeCase :: IO Bool
 dijkstraGenesisDecodeCase = do
   let label = "examples/dijkstra-genesis.json (decodes via the Dijkstra codec)"
   path <- getDataFileName "examples/dijkstra-genesis.json"
-  res <- readDijkstraGenesisFile Nothing path
+  res <-
+    readDijkstraGenesisFile
+      ( fromJust $
+          hashFromTextAsHex (T.pack "99400f2a86ec68f6c0d29b13a3af2ed26ab627e5ec2b3fb72fec8b03f1407d57")
+      )
+      path
   case res of
     Left err -> report label (Just (show err))
     Right g -> evaluate (length (show g)) >> report label Nothing
@@ -456,8 +462,8 @@ dijkstraGenesisHashMismatchCase :: IO Bool
 dijkstraGenesisHashMismatchCase = do
   let label = "examples/dijkstra-genesis.json (wrong hash is rejected)"
   path <- getDataFileName "examples/dijkstra-genesis.json"
-  let wrongHash :: Maybe (Hash Blake2b_256 a)
-      wrongHash = hashFromTextAsHex (T.pack (replicate 64 '0'))
+  let wrongHash :: Hash Blake2b_256 a
+      wrongHash = fromJust $ hashFromTextAsHex (T.pack (replicate 64 '0'))
   res <- readDijkstraGenesisFile wrongHash path
   report label $ case res of
     Left (GenesisHashMismatch{}) -> Nothing

@@ -29,13 +29,13 @@ import qualified Data.Text as T
 -- them as errors).
 data ConfigWarning
   = -- | Top-level keys that no parser recognises (typically typos); they are
-    --       ignored.
+    -- ignored.
     UnrecognisedKeys [String]
-  | -- | Top-level keys ignored because their component was also given as its own
-    --       section (which wins). Each pair is @(section, key)@.
+  | -- | Top-level keys ignored because their component was also given as its
+    -- own section (which wins). Each pair is @(section, key)@.
     ShadowedKeys [(Text, Text)]
   | -- | The configuration uses the legacy single-file form (component keys at the
-    --       top level) rather than the recommended split-file form.
+    -- top level) rather than the recommended split-file form.
     LegacySingleFileFormat
   deriving (Eq, Show)
 

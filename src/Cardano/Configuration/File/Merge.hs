@@ -105,9 +105,9 @@ loadBaseDefault section = do
     else pure Nothing
 
 -- | The configuration layer the user supplied for a section: the top-level
--- object when the section key is absent (its keys live there), an inline object,
--- a referenced sub-file, or a list of paths\/objects deep-merged in order (a
--- later entry overrides an earlier one, e.g.
+-- object when the section key is absent (its keys live there), an inline
+-- object, a referenced sub-file, or a list of paths\/objects deep-merged in
+-- order (a later entry overrides an earlier one, e.g.
 -- @[\"Network.variants\/Network.relay.json\"]@).
 sectionUserLayer :: FilePath -> Value -> String -> IO Value
 sectionUserLayer root configValue section =
@@ -136,7 +136,7 @@ sectionUserLayer root configValue section =
 parseSection ::
   FromJSON a =>
   -- | The directory the main file lives in, against which sub-file paths are
-  --     resolved.
+  -- resolved.
   FilePath ->
   -- | The (unwrapped) configuration object.
   Value ->

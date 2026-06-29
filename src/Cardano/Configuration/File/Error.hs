@@ -11,7 +11,7 @@ import Data.Aeson.Types (JSONPath, formatError)
 data ConfigurationParsingError = ConfigurationParsingError
   { errFile :: Maybe FilePath
   -- ^ The referenced sub-file the failure occurred in, if any (otherwise the
-  --     failure was in the main configuration file).
+  -- failure was in the main configuration file).
   , errSection :: Maybe String
   -- ^ The top-level configuration section being parsed (e.g. @"StorageConfig"@).
   , errPath :: JSONPath
