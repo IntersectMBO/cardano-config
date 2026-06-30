@@ -450,7 +450,7 @@ dijkstraGenesisDecodeCase = do
   res <-
     readDijkstraGenesisFile
       ( fromJust $
-          hashFromTextAsHex (T.pack "99400f2a86ec68f6c0d29b13a3af2ed26ab627e5ec2b3fb72fec8b03f1407d57")
+          hashFromTextAsHex (T.pack "56c06ff0f668c584fc54fa3cee92dd5e121b67696924ac3b01b5aec9ecf95b78")
       )
       path
   case res of
