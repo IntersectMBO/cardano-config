@@ -5,7 +5,7 @@ module Cardano.Configuration.File.Testing
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (requireField, ErrorMessage)
+import Cardano.Configuration.Basic (ErrorMessage, requireField)
 import Cardano.Configuration.File.Protocol
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))

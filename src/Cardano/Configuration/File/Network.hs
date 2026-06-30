@@ -19,7 +19,7 @@ module Cardano.Configuration.File.Network
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (diffTimeCodec, requireField, ErrorMessage)
+import Cardano.Configuration.Basic (ErrorMessage, diffTimeCodec, requireField)
 import Cardano.Configuration.Common (filePathCodec)
 import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
@@ -68,10 +68,10 @@ instance HasCodec TxSubmissionLogicVersion where
   codec = shownBoundedEnumCodec
 
 -- | Limits on the number of accepted connections.
-data AcceptedConnectionsLimit = AcceptedConnectionsLimit {
-  hardLimit :: Word32,
-  softLimit :: Word32,
-  delayOnSoftLimit :: DiffTime
+data AcceptedConnectionsLimit = AcceptedConnectionsLimit
+  { hardLimit :: Word32
+  , softLimit :: Word32
+  , delayOnSoftLimit :: DiffTime
   }
   deriving (Generic, Show)
   deriving (FromJSON, ToJSON) via (Autodocodec AcceptedConnectionsLimit)
@@ -230,35 +230,35 @@ finalizeNetwork c = do
   txInitDelay <- requireField "TxSubmissionInitDelay" (txSubmissionInitDelay c)
   pure $
     NetworkConfiguration
-     { diffusionMode = diffusionMode'
-     , maxConcurrencyBulkSync = maxBulk
-     , maxConcurrencyDeadline = maxDeadline
-     , protocolIdleTimeout = protocolIdle
-     , timeWaitTimeout = timeWait
-     , egressPollInterval = egress
-     , chainSyncIdleTimeout = chainSyncIdle
-     , acceptedConnectionsLimit = acceptedLimit
-     , deadlineTargetOfRootPeers = deadlineTargetOfRootPeers c
-     , deadlineTargetOfKnownPeers = deadlineTargetOfKnownPeers c
-     , deadlineTargetOfEstablishedPeers = deadlineTargetOfEstablishedPeers c
-     , deadlineTargetOfActivePeers = deadlineTargetOfActivePeers c
-     , deadlineTargetOfKnownBigLedgerPeers = deadlineTargetOfKnownBigLedgerPeers c
-     , deadlineTargetOfEstablishedBigLedgerPeers = deadlineTargetOfEstablishedBigLedgerPeers c
-     , deadlineTargetOfActiveBigLedgerPeers = deadlineTargetOfActiveBigLedgerPeers c
-     , syncTargetOfRootPeers = syncRoot
-     , syncTargetOfKnownPeers = syncKnown
-     , syncTargetOfEstablishedPeers = syncEstablished
-     , syncTargetOfActivePeers = syncActive
-     , syncTargetOfKnownBigLedgerPeers = syncKnownBig
-     , syncTargetOfEstablishedBigLedgerPeers = syncEstBig
-     , syncTargetOfActiveBigLedgerPeers = syncActiveBig
-     , minBigLedgerPeersForTrustedState = minBigTrusted
-     , peerSharing = peerSharing c
-     , responderCoreAffinityPolicy = responderCore
-     , experimentalProtocolsEnabled = experimental
-     , txSubmissionLogicVersion = txLogic
-     , txSubmissionInitDelay = txInitDelay
-     }
+      { diffusionMode = diffusionMode'
+      , maxConcurrencyBulkSync = maxBulk
+      , maxConcurrencyDeadline = maxDeadline
+      , protocolIdleTimeout = protocolIdle
+      , timeWaitTimeout = timeWait
+      , egressPollInterval = egress
+      , chainSyncIdleTimeout = chainSyncIdle
+      , acceptedConnectionsLimit = acceptedLimit
+      , deadlineTargetOfRootPeers = deadlineTargetOfRootPeers c
+      , deadlineTargetOfKnownPeers = deadlineTargetOfKnownPeers c
+      , deadlineTargetOfEstablishedPeers = deadlineTargetOfEstablishedPeers c
+      , deadlineTargetOfActivePeers = deadlineTargetOfActivePeers c
+      , deadlineTargetOfKnownBigLedgerPeers = deadlineTargetOfKnownBigLedgerPeers c
+      , deadlineTargetOfEstablishedBigLedgerPeers = deadlineTargetOfEstablishedBigLedgerPeers c
+      , deadlineTargetOfActiveBigLedgerPeers = deadlineTargetOfActiveBigLedgerPeers c
+      , syncTargetOfRootPeers = syncRoot
+      , syncTargetOfKnownPeers = syncKnown
+      , syncTargetOfEstablishedPeers = syncEstablished
+      , syncTargetOfActivePeers = syncActive
+      , syncTargetOfKnownBigLedgerPeers = syncKnownBig
+      , syncTargetOfEstablishedBigLedgerPeers = syncEstBig
+      , syncTargetOfActiveBigLedgerPeers = syncActiveBig
+      , minBigLedgerPeersForTrustedState = minBigTrusted
+      , peerSharing = peerSharing c
+      , responderCoreAffinityPolicy = responderCore
+      , experimentalProtocolsEnabled = experimental
+      , txSubmissionLogicVersion = txLogic
+      , txSubmissionInitDelay = txInitDelay
+      }
 
 -- | Whether the node is a block producer or a relay. Derived from whether the
 -- operator supplied block-forging credentials (see

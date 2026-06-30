@@ -71,14 +71,13 @@ readGenesisFileWith genesisCodec expected fp = do
     Right bytes ->
       let actual = hashWith id bytes
        in if expected /= actual
-          then Left (GenesisHashMismatch fp expected actual)
-          else
-              case Aeson.eitherDecodeStrict' bytes of
-                Left err -> Left (GenesisDecodeError fp err)
-                Right value ->
-                  case parseEither (parseJSONVia genesisCodec) value of
-                    Left err -> Left (GenesisDecodeError fp err)
-                    Right a -> Right a
+            then Left (GenesisHashMismatch fp expected actual)
+            else case Aeson.eitherDecodeStrict' bytes of
+              Left err -> Left (GenesisDecodeError fp err)
+              Right value ->
+                case parseEither (parseJSONVia genesisCodec) value of
+                  Left err -> Left (GenesisDecodeError fp err)
+                  Right a -> Right a
 
 -- | Read and decode a Dijkstra-era genesis file.
 readDijkstraGenesisFile ::

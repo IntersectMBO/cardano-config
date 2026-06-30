@@ -5,7 +5,7 @@ set -euo pipefail
 if [[ $# -gt 0 ]]; then
   case "$1" in
     --changes)
-      files=$(git diff --diff-filter=MA --name-only origin/master HEAD -- '*.hs')
+      files=$(git diff --diff-filter=MA --name-only origin/main HEAD -- '*.hs')
       if [[ -n "$files" ]]; then
         # Run fourmolu on changes compared to `master`.
         fourmolu -m inplace $(echo "$files" | grep -v Setup.hs)

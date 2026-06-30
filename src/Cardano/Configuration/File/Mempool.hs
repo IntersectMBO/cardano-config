@@ -5,7 +5,7 @@ module Cardano.Configuration.File.Mempool
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (diffTimeCodec, ErrorMessage)
+import Cardano.Configuration.Basic (ErrorMessage, diffTimeCodec)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
