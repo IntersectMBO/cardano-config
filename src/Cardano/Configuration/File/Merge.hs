@@ -19,13 +19,14 @@ import Data.Aeson (FromJSON, Value (..), parseJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (JSONPathElement (..), iparseEither)
+import Data.List (isPrefixOf)
 import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger)
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
 import Paths_cardano_config (getDataFileName)
-import System.Directory (doesFileExist)
-import System.FilePath ((</>))
+import System.Directory (canonicalizePath, doesFileExist)
+import System.FilePath (isAbsolute, splitDirectories, (</>))
 
 -- | Read and decode a YAML\/JSON file into a 'Value', reporting syntax errors as
 -- a 'ConfigurationParsingError' that names the file and section.
@@ -73,7 +74,7 @@ loadSectionSource :: FilePath -> String -> Value -> IO Value
 loadSectionSource root section src =
   case src of
     String path -> do
-      let fp = root </> T.unpack path
+      fp <- resolveSectionPath root section (T.unpack path)
       exists <- doesFileExist fp
       if exists
         then decodeValueFile (Just section) fp
@@ -92,6 +93,35 @@ loadSectionSource root section src =
           (Just section)
           [Key (K.fromString section)]
           "expected a path to a configuration file (a string) or an inline object"
+
+-- | Resolve a section sub-file path against the configuration directory,
+-- confining it to that directory's subtree. The path must be relative, and its
+-- real (symlink- and @..@-resolved) location must stay within the configuration
+-- directory: a path that is absolute, climbs out with @..@, or is a symlink
+-- pointing outside is rejected. This stops a configuration from pulling in
+-- arbitrary files such as @\/etc\/passwd@. A symlink that stays inside the
+-- subtree is allowed.
+resolveSectionPath :: FilePath -> String -> String -> IO FilePath
+resolveSectionPath root section path
+  | isAbsolute path = reject "must be a relative path, not an absolute one"
+  | otherwise = do
+      -- 'canonicalizePath' resolves @..@ segments and follows symlinks, so the
+      -- containment check below sees the file's real location, not the textual
+      -- path. The root is canonicalized too, so the comparison is between two
+      -- fully resolved paths.
+      canonRoot <- canonicalizePath root
+      canonTarget <- canonicalizePath (root </> path)
+      if splitDirectories canonRoot `isPrefixOf` splitDirectories canonTarget
+        then pure canonTarget
+        else reject "must resolve to a file within the configuration directory"
+ where
+  reject why =
+    throwIO $
+      ConfigurationParsingError
+        (Just path)
+        (Just section)
+        [Key (K.fromString section)]
+        ("invalid configuration file path: it " <> why)
 
 -- | The always-applied base default for a section, read from the package data
 -- files (@defaults\/\<Section\>.json@), if one ships for it.

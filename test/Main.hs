@@ -80,6 +80,7 @@ cases =
   , parseCase "examples/split.json"
   , parseCase "examples/split-all.json"
   , shadowWarnCase
+  , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
@@ -139,6 +140,32 @@ parseCase fp =
     path <- getDataFileName fp
     res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
     expectOk $ case res of
+      Left (e :: SomeException) -> Just (show e)
+      Right _ -> Nothing
+
+-- | A section sub-file path must be a relative path that resolves to a file
+-- within the configuration directory. An absolute path (@\/etc\/passwd@) and one
+-- that climbs out of the directory with @..@ are both rejected as invalid paths,
+-- so a configuration cannot pull in arbitrary files.
+subfilePathConfinementCase :: TestTree
+subfilePathConfinementCase =
+  testCase "section sub-file paths are confined to the config directory (no absolute, no escaping)" $ do
+    absolute <- rejectionMessage "examples/subfile-absolute.json"
+    escaping <- rejectionMessage "examples/subfile-escapes.json"
+    expectOk $ case (absolute, escaping) of
+      (Just a, Just e)
+        | "invalid configuration file path" `isInfixOf` a
+        , "invalid configuration file path" `isInfixOf` e ->
+            Nothing
+      _ ->
+        Just ("expected both paths rejected as invalid, got " <> show (absolute, escaping))
+ where
+  -- The error message if parsing was rejected, or 'Nothing' if it wrongly
+  -- succeeded.
+  rejectionMessage fp = do
+    path <- getDataFileName fp
+    res <- try (parseConfigurationFiles path)
+    pure $ case res of
       Left (e :: SomeException) -> Just (show e)
       Right _ -> Nothing
 
