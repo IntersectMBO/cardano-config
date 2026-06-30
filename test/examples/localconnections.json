@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/LocalConnectionsConfig.schema.json",
     "SocketPath": "node.socket",
     "EnableRpc": true,
     "RpcSocketPath": "rpc.sock"

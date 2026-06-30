@@ -155,9 +155,10 @@ genesisSchemas =
 hermodTracingProps :: KM.KeyMap Value
 hermodTracingProps = properties rawTracingSchema
 
--- | The JSON Schema of each configuration component, keyed by name.
+-- | The JSON Schema of each configuration component, keyed by name. Each carries
+-- a @$schema@ property so a split sub-file can declare which schema it follows.
 configurationSchemas :: [(Text, Value)]
-configurationSchemas = [(name, component name s) | (name, s) <- rawComponentSchemas]
+configurationSchemas = [(name, withSchemaProp name (component name s)) | (name, s) <- rawComponentSchemas]
 
 -- | The JSON Schema of the whole configuration in the /split-file/ form — the
 -- recommended form, and the one the @schema@ subcommand prints by default: each
@@ -364,6 +365,30 @@ schemaId file =
 -- | Post-process a component's raw schema into its published form.
 component :: Text -> Value -> Value
 component name = publish name (T.unpack name <> ".schema.json")
+
+-- | Add a @$schema@ property to a (published) component schema, so a split
+-- sub-file may declare which schema it follows, pointing at that component's own
+-- schema. Mirrors the whole configuration's top-level @$schema@, and defaults to
+-- the component's schema URL. Applied only to the standalone component schemas,
+-- not to the inline section branches of the whole-configuration schema (an
+-- inline component relies on the document's top-level @$schema@).
+withSchemaProp :: Text -> Value -> Value
+withSchemaProp name (Object o) =
+  Object (KM.insert "properties" (Object (KM.insert "$schema" prop (properties (Object o)))) o)
+ where
+  prop =
+    object
+      [ "type" .= ("string" :: Text)
+      , "title" .= ("$schema" :: Text)
+      , "default" .= schemaId (T.unpack name <> ".schema.json")
+      , "description"
+          .= ( "URL of the JSON Schema this "
+                 <> name
+                 <> " file follows (the $schema annotation), for editors and validators." ::
+                 Text
+             )
+      ]
+withSchemaProp _ v = v
 
 -- | Make a raw codec schema friendly to validators, editors and documentation
 -- generators. See the module header for the full list of transformations.

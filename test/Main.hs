@@ -83,6 +83,7 @@ cases =
   , parseCase "test/examples/split-all.json"
   , shadowWarnCase
   , envelopeWarningCase
+  , splitSubfileSchemaCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -213,6 +214,44 @@ envelopeWarningCase =
  where
   isEnvelope NotVersion1Envelope{} = True
   isEnvelope _ = False
+
+-- | Each per-component split sub-file declares a @$schema@ pointing to that
+-- component's schema, and the component schema in turn declares a @$schema@
+-- property — so the annotation is recognised. Guards both the fixtures and the
+-- schema generation.
+splitSubfileSchemaCase :: TestTree
+splitSubfileSchemaCase =
+  testCase "split sub-files declare $schema; component schemas have the property" $ do
+    results <- mapM check pairs
+    expectOk (case [m | Just m <- results] of [] -> Nothing; (m : _) -> Just m)
+ where
+  base = "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/"
+  pairs =
+    [ ("storage.json", "StorageConfig")
+    , ("consensus.json", "ConsensusConfig")
+    , ("protocol.json", "ProtocolConfig")
+    , ("network.json", "NetworkConfig")
+    , ("localconnections.json", "LocalConnectionsConfig")
+    , ("mempool.json", "MempoolConfig")
+    , ("testing.json", "TestingConfig")
+    ]
+  schemaKey = K.fromString "$schema"
+  check (file, comp) = do
+    sub <- decodeData ("test/examples/" <> file) :: IO (Either String Value)
+    sch <- decodeData ("schemas/" <> comp <> ".schema.json") :: IO (Either String Value)
+    let url = String (T.pack (base <> comp <> ".schema.json"))
+    pure $ case (sub, sch) of
+      (Left e, _) -> Just (file <> ": " <> e)
+      (_, Left e) -> Just (comp <> ".schema.json: " <> e)
+      (Right (Object o), Right schObj)
+        | KM.lookup schemaKey o /= Just url ->
+            Just (file <> ": $schema is " <> show (KM.lookup schemaKey o) <> ", expected " <> show url)
+        | not (KM.member schemaKey (properties schObj)) ->
+            Just (comp <> ".schema.json: missing a $schema property")
+        | otherwise -> Nothing
+      _ -> Just (file <> ": not a JSON object")
+  properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
+  properties _ = KM.empty
 
 -- | The optional top-level @MinNodeVersion@ annotation is read from the same
 -- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and

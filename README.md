@@ -37,6 +37,11 @@ of those envelope keys (`NotVersion1Envelope`) or the legacy flat form with
 component keys at the top level (`LegacySingleFileFormat`). See
 [Warnings](#warnings).
 
+A component split out into its own sub-file may declare its own `$schema`
+pointing to that component's schema (e.g. a `StorageConfig` sub-file uses `schemas/StorageConfig.schema.json`),
+so editors and validators pick up the right schema for the sub-file. The key is
+an annotation: the parser accepts and ignores it.
+
 To port an old config to the new format, group the component keys under their
 sections inside `Configuration` and add the `Version` / `MinNodeVersion`
 envelope. `cardano-config schema` documents the recommended form;

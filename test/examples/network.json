@@ -1,1 +1,3 @@
-{}
+{
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/NetworkConfig.schema.json"
+}
