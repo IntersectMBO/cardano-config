@@ -53,6 +53,7 @@ library internal
     Cardano.Configuration.File.Lint
     Cardano.Configuration.File.Mempool
     Cardano.Configuration.File.Merge
+    Cardano.Configuration.File.Migrate
     Cardano.Configuration.File.Network
     Cardano.Configuration.File.Protocol
     Cardano.Configuration.File.Storage
