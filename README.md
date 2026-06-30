@@ -74,16 +74,25 @@ a warning-free config.
 schema` documents the recommended form; `--legacy-one-file` documents the flat
 form.)
 
+## Authoring with CUE
+
+For typed authoring use the CUE front-end in [`cue/`](cue/): you write the
+configuration as a CUE value, `just vet` / `just lint` catch structural and
+cross-field mistakes early, and `cue export` emits the envelope JSON this
+library ingests. The library stays the final authority (it re-parses, fills
+defaults, and verifies genesis hashes). See [`cue/README.md`](cue/README.md).
+
 ## Defaults and layering
 
 Every component ships a **default file** under [`defaults/`](defaults/), with the
-network/role overlays under [`variants/`](variants/). For each component the
-layering, from lowest to highest precedence, is:
+per-network overlays under [`variants/`](variants/) and the `NetworkConfig` role
+overlays under [`defaults/NetworkConfig/`](defaults/NetworkConfig/). For each
+component the layering, from lowest to highest precedence, is:
 
 1. the package's base default (`defaults/<Component>.json`), always applied;
 2. for the `Network` component only, a **role layer** chosen automatically from
    credential presence: the block-producer or relay variant
-   (`variants/NetworkConfig/{blockproducer,relay}.json`)
+   (`defaults/NetworkConfig/{blockproducer,relay}.json`)
    fills the deadline peer targets and `PeerSharing` when the configuration leaves
    them unset (so it sits *below* the file value);
 3. the component's value in the configuration file (an inline object or a sub-file

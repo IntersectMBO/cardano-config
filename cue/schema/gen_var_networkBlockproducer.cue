@@ -1,0 +1,13 @@
+package schema
+
+networkBlockproducer: {
+	$schema:                                         "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/NetworkConfig.schema.json"
+	DeadlineTargetNumberOfRootPeers:                 100
+	DeadlineTargetNumberOfKnownPeers:                100
+	DeadlineTargetNumberOfEstablishedPeers:          30
+	DeadlineTargetNumberOfActivePeers:               20
+	DeadlineTargetNumberOfKnownBigLedgerPeers:       15
+	DeadlineTargetNumberOfEstablishedBigLedgerPeers: 10
+	DeadlineTargetNumberOfActiveBigLedgerPeers:      5
+	PeerSharing:                                     false
+}

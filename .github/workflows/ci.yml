@@ -43,6 +43,40 @@ jobs:
       - name: Check cabal file formatting
         run: ./scripts/cabal-format.sh
 
+  cue:
+    name: CUE front-end (schema drift, vet, ajv)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      # Pin the CUE version: `cue import jsonschema` output (e.g. how defaults
+      # are translated) varies across releases, so the committed cue/schema/gen_*
+      # must be regenerated with this same version (see cue/README.md).
+      - name: Install CUE 0.17.0
+        run: |
+          go install cuelang.org/go/cmd/cue@v0.17.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          "$(go env GOPATH)/bin/cue" version
+
+      - name: Install just
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y just
+          just --version
+
+      - name: Install ajv-cli
+        run: npm install -g ajv-cli
+
+      # Generated-CUE drift gate, then vet + schema-validate + lint every config
+      # and example (the per-file `just` recipes, looped over everything).
+      - name: Check CUE front-end
+        run: ./scripts/cue-ci.sh
+
   test:
     name: Build & test (GHC ${{ matrix.ghc }})
     runs-on: ubuntu-latest
