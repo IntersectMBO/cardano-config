@@ -52,6 +52,7 @@ import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Configuration.File.Lint
   ( ConfigWarning (..)
+  , checkEnvelope
   , configWarnings
   , renderConfigWarning
   )
@@ -175,7 +176,9 @@ parseConfigurationFiles ::
 parseConfigurationFiles cfgFile = do
   mainValue <- decodeValueFile Nothing cfgFile
   (version, minNodeVer, configValue) <- splitEnvelope mainValue
-  let warnings = configWarnings configValue
+  -- 'checkEnvelope' inspects the raw top-level document (is it the Version1
+  -- envelope?); the rest inspect the unwrapped configuration object.
+  let warnings = checkEnvelope mainValue <> configWarnings configValue
       root = takeDirectory cfgFile
   config <- case version of
     1 -> parseConfigurationVersion1 root minNodeVer configValue

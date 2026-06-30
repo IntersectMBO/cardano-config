@@ -80,6 +80,7 @@ cases =
   , parseCase "examples/split.json"
   , parseCase "examples/split-all.json"
   , shadowWarnCase
+  , envelopeWarningCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -188,6 +189,28 @@ shadowWarnCase =
   shadowsDijkstra (ShadowedKeys sks) =
     (T.pack "TestingConfig", T.pack "DijkstraGenesisFile") `elem` sks
   shadowsDijkstra _ = False
+
+-- | A document not wrapped in the @{ Version, MinNodeVersion, Configuration }@
+-- envelope returns a 'NotVersion1Envelope' warning; an enveloped one does not.
+envelopeWarningCase :: TestTree
+envelopeWarningCase =
+  testCase "non-enveloped config warns (NotVersion1Envelope); enveloped does not" $ do
+    flatPath <- getDataFileName "examples/split.json"
+    envPath <- getDataFileName "examples/min-node-version.json"
+    (_, flatWarnings) <- parseConfigurationFiles flatPath
+    (_, envWarnings) <- parseConfigurationFiles envPath
+    expectOk $
+      if any isEnvelope flatWarnings && not (any isEnvelope envWarnings)
+        then Nothing
+        else
+          Just $
+            "expected NotVersion1Envelope only for the non-enveloped config: flat="
+              <> show flatWarnings
+              <> " enveloped="
+              <> show envWarnings
+ where
+  isEnvelope NotVersion1Envelope{} = True
+  isEnvelope _ = False
 
 -- | The optional top-level @MinNodeVersion@ annotation is read from the same
 -- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and

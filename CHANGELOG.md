@@ -45,7 +45,9 @@
   text). The warnings are: unrecognised top-level keys (`UnrecognisedKeys`,
   typos, ignored); keys shadowed by a component supplied as its own section
   (`ShadowedKeys`, ignored — the section wins); use of the legacy single-file
-  form (`LegacySingleFileFormat`); and resolution-time consistency advisories
+  form (`LegacySingleFileFormat`); a document not in the recommended
+  `{ Version, MinNodeVersion, Configuration }` envelope form, naming the missing
+  keys (`NotVersion1Envelope`); and resolution-time consistency advisories
   (`ConsistencyWarning`).
 * The split-file and legacy single-file schemas are kept separate, so neither
   offers both placements for a component; mixing the forms is caught at parse
