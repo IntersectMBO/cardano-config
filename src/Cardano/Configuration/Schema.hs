@@ -162,8 +162,7 @@ configurationSchemas = [(name, component name s) | (name, s) <- rawComponentSche
 -- | The JSON Schema of the whole configuration in the /split-file/ form — the
 -- recommended form, and the one the @schema@ subcommand prints by default: each
 -- component is given under its section key (e.g. @StorageConfig@) as a path to a
--- sub-file, an inline object, or a non-empty list of paths\/objects deep-merged
--- in order.
+-- sub-file or an inline object.
 --
 -- The whole document may additionally be wrapped in a @{ Version, Configuration
 -- }@ envelope. Tracing is not a section; it is just the top-level @HermodTracing@
@@ -230,8 +229,7 @@ splitDescription =
   T.unwords
     [ "The cardano-node configuration (split-file form, recommended)."
     , "Each component is given under its section key (e.g. StorageConfig) as a path to a"
-    , "sub-file, an inline object, or a non-empty list of paths/objects deep-merged in order"
-    , "(later entries override earlier ones)."
+    , "sub-file or an inline object."
     , "The whole document may also be wrapped in a { Version, Configuration } envelope."
     , "The mandatory genesis files and LastKnownBlockVersion-Major/-Minor are supplied"
     , "through the ProtocolConfig section."
@@ -250,31 +248,19 @@ legacyDescription =
     ]
 
 -- | A component's section key in the split-file form: an inline object (the
--- component schema), a path to a sub-file, or a non-empty list of either.
+-- component schema) or a path to a sub-file.
 sectionRef :: Text -> Value -> Value
 sectionRef name raw =
   object
     [ "$comment"
         .= ( "The "
                <> name
-               <> " section, given inline (an object), as a path to a sub-file, or as a"
-               <> " non-empty list of paths/objects deep-merged in order (later entries override earlier ones)."
+               <> " section, given inline (an object) or as a path to a sub-file."
            )
-    , "anyOf" .= [pathRef desc, withTitle name raw, listRef]
+    , "anyOf" .= [pathRef desc, withTitle name raw]
     ]
  where
   desc = "Path to a file holding the " <> name <> " section"
-  listRef =
-    object
-      [ "type" .= ("array" :: Text)
-      , "title" .= (name <> " (list of sources)")
-      , "minItems" .= (1 :: Int)
-      , "items"
-          .= object
-            [ "title" .= (name <> " source")
-            , "anyOf" .= [pathRef desc, withTitle name raw]
-            ]
-      ]
 
 -- | A JSON string that is a filesystem path (tagged so 'publish' adds the
 -- @path@ format).

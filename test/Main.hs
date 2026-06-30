@@ -79,7 +79,6 @@ cases =
   , parseCase "examples/fullconfig.json"
   , parseCase "examples/split.json"
   , parseCase "examples/split-all.json"
-  , listMergeCase
   , shadowWarnCase
   , minNodeVersionCase
   , resolveCase
@@ -142,23 +141,6 @@ parseCase fp =
     expectOk $ case res of
       Left (e :: SomeException) -> Just (show e)
       Right _ -> Nothing
-
--- | A section given as a list of sources is deep-merged in order, with later
--- entries overriding earlier ones (and the always-read base default beneath).
--- @network-b.json@ sets @TargetNumberOfActivePeers@ to 99, overriding the 10 in
--- @network-a.json@.
-listMergeCase :: TestTree
-listMergeCase =
-  testCase "examples/split-list.json (list merge, later overrides)" $ do
-    path <- getDataFileName "examples/split-list.json"
-    res <- try (parseConfigurationFiles path)
-    expectOk $ case res of
-      Left (e :: SomeException) -> Just (show e)
-      Right (c, _) ->
-        let active = deadlineTargetOfActivePeers (runIdentity (networkConfiguration c))
-         in if active == Just 99
-              then Nothing
-              else Just ("expected TargetNumberOfActivePeers = 99, got " <> show active)
 
 -- | A top-level key belonging to a component that is also supplied as its own
 -- section (here a top-level @DijkstraGenesisFile@ alongside a @TestingConfig@

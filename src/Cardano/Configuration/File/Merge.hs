@@ -19,7 +19,6 @@ import Data.Aeson (FromJSON, Value (..), parseJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (JSONPathElement (..), iparseEither)
-import Data.Foldable (toList)
 import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger)
 import qualified Data.Text as T
@@ -62,8 +61,8 @@ runCodec mFile section value =
 
 -- | Deep, right-biased merge of two JSON values: two objects are merged key by
 -- key (a key present in both is merged recursively), and for anything else the
--- second (later) value wins. Used to layer configuration sources so that a later
--- file in a list overrides an earlier one.
+-- second (later) value wins. Used to layer a section's user-supplied value on
+-- top of its always-applied base default, so the user's value wins.
 mergeValues :: Value -> Value -> Value
 mergeValues (Object earlier) (Object later) = Object (KM.unionWith mergeValues earlier later)
 mergeValues _ later = later
@@ -105,26 +104,14 @@ loadBaseDefault section = do
     else pure Nothing
 
 -- | The configuration layer the user supplied for a section: the top-level
--- object when the section key is absent (its keys live there), an inline
--- object, a referenced sub-file, or a list of paths\/objects deep-merged in
--- order (a later entry overrides an earlier one, e.g.
--- @[\"Network.variants\/Network.relay.json\"]@).
+-- object when the section key is absent (its keys live there), an inline object,
+-- or a referenced sub-file.
 sectionUserLayer :: FilePath -> Value -> String -> IO Value
 sectionUserLayer root configValue section =
   case configValue of
     Object o ->
       case KM.lookup (K.fromString section) o of
         Nothing -> pure configValue
-        Just (Array elems) ->
-          case toList elems of
-            [] ->
-              throwIO $
-                ConfigurationParsingError
-                  Nothing
-                  (Just section)
-                  [Key (K.fromString section)]
-                  "expected a non-empty list of configuration files or objects"
-            sources -> foldl1 mergeValues <$> mapM (loadSectionSource root section) sources
         Just source -> loadSectionSource root section source
     _ ->
       throwIO $

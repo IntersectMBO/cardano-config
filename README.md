@@ -198,7 +198,7 @@ The schemas are draft-07 and post-processed to be as useful as possible:
   [`jsonschema2md`](https://github.com/adobe/jsonschema2md) render names instead
   of `Untitled`/`undefined` (both keywords are standard draft-07, not extensions);
 - `config.schema.json` describes the **split-file form** (each component given
-  under its section key as a sub-file path, an inline object, or a list of them),
+  under its section key as a sub-file path or an inline object),
   plus the `{ Version, Configuration }` envelope. The flat single-file form lives
   in its own `config.legacy-one-file.schema.json` (which predates, and so omits,
   the envelope). Splitting the two forms is what lets each schema drop the
@@ -255,7 +255,7 @@ flat keys), which is what lets each schema stay simple. Mixing the two forms is
 therefore caught by the parser rather than by a generic JSON Schema validator.
 
 The recognised keys are grouped into the following components. Every component
-may be given inline, as a sub-file path, or as a list of sources (see
+may be given inline or as a sub-file path (see
 [Single-file and split forms](#single-file-and-split-forms)).
 
 | Component | Top-level keys |
@@ -376,17 +376,6 @@ $ cat storage.json
 }
 ```
 
-A component key may also hold a **list** of sources (paths and/or inline
-objects), which are deep-merged in order — a later entry overrides an earlier one,
-and nested objects merge recursively:
-
-```console
-$ cat config.json
-{
-    "NetworkConfig": ["NetworkConfig.variants/NetworkConfig.relay.json", { "PeerSharing": false }]
-}
-```
-
 ## Versioning
 
 The configuration may optionally be wrapped in an envelope so the format can
@@ -411,10 +400,9 @@ from lowest to highest precedence, is:
    (`defaults/NetworkConfig.variants/NetworkConfig.{blockproducer,relay}.json`)
    fills the deadline peer targets and `PeerSharing` when the configuration
    leaves them unset (so it sits *below* the file value);
-3. the component's value in the configuration file (an inline object, a sub-file
-   path, or a list of them merged in order — including any
-   `defaults/<Component>.variants/*` overlays the configuration chooses to
-   reference explicitly);
+3. the component's value in the configuration file (an inline object or a
+   sub-file path — including any `defaults/<Component>.variants/*` overlay the
+   configuration chooses to reference explicitly);
 4. the matching CLI flag, where one exists.
 
 The role layer applies the same values the variant files hold, so referencing a

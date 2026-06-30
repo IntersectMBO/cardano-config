@@ -26,8 +26,8 @@
     value of every era (the files read and hash-checked at parse time); by
     default only their path and hash appear under `ProtocolConfig`.
 * Configuration sources are layered with a deep merge: an always-applied
-  per-component default (`defaults/`), then the configuration file (a value, a
-  sub-file path, or a list of them), then CLI flags.
+  per-component default (`defaults/`), then the configuration file (an inline
+  value or a sub-file path), then CLI flags.
 * The per-component section keys are suffixed `Config` (`ProtocolConfig`,
   `ConsensusConfig`, …) to avoid clashing with the node's vestigial top-level
   `Protocol` scalar (only ever `"Cardano"`), which this library does not parse
