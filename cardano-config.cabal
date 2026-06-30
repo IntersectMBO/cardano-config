@@ -21,9 +21,10 @@ extra-doc-files:
   CHANGELOG.md
 
 data-files:
-  defaults/**/*.json
-  examples/*.json
+  defaults/*.json
   schemas/*.json
+  test/examples/*.json
+  variants/**/*.json
 
 common warnings
   ghc-options:

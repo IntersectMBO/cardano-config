@@ -3,7 +3,7 @@
 -- reliable validation we have, since the parser shares its codec with the
 -- schema.
 --
--- The @examples/@ and @schemas/@ fixtures are resolved through
+-- The @test/examples/@ and @schemas/@ fixtures are resolved through
 -- 'getDataFileName' (they are packaged as @data-files@), so the tests do not
 -- depend on the current working directory and work under @cabal test@, Nix and
 -- a source distribution alike.
@@ -62,23 +62,25 @@ main = do
 cases :: [TestTree]
 cases =
   [ decodeCase
-      "examples/storage.json"
-      (decodeData "examples/storage.json" :: IO (Either String (StorageConfiguration Maybe)))
+      "test/examples/storage.json"
+      (decodeData "test/examples/storage.json" :: IO (Either String (StorageConfiguration Maybe)))
   , decodeCase
-      "examples/consensus.json"
-      (decodeData "examples/consensus.json" :: IO (Either String (ConsensusConfiguration Maybe)))
+      "test/examples/consensus.json"
+      (decodeData "test/examples/consensus.json" :: IO (Either String (ConsensusConfiguration Maybe)))
   , decodeCase
-      "examples/protocol.json"
-      (decodeData "examples/protocol.json" :: IO (Either String (ProtocolConfiguration Maybe)))
+      "test/examples/protocol.json"
+      (decodeData "test/examples/protocol.json" :: IO (Either String (ProtocolConfiguration Maybe)))
   , decodeCase
-      "examples/network.json"
-      (decodeData "examples/network.json" :: IO (Either String (NetworkConfiguration Maybe)))
+      "test/examples/network.json"
+      (decodeData "test/examples/network.json" :: IO (Either String (NetworkConfiguration Maybe)))
   , decodeCase
-      "examples/localconnections.json"
-      (decodeData "examples/localconnections.json" :: IO (Either String (LocalConnectionsConfig Maybe)))
-  , parseCase "examples/fullconfig.json"
-  , parseCase "examples/split.json"
-  , parseCase "examples/split-all.json"
+      "test/examples/localconnections.json"
+      ( decodeData "test/examples/localconnections.json" ::
+          IO (Either String (LocalConnectionsConfig Maybe))
+      )
+  , parseCase "test/examples/fullconfig.json"
+  , parseCase "test/examples/split.json"
+  , parseCase "test/examples/split-all.json"
   , shadowWarnCase
   , envelopeWarningCase
   , subfilePathConfinementCase
@@ -102,16 +104,16 @@ cases =
   , genesisHashRequiredCase
   , genesisHashPresentCase
   , roundTripCase
-      "examples/mainnet-shelley-genesis.json (round-trips against the ledger instances)"
-      "examples/mainnet-shelley-genesis.json"
+      "test/examples/mainnet-shelley-genesis.json (round-trips against the ledger instances)"
+      "test/examples/mainnet-shelley-genesis.json"
       shelleyGenesisCodec
   , roundTripCase
-      "examples/mainnet-alonzo-genesis.json (round-trips against the ledger instances)"
-      "examples/mainnet-alonzo-genesis.json"
+      "test/examples/mainnet-alonzo-genesis.json (round-trips against the ledger instances)"
+      "test/examples/mainnet-alonzo-genesis.json"
       alonzoGenesisCodec
   , roundTripCase
-      "examples/mainnet-conway-genesis.json (round-trips against the ledger instances)"
-      "examples/mainnet-conway-genesis.json"
+      "test/examples/mainnet-conway-genesis.json (round-trips against the ledger instances)"
+      "test/examples/mainnet-conway-genesis.json"
       conwayGenesisCodec
   , byronGenesisDecodeCase
   ]
@@ -151,8 +153,8 @@ parseCase fp =
 subfilePathConfinementCase :: TestTree
 subfilePathConfinementCase =
   testCase "section sub-file paths are confined to the config directory (no absolute, no escaping)" $ do
-    absolute <- rejectionMessage "examples/subfile-absolute.json"
-    escaping <- rejectionMessage "examples/subfile-escapes.json"
+    absolute <- rejectionMessage "test/examples/subfile-absolute.json"
+    escaping <- rejectionMessage "test/examples/subfile-escapes.json"
     expectOk $ case (absolute, escaping) of
       (Just a, Just e)
         | "invalid configuration file path" `isInfixOf` a
@@ -176,8 +178,8 @@ subfilePathConfinementCase =
 -- naming the offending key is returned for the caller to surface.
 shadowWarnCase :: TestTree
 shadowWarnCase =
-  testCase "examples/shadow.json (shadowed top-level key returns a warning, still parses)" $ do
-    path <- getDataFileName "examples/shadow.json"
+  testCase "test/examples/shadow.json (shadowed top-level key returns a warning, still parses)" $ do
+    path <- getDataFileName "test/examples/shadow.json"
     res <- try (parseConfigurationFiles path)
     expectOk $ case res of
       Left (e :: SomeException) -> Just (show e)
@@ -195,8 +197,8 @@ shadowWarnCase =
 envelopeWarningCase :: TestTree
 envelopeWarningCase =
   testCase "non-enveloped config warns (NotVersion1Envelope); enveloped does not" $ do
-    flatPath <- getDataFileName "examples/split.json"
-    envPath <- getDataFileName "examples/min-node-version.json"
+    flatPath <- getDataFileName "test/examples/split.json"
+    envPath <- getDataFileName "test/examples/min-node-version.json"
     (_, flatWarnings) <- parseConfigurationFiles flatPath
     (_, envWarnings) <- parseConfigurationFiles envPath
     expectOk $
@@ -220,9 +222,9 @@ envelopeWarningCase =
 minNodeVersionCase :: TestTree
 minNodeVersionCase =
   testCase "MinNodeVersion is read at the top level (enveloped and legacy), or absent" $ do
-    enveloped <- parsedMinNodeVersion "examples/min-node-version.json"
-    legacy <- parsedMinNodeVersion "examples/min-node-version-legacy.json"
-    absent <- parsedMinNodeVersion "examples/split.json"
+    enveloped <- parsedMinNodeVersion "test/examples/min-node-version.json"
+    legacy <- parsedMinNodeVersion "test/examples/min-node-version-legacy.json"
+    absent <- parsedMinNodeVersion "test/examples/split.json"
     expectOk $
       if enveloped == Just (T.pack "10.5.0")
         && legacy == Just (T.pack "9.1.0")
@@ -248,7 +250,7 @@ minNodeVersionCase =
 resolveCase :: TestTree
 resolveCase =
   testCase "resolveConfiguration examples/fullconfig.json" $ do
-    path <- getDataFileName "examples/fullconfig.json"
+    path <- getDataFileName "test/examples/fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     case cliArgs [] of
       Nothing -> assertFailure "could not build default CLI arguments"
@@ -263,7 +265,7 @@ resolveCase =
 genesisRenderCase :: TestTree
 genesisRenderCase =
   testCase "resolve renders era geneses only with IncludeGeneses" $ do
-    path <- getDataFileName "examples/fullconfig.json"
+    path <- getDataFileName "test/examples/fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -287,8 +289,8 @@ genesisRenderCase =
 roleVariantParityCase :: TestTree
 roleVariantParityCase =
   testCase "network role defaults match the committed variant JSON" $ do
-    bpPath <- getDataFileName "defaults/NetworkConfig.variants/NetworkConfig.blockproducer.json"
-    relayPath <- getDataFileName "defaults/NetworkConfig.variants/NetworkConfig.relay.json"
+    bpPath <- getDataFileName "variants/NetworkConfig/blockproducer.json"
+    relayPath <- getDataFileName "variants/NetworkConfig/relay.json"
     bp <- eitherDecodeFileStrict' bpPath :: IO (Either String Value)
     relay <- eitherDecodeFileStrict' relayPath :: IO (Either String Value)
     expectOk $ case (bp, relay) of
@@ -308,7 +310,7 @@ roleVariantParityCase =
 roleSelectionCase :: TestTree
 roleSelectionCase =
   testCase "network role defaults selected from credential presence" $ do
-    path <- getDataFileName "examples/fullconfig.json"
+    path <- getDataFileName "test/examples/fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case (cliArgs ["--shelley-vrf-key", "vrf.skey"], cliArgs []) of
       (Just bpCli, Just relayCli) ->
@@ -337,7 +339,7 @@ roleSelectionCase =
 rolePrecedenceCase :: TestTree
 rolePrecedenceCase =
   testCase "explicit file value overrides the role default" $ do
-    path <- getDataFileName "examples/role-precedence.json"
+    path <- getDataFileName "test/examples/role-precedence.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs ["--shelley-vrf-key", "vrf.skey"] of
       Nothing -> Just "could not build CLI arguments"
@@ -419,8 +421,8 @@ mempoolMixedCase =
 -- one timeout makes 'resolveConfiguration' fail with a 'ConfigResolutionError'.
 mempoolMixedResolveCase :: TestTree
 mempoolMixedResolveCase =
-  testCase "examples/mempool-mixed.json (partial mempool timeouts rejected on resolve)" $ do
-    path <- getDataFileName "examples/mempool-mixed.json"
+  testCase "test/examples/mempool-mixed.json (partial mempool timeouts rejected on resolve)" $ do
+    path <- getDataFileName "test/examples/mempool-mixed.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -454,8 +456,8 @@ mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 600, Just 2]
 snapshotMithrilResolveCase :: TestTree
 snapshotMithrilResolveCase =
   testCase "Mithril snapshot policy resolves to concrete values (filling partial overrides)" $ do
-    fromMithril <- resolvedOptions "examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
-    fromPartial <- resolvedOptions "examples/fullconfig.json" -- sets 3 of 6 (= Mithril)
+    fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
+    fromPartial <- resolvedOptions "test/examples/fullconfig.json" -- sets 3 of 6 (= Mithril)
     expectOk $ case (fromMithril, fromPartial) of
       (Right a, Right b)
         | a == mithrilFields && b == mithrilFields -> Nothing
@@ -495,7 +497,7 @@ snapshotResolvePolicyCase =
 mithrilRequiresExportCase :: TestTree
 mithrilRequiresExportCase =
   testCase "Mithril + V2LSM without LSMExportPath resolves with a warning" $ do
-    path <- getDataFileName "examples/lsm-mithril-no-export.json"
+    path <- getDataFileName "test/examples/lsm-mithril-no-export.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -513,7 +515,7 @@ mithrilRequiresExportCase =
 lsmDatabasePathDefaultCase :: TestTree
 lsmDatabasePathDefaultCase =
   testCase "V2LSM defaults LSMDatabasePath to \"lsm\" when unset" $ do
-    path <- getDataFileName "examples/lsm-mithril-export.json"
+    path <- getDataFileName "test/examples/lsm-mithril-export.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -527,8 +529,8 @@ lsmDatabasePathDefaultCase =
 -- pinned hash, so the read succeeds without a hash check).
 dijkstraGenesisDecodeCase :: TestTree
 dijkstraGenesisDecodeCase =
-  testCase "examples/dijkstra-genesis.json (decodes via the Dijkstra codec)" $ do
-    path <- getDataFileName "examples/dijkstra-genesis.json"
+  testCase "test/examples/dijkstra-genesis.json (decodes via the Dijkstra codec)" $ do
+    path <- getDataFileName "test/examples/dijkstra-genesis.json"
     res <-
       readDijkstraGenesisFile
         ( fromJust $
@@ -542,8 +544,8 @@ dijkstraGenesisDecodeCase =
 -- | Reading a genesis file with a wrong expected hash is rejected.
 dijkstraGenesisHashMismatchCase :: TestTree
 dijkstraGenesisHashMismatchCase =
-  testCase "examples/dijkstra-genesis.json (wrong hash is rejected)" $ do
-    path <- getDataFileName "examples/dijkstra-genesis.json"
+  testCase "test/examples/dijkstra-genesis.json (wrong hash is rejected)" $ do
+    path <- getDataFileName "test/examples/dijkstra-genesis.json"
     let wrongHash :: Hash Blake2b_256 a
         wrongHash = fromJust $ hashFromTextAsHex (T.pack (replicate 64 '0'))
     res <- readDijkstraGenesisFile wrongHash path
@@ -556,9 +558,9 @@ dijkstraGenesisHashMismatchCase =
 -- time: a genesis file must come with a pinned hash.
 genesisHashRequiredCase :: TestTree
 genesisHashRequiredCase =
-  testCase "examples/testing-dijkstra-nohash.json (genesis file requires a hash)" $ do
+  testCase "test/examples/testing-dijkstra-nohash.json (genesis file requires a hash)" $ do
     res <-
-      decodeData "examples/testing-dijkstra-nohash.json" ::
+      decodeData "test/examples/testing-dijkstra-nohash.json" ::
         IO (Either String (TestingConfiguration Maybe))
     expectOk $ case res of
       Left err
@@ -570,8 +572,8 @@ genesisHashRequiredCase =
 genesisHashPresentCase :: TestTree
 genesisHashPresentCase =
   decodeCase
-    "examples/testing-dijkstra.json (genesis file + hash decodes)"
-    ( decodeData "examples/testing-dijkstra.json" ::
+    "test/examples/testing-dijkstra.json (genesis file + hash decodes)"
+    ( decodeData "test/examples/testing-dijkstra.json" ::
         IO (Either String (TestingConfiguration Maybe))
     )
 
@@ -579,8 +581,8 @@ genesisHashPresentCase =
 -- ledger's reader. The expected hash is the real mainnet Byron genesis hash.
 byronGenesisDecodeCase :: TestTree
 byronGenesisDecodeCase =
-  testCase "examples/mainnet-byron-genesis.json (decodes + hash-checks via the ledger)" $ do
-    path <- getDataFileName "examples/mainnet-byron-genesis.json"
+  testCase "test/examples/mainnet-byron-genesis.json (decodes + hash-checks via the ledger)" $ do
+    path <- getDataFileName "test/examples/mainnet-byron-genesis.json"
     case hashFromTextAsHex (T.pack "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb") of
       Nothing -> assertFailure "could not parse the expected Byron genesis hash"
       Just expected -> do

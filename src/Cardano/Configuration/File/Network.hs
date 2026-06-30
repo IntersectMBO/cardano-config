@@ -347,7 +347,7 @@ emptyNetworkConfiguration =
     Nothing
 
 -- | The block-producer role defaults. These must equal
--- @defaults\/NetworkConfig.variants\/NetworkConfig.blockproducer.json@ (asserted
+-- @variants\/NetworkConfig\/blockproducer.json@ (asserted
 -- by a test) and the node's @Ouroboros.defaultDeadlineTargets BlockProducer@ /
 -- @PeerSharingDisabled@.
 blockProducerRoleDefaults :: NetworkConfiguration Maybe
@@ -364,7 +364,7 @@ blockProducerRoleDefaults =
     }
 
 -- | The relay role defaults. These must equal
--- @defaults\/NetworkConfig.variants\/NetworkConfig.relay.json@ (asserted by a
+-- @variants\/NetworkConfig\/relay.json@ (asserted by a
 -- test) and the node's @Ouroboros.defaultDeadlineTargets Relay@ /
 -- @PeerSharingEnabled@.
 relayRoleDefaults :: NetworkConfiguration Maybe
