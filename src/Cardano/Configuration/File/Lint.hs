@@ -37,6 +37,11 @@ data ConfigWarning
   | -- | The configuration uses the legacy single-file form (component keys at the
     -- top level) rather than the recommended split-file form.
     LegacySingleFileFormat
+  | -- | A consistency check of warning severity did not hold on the resolved
+    -- configuration (e.g. the Mithril snapshot policy under the V2LSM backend
+    -- without an @LSMExportPath@). The configuration is still accepted; the
+    -- string is the check's description. See @Cardano.Configuration.ConfigCheck@.
+    ConsistencyWarning String
   deriving (Eq, Show)
 
 -- | A human-readable rendering of a 'ConfigWarning', matching the text the
@@ -53,6 +58,7 @@ renderConfigWarning = \case
   LegacySingleFileFormat ->
     "the configuration uses the legacy single-file form (component keys at the top level); "
       <> "consider porting it to the split-file form (each component under its section key)"
+  ConsistencyWarning msg -> msg
 
 -- | All warnings for an (unwrapped) configuration object.
 configWarnings :: Value -> [ConfigWarning]

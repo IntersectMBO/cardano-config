@@ -155,7 +155,8 @@ runResolve :: CliArgs -> GenesisRendering -> IO ()
 runResolve cli geneses = handleAny (die . displayException) $ do
   (file, warnings) <- parseConfigurationFiles (configFilePath cli)
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
-  nc <- either throwIO pure $ resolveConfiguration cli file
+  (nc, resolveWarnings) <- either throwIO pure $ resolveConfiguration cli file
+  for_ resolveWarnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
   BS.putStr $ encodePretty yamlConfig (nodeConfigurationToJSON geneses nc)
  where
   -- Stable, readable output: keys sorted alphabetically, unset values omitted.

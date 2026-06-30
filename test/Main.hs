@@ -231,7 +231,7 @@ resolveCase =
       Nothing -> assertFailure "could not build default CLI arguments"
       Just cli -> case resolveConfiguration cli cfg of
         Left err -> assertFailure (show err)
-        Right nc -> () <$ evaluate (length (show nc))
+        Right (nc, _) -> () <$ evaluate (length (show nc))
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
 -- of every era genesis (Byron via its canonical-JSON form, the rest via their
@@ -246,7 +246,7 @@ genesisRenderCase =
       Nothing -> Just "could not build CLI arguments"
       Just cli -> case resolveConfiguration cli cfg of
         Left e -> Just ("resolve failed: " <> show e)
-        Right nc ->
+        Right (nc, _) ->
           let keysOf r = case nodeConfigurationToJSON r nc of
                 Object o -> [k | k <- eras, maybe False nonEmpty (KM.lookup (K.fromString k) o)]
                 _ -> []
@@ -292,7 +292,7 @@ roleSelectionCase =
         case (resolveConfiguration bpCli cfg, resolveConfiguration relayCli cfg) of
           (Left e, _) -> Just ("block-producer resolve failed: " <> show e)
           (_, Left e) -> Just ("relay resolve failed: " <> show e)
-          (Right bpNc, Right relayNc) ->
+          (Right (bpNc, _), Right (relayNc, _)) ->
             let bn = C.networkConfiguration bpNc
                 rn = C.networkConfiguration relayNc
                 ok =
@@ -320,7 +320,7 @@ rolePrecedenceCase =
       Nothing -> Just "could not build CLI arguments"
       Just cli -> case resolveConfiguration cli cfg of
         Left e -> Just ("resolve failed: " <> show e)
-        Right nc ->
+        Right (nc, _) ->
           let n = C.networkConfiguration nc
            in if peerSharing n == Just True -- file wins over block-producer's False
                 && deadlineTargetOfRootPeers n == Just 999 -- file wins over 100
@@ -447,7 +447,7 @@ snapshotMithrilResolveCase =
       Nothing -> Left "could not build CLI arguments"
       Just cli -> case resolveConfiguration cli cfg of
         Left e -> Left (show e)
-        Right nc -> case snapshots (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
+        Right (nc, _) -> case snapshots (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
           Just (CustomSnapshotPolicy o) -> Right (snapshotFields o)
           other -> Left ("expected resolved custom snapshot options, got " <> show other)
 
@@ -466,19 +466,24 @@ snapshotResolvePolicyCase =
               else Just ("unexpected: mithril=" <> show mithril <> " filled=" <> show filled)
       )
 
--- | The Mithril policy under the V2LSM backend requires an @LSMExportPath@; a
--- configuration that omits it must be rejected by the consistency checks (which
--- run before the Mithril policy is resolved away).
+-- | The Mithril policy under the V2LSM backend without an @LSMExportPath@ is
+-- accepted, but resolution surfaces a non-fatal 'ConsistencyWarning' (the check
+-- runs before the Mithril policy is resolved away).
 mithrilRequiresExportCase :: TestTree
 mithrilRequiresExportCase =
-  testCase "Mithril + V2LSM without LSMExportPath is rejected" $ do
+  testCase "Mithril + V2LSM without LSMExportPath resolves with a warning" $ do
     path <- getDataFileName "examples/lsm-mithril-no-export.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
       Just cli -> case resolveConfiguration cli cfg of
-        Left _ -> Nothing
-        Right _ -> Just "expected rejection (Mithril needs an LSMExportPath under V2LSM)"
+        Left e -> Just ("expected acceptance with a warning, got rejection: " <> show e)
+        Right (_, warnings)
+          | any isConsistencyWarning warnings -> Nothing
+          | otherwise -> Just ("expected a ConsistencyWarning, got: " <> show warnings)
+ where
+  isConsistencyWarning ConsistencyWarning{} = True
+  isConsistencyWarning _ = False
 
 -- | The V2LSM backend defaults its database path to @"lsm"@ when the
 -- configuration leaves @LSMDatabasePath@ unset.
@@ -491,7 +496,7 @@ lsmDatabasePathDefaultCase =
       Nothing -> Just "could not build CLI arguments"
       Just cli -> case resolveConfiguration cli cfg of
         Left e -> Just ("resolve failed: " <> show e)
-        Right nc -> case backendSelector (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
+        Right (nc, _) -> case backendSelector (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
           Just (V2LSM (Just "lsm") (Just "export-dir")) -> Nothing
           other -> Just ("unexpected backend: " <> show other)
 

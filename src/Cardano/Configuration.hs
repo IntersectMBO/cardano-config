@@ -11,6 +11,7 @@ module Cardano.Configuration
 
     -- ** Consistency checks
   , ConfigCheck (..)
+  , CheckSeverity (..)
   , defaultConfigChecks
   , ConfigResolutionError (..)
 
@@ -146,13 +147,25 @@ data NodeConfiguration = NodeConfiguration
   }
   deriving Show
 
+-- | How a failed 'ConfigCheck' is treated: 'CheckError' aborts resolution with
+-- a 'ConfigResolutionError'; 'CheckWarning' lets resolution succeed but surfaces
+-- a 'File.ConsistencyWarning' alongside the resolved configuration.
+data CheckSeverity
+  = CheckError
+  | CheckWarning
+  deriving (Eq, Show)
+
 -- | A single consistency check over a resolved 'NodeConfiguration': an
--- invariant that must hold, together with a description used when it fails.
+-- invariant that must hold, together with a description used when it fails and
+-- a severity deciding whether a failure is fatal or merely a warning.
 -- Consumers can define their own and pass them to 'resolveConfigurationWith'.
 data ConfigCheck = ConfigCheck
-  { checkDescription :: String
+  { checkSeverity :: CheckSeverity
+  -- ^ Whether a failure aborts resolution ('CheckError') or is surfaced as a
+  --     non-fatal warning ('CheckWarning').
+  , checkDescription :: String
   -- ^ A description of the invariant, phrased as what must hold (used in the
-  --     error message when it does not).
+  --     error or warning message when it does not).
   , checkHolds :: NodeConfiguration -> Bool
   -- ^ The invariant. 'True' means the configuration satisfies it.
   }
@@ -173,6 +186,7 @@ instance Exception ConfigResolutionError
 defaultConfigChecks :: [ConfigCheck]
 defaultConfigChecks =
   [ ConfigCheck
+      CheckError
       "Enabling the gRPC endpoint requires a gRPC socket path, or a node socket path to derive one from"
       ( \nc ->
           let lcc = localConnectionsConfig nc
@@ -181,7 +195,10 @@ defaultConfigChecks =
                 || isJust (File.socketPath lcc)
       )
   , ConfigCheck
-      "The Mithril snapshot policy requires the V2LSM backend with an LSMExportPath, or the V2InMemory backend"
+      CheckWarning
+      ( "the Mithril snapshot policy under the V2LSM backend has no LSMExportPath, so the LSM backend "
+          <> "cannot export snapshots; set an LSMExportPath, or use the V2InMemory backend"
+      )
       ( \nc ->
           let ldb = runIdentity (File.ledgerDbConfiguration (storageConfiguration nc))
            in case File.snapshots ldb of
@@ -194,29 +211,45 @@ defaultConfigChecks =
       )
   ]
 
--- | Run a set of consistency checks over a resolved configuration, collecting
--- the descriptions of every check that fails.
+-- | Run a set of consistency checks over a resolved configuration. Any failed
+-- 'CheckError' aborts with a 'ConfigResolutionError' listing their descriptions;
+-- otherwise resolution succeeds and every failed 'CheckWarning' is returned as a
+-- 'File.ConsistencyWarning' for the caller to surface.
 runConfigChecks ::
-  [ConfigCheck] -> NodeConfiguration -> Either ConfigResolutionError NodeConfiguration
+  [ConfigCheck] ->
+  NodeConfiguration ->
+  Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning])
 runConfigChecks checks nc =
-  case [checkDescription c | c <- checks, not (checkHolds c nc)] of
-    [] -> Right nc
+  case [checkDescription c | c <- checks, checkSeverity c == CheckError, not (checkHolds c nc)] of
     (violation : violations) -> Left (ConfigResolutionError (violation :| violations))
+    [] ->
+      Right
+        ( nc
+        , [ File.ConsistencyWarning (checkDescription c)
+          | c <- checks
+          , checkSeverity c == CheckWarning
+          , not (checkHolds c nc)
+          ]
+        )
 
 -- | Combine the cli arguments and configuration file values into a full
 -- configuration, then check it with 'defaultConfigChecks'. CLI values take
 -- precedence over file values.
 resolveConfiguration ::
-  CLI.CliArgs -> File.NodeConfigurationFromFile -> Either ConfigResolutionError NodeConfiguration
+  CLI.CliArgs ->
+  File.NodeConfigurationFromFile ->
+  Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning])
 resolveConfiguration = resolveConfigurationWith defaultConfigChecks
 
 -- | As 'resolveConfiguration', but with an explicit set of consistency checks,
 -- so consumers can add their own (typically @'defaultConfigChecks' <> myChecks@).
+-- On success returns the resolved configuration together with any non-fatal
+-- warnings raised by 'CheckWarning'-severity checks.
 resolveConfigurationWith ::
   [ConfigCheck] ->
   CLI.CliArgs ->
   File.NodeConfigurationFromFile ->
-  Either ConfigResolutionError NodeConfiguration
+  Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning])
 resolveConfigurationWith checks cli file = do
   -- Components with an always-applied defaults layer are finalized to their
   -- complete 'Identity' form; a missing default surfaces as a resolution error.
@@ -259,7 +292,7 @@ resolveConfigurationWith checks cli file = do
   -- Run the consistency checks while the snapshot policy is still its requested
   -- form (the Mithril/LSMExportPath check needs to see "Mithril"), then resolve
   -- it to concrete options so the result carries no bare "Mithril" policy.
-  resolved <-
+  (resolved, warnings) <-
     runConfigChecks checks $
       NodeConfiguration
         { storageConfiguration = File.adjustDbPath sc dbPath
@@ -285,7 +318,10 @@ resolveConfigurationWith checks cli file = do
         , shutdownIPC = CLI.shutdownIPC cli
         , shutdownOnTarget = CLI.shutdownOnTarget cli
         }
-  pure resolved{storageConfiguration = File.resolveSnapshotOptions (storageConfiguration resolved)}
+  pure
+    ( resolved{storageConfiguration = File.resolveSnapshotOptions (storageConfiguration resolved)}
+    , warnings
+    )
  where
   finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
   require name = maybe (Left (name <> " has no value and no base default")) Right

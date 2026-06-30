@@ -34,14 +34,19 @@
   (documented alongside `MaxKnownMajorProtocolVersion`).
 * Optional `{ Version, Configuration }` envelope for forward-compatibility.
 * Structured parse errors (`ConfigurationParsingError`) and resolution-time
-  cross-field checks (`ConfigCheck` / `ConfigResolutionError`).
+  cross-field checks (`ConfigCheck` / `ConfigResolutionError`). Each check has a
+  `CheckSeverity`: a failed `CheckError` aborts resolution, while a failed
+  `CheckWarning` is non-fatal and surfaced as a `ConsistencyWarning`. Accordingly
+  `resolveConfiguration` returns the resolved configuration paired with the list
+  of `ConfigWarning`s it raised.
 * `parseConfigurationFiles` returns the parsed configuration together with a list
   of `ConfigWarning`s rather than printing or failing on them itself, so each
   consumer chooses how to surface them (`renderConfigWarning` gives the default
   text). The warnings are: unrecognised top-level keys (`UnrecognisedKeys`,
   typos, ignored); keys shadowed by a component supplied as its own section
-  (`ShadowedKeys`, ignored — the section wins); and use of the legacy single-file
-  form (`LegacySingleFileFormat`).
+  (`ShadowedKeys`, ignored — the section wins); use of the legacy single-file
+  form (`LegacySingleFileFormat`); and resolution-time consistency advisories
+  (`ConsistencyWarning`).
 * The split-file and legacy single-file schemas are kept separate, so neither
   offers both placements for a component; mixing the forms is caught at parse
   time (the shadowed-keys warning) rather than by a JSON Schema validator.
@@ -60,6 +65,8 @@
   resolved configuration always has every snapshot option set. The values are
   exposed as `mithrilSnapshotOptions` / `resolveSnapshotPolicy` so non-consensus
   consumers need not re-derive them. The snapshot policy is resolved after the
-  consistency checks, so the "Mithril under V2LSM requires an LSMExportPath"
-  check still sees the requested policy. Under the `V2LSM` backend,
-  `LSMDatabasePath` defaults to `lsm` when unset.
+  consistency checks, so the "Mithril under V2LSM without an LSMExportPath"
+  check still sees the requested policy. That check is a `CheckWarning`: such a
+  configuration is accepted but raises a `ConsistencyWarning` (the LSM backend
+  has nowhere to export snapshots). Under the `V2LSM` backend, `LSMDatabasePath`
+  defaults to `lsm` when unset.
