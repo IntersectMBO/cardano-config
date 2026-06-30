@@ -23,9 +23,8 @@ import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default
 import Data.Functor.Identity
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
-import qualified Data.Text as T
 import Data.Word
 import GHC.Generics
 
@@ -146,6 +145,18 @@ data LedgerDbBackendSelector
       (Maybe FilePath)
   deriving (Generic, Show)
 
+-- | The @Backend@ discriminator. Kept separate from 'LedgerDbBackendSelector'
+-- (which also carries the LSM paths) so that the codec can enumerate the
+-- accepted values, surfacing them as a JSON Schema @enum@ rather than a bare
+-- string (mirrors 'Cardano.Configuration.File.Consensus.ConsensusModeName').
+data LedgerDbBackendName = V2InMemoryName | V2LSMName
+  deriving Eq
+
+-- | Codec for the @Backend@ value, accepting only @V2InMemory@ or @V2LSM@.
+backendNameCodec :: JSONCodec LedgerDbBackendName
+backendNameCodec =
+  stringConstCodec ((V2InMemoryName, "V2InMemory") :| [(V2LSMName, "V2LSM")])
+
 -- | The @Backend@, @LSMDatabasePath@ and @LSMExportPath@ keys, parsed together
 -- as they describe a single choice of backend. @Backend@ is optional here (its
 -- default, @V2InMemory@, comes from @defaults/Storage.json@, not the codec), so
@@ -154,7 +165,7 @@ backendCodec :: JSONObjectCodec (Maybe LedgerDbBackendSelector)
 backendCodec =
   bimapCodec toSelector fromSelector $
     (,,)
-      <$> optionalFieldWith "Backend" (codec @Text) "Which LedgerDB backend to use (V2InMemory or V2LSM)"
+      <$> optionalFieldWith "Backend" backendNameCodec "Which LedgerDB backend to use (V2InMemory or V2LSM)"
         .= (\(b, _, _) -> b)
       <*> optionalFieldWith "LSMDatabasePath" filePathCodec "Custom path to the LSM database (V2LSM only)"
         .= (\(_, p, _) -> p)
@@ -164,13 +175,13 @@ backendCodec =
         "Directory into which the LSM backend exports snapshots (V2LSM only)"
         .= (\(_, _, e) -> e)
  where
+  -- Total: 'backendNameCodec' rejects any other string before we get here.
   toSelector (Nothing, _, _) = Right Nothing
-  toSelector (Just "V2InMemory", _, _) = Right (Just V2InMemory)
-  toSelector (Just "V2LSM", p, e) = Right (Just (V2LSM p e))
-  toSelector (Just other, _, _) = Left $ "Malformed LedgerDB Backend: " <> T.unpack other
+  toSelector (Just V2InMemoryName, _, _) = Right (Just V2InMemory)
+  toSelector (Just V2LSMName, p, e) = Right (Just (V2LSM p e))
   fromSelector Nothing = (Nothing, Nothing, Nothing)
-  fromSelector (Just V2InMemory) = (Just "V2InMemory", Nothing, Nothing)
-  fromSelector (Just (V2LSM p e)) = (Just "V2LSM", p, e)
+  fromSelector (Just V2InMemory) = (Just V2InMemoryName, Nothing, Nothing)
+  fromSelector (Just (V2LSM p e)) = (Just V2LSMName, p, e)
 
 -- | The Ledger DB configuration
 data LedgerDbConfiguration = LedgerDbConfiguration

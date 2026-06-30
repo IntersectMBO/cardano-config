@@ -211,6 +211,10 @@
                 "Backend": {
                     "default": "V2InMemory",
                     "description": "Which LedgerDB backend to use (V2InMemory or V2LSM)",
+                    "enum": [
+                        "V2InMemory",
+                        "V2LSM"
+                    ],
                     "title": "Backend",
                     "type": "string"
                 },
