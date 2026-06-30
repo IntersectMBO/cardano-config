@@ -193,7 +193,8 @@ splitConfigSchemaFrom components =
     KM.fromList [(K.fromText name, sectionRef name raw) | (name, raw) <- components]
   envelopeProps =
     KM.fromList
-      [ ("Version", versionRef)
+      [ ("$schema", schemaRef)
+      , ("Version", versionRef)
       , ("MinNodeVersion", minNodeVersionRef)
       , ("Configuration", configurationRef)
       ]
@@ -307,6 +308,22 @@ configurationRef =
            )
     ]
 
+-- | The @$schema@ annotation: the URL of the schema this configuration follows,
+-- a sibling of @Version@. Lets editors and validators pick up the schema, and
+-- lets a file declare which schema it conforms to. Defaults to this schema's own
+-- published URL.
+schemaRef :: Value
+schemaRef =
+  object
+    [ "type" .= ("string" :: Text)
+    , "default" .= schemaId "config.schema.json"
+    , "$comment"
+        .= ( "URL of the JSON Schema this configuration follows (the standard $schema annotation),"
+               <> " a sibling of Version, for editors and validators." ::
+               Text
+           )
+    ]
+
 -- | Every top-level configuration key the parsers recognise: the keys of all
 -- components (read at the top level in the single-file form), the section keys
 -- used to reference split sub-files, and the envelope keys. Used to detect
@@ -316,7 +333,7 @@ recognisedKeys =
   nub $
     envelopeKeys <> sectionKeys <> tracingKeys <> concatMap snd componentPropertyNames
  where
-  envelopeKeys = ["Version", "MinNodeVersion", "Configuration"]
+  envelopeKeys = ["$schema", "Version", "MinNodeVersion", "Configuration"]
   sectionKeys = map fst componentPropertyNames
   tracingKeys = map K.toText (KM.keys hermodTracingProps)
 

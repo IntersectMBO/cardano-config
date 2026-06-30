@@ -39,7 +39,7 @@ data ConfigWarning
     -- top level) rather than the recommended split-file form.
     LegacySingleFileFormat
   | -- | The document is not in the recommended Version1 envelope form: one or
-    -- more of the top-level @Version@, @MinNodeVersion@ and @Configuration@ keys
+    -- more of the top-level @$schema@, @Version@, @MinNodeVersion@ and @Configuration@ keys
     -- is absent. Carries the missing key names.
     NotVersion1Envelope [Text]
   | -- | A consistency check of warning severity did not hold on the resolved
@@ -66,7 +66,7 @@ renderConfigWarning = \case
   NotVersion1Envelope missing ->
     "the configuration is not in the Version1 envelope form; missing top-level key(s): "
       <> intercalate ", " (map T.unpack missing)
-      <> " (expected { Version, MinNodeVersion, Configuration })"
+      <> " (expected { $schema, Version, MinNodeVersion, Configuration })"
   ConsistencyWarning msg -> msg
 
 -- | All warnings for an (unwrapped) configuration object.
@@ -106,13 +106,15 @@ checkShadowedKeys = \case
   _ -> []
 
 -- | Whether the document is in the recommended Version1 envelope form, i.e. has
--- the top-level @Version@, @MinNodeVersion@ and @Configuration@ keys. Operates on
+-- the top-level @$schema@, @Version@, @MinNodeVersion@ and @Configuration@ keys. Operates on
 -- the /raw/ top-level value (before the envelope is split off), unlike the other
 -- checks here which see the unwrapped configuration object.
 checkEnvelope :: Value -> [ConfigWarning]
 checkEnvelope = \case
   Object o ->
-    let missing = [k | k <- ["Version", "MinNodeVersion", "Configuration"], not (KM.member (K.fromText k) o)]
+    let missing =
+          [ k | k <- ["$schema", "Version", "MinNodeVersion", "Configuration"], not (KM.member (K.fromText k) o)
+          ]
      in [NotVersion1Envelope missing | not (null missing)]
   _ -> []
 

@@ -16,11 +16,13 @@ The bundled `cardano-config` executable exposes the same via its `resolve` and
 ## Recommended format
 
 A configuration is a single JSON/YAML object. The recommended form is the
-**Version1 envelope**, with the components grouped under `Configuration`, each
-given inline or as a path to a split sub-file:
+**Version1 envelope**: `$schema` (the URL of the schema the file follows),
+`Version` and `MinNodeVersion` at the top level, with the components grouped
+under `Configuration`, each given inline or as a path to a split sub-file:
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
   "Version": 1,
   "MinNodeVersion": "11.2",
   "Configuration": {
@@ -30,9 +32,10 @@ given inline or as a path to a split sub-file:
 }
 ```
 
-Other shapes still parse, but raise a non-fatal warning: a document missing the
-envelope (`NotVersion1Envelope`) or the legacy flat form with component keys at
-the top level (`LegacySingleFileFormat`). See [Warnings](#warnings).
+Other shapes still parse, but raise a non-fatal warning: a document missing any
+of those envelope keys (`NotVersion1Envelope`) or the legacy flat form with
+component keys at the top level (`LegacySingleFileFormat`). See
+[Warnings](#warnings).
 
 To port an old config to the new format, group the component keys under their
 sections inside `Configuration` and add the `Version` / `MinNodeVersion`
@@ -69,6 +72,7 @@ be passed straight to `--config` (a few show just the relevant fragment).
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
   "Version": 1,
   "MinNodeVersion": "11.2",
   "Configuration": {
@@ -85,6 +89,7 @@ Give it the keys you want set, and the component's base default (and, for
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
   "Version": 1,
   "MinNodeVersion": "11.2",
   "Configuration": {
