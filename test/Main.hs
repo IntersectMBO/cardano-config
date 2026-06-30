@@ -18,6 +18,7 @@ import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
 import Cardano.Configuration.File
+import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.File.Storage
   ( LedgerDbBackendSelector (..)
   , LedgerDbConfiguration (..)
@@ -87,6 +88,7 @@ cases =
   , shadowWarnCase
   , envelopeWarningCase
   , splitSubfileSchemaCase
+  , migrateCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -252,6 +254,40 @@ splitSubfileSchemaCase =
       _ -> Just (file <> ": not a JSON object")
   properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
   properties _ = KM.empty
+
+-- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
+-- envelope keys appear at the top, each component's flat keys are grouped under
+-- its section (e.g. ConsensusMode under ConsensusConfig), an unrecognised key
+-- (MaxKnownMajorProtocolVersion) is kept, and the result is idempotent.
+migrateCase :: TestTree
+migrateCase =
+  testCase "migrate test/examples/fullconfig.json (legacy flat -> Version1 envelope)" $ do
+    res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
+    expectOk $ case res of
+      Left err -> Just ("could not read fixture: " <> err)
+      Right raw -> case migrate raw of
+        m@(Object top)
+          | not (all (`KM.member` top) (map K.fromString envelopeKeys)) ->
+              Just ("missing envelope keys; got " <> show (KM.keys top))
+          | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+              Just (Object cfg)
+                | not (nested cfg "ProtocolConfig" "ByronGenesisFile") ->
+                    Just "ProtocolConfig.ByronGenesisFile not grouped"
+                | not (nested cfg "ConsensusConfig" "ConsensusMode") ->
+                    Just "ConsensusConfig.ConsensusMode not grouped"
+                | not (nested cfg "StorageConfig" "LedgerDB") ->
+                    Just "StorageConfig.LedgerDB not grouped"
+                | not (KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg) ->
+                    Just "unrecognised key was dropped (should be kept)"
+                | migrate m /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "Configuration is not an object"
+        _ -> Just "migrate did not produce an object"
+ where
+  envelopeKeys = ["$schema", "Version", "MinNodeVersion", "Configuration"]
+  nested cfg section key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
 
 -- | The optional top-level @MinNodeVersion@ annotation is read from the same
 -- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and

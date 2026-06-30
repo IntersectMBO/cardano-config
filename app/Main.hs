@@ -1,4 +1,4 @@
--- | The @cardano-config@ command-line tool. It exposes two subcommands:
+-- | The @cardano-config@ command-line tool. It exposes three subcommands:
 --
 --   * @cardano-config resolve@ resolves a @cardano-node@ configuration
 --     (per-component defaults, the configuration file and the CLI flags),
@@ -7,11 +7,17 @@
 --
 --   * @cardano-config schema@ dumps the configuration JSON Schema (for the
 --     whole configuration or a single component), derived from the same codecs.
+--
+--   * @cardano-config migrate@ reshapes a configuration into the recommended
+--     @{ $schema, Version, MinNodeVersion, Configuration }@ envelope and prints
+--     it as JSON (a purely structural migration, preserving the values).
 module Main (main) where
 
 import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, resolveConfiguration)
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
+import Cardano.Configuration.File.Merge (decodeValueFile)
+import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configurationSchemas
@@ -28,6 +34,7 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Foldable (for_)
 import Data.List (intercalate)
 import qualified Data.Text as T
+import Data.Yaml (decodeThrow)
 import Data.Yaml.Pretty (encodePretty, setConfCompare, setConfDropNull)
 import qualified Data.Yaml.Pretty as Yaml
 import Options.Applicative
@@ -42,6 +49,8 @@ data Command
     Resolve CliArgs GenesisRendering
   | -- | @schema@: dump a JSON Schema.
     Schema SchemaCmd
+  | -- | @migrate@: reshape a configuration file into the Version1 envelope.
+    Migrate FilePath
 
 -- | What the @schema@ subcommand should print.
 data SchemaCmd
@@ -89,6 +98,20 @@ commandParser =
               (Schema <$> schemaParser)
               ( progDesc "Print the cardano-node configuration JSON Schema."
                   <> footerDoc (Just schemaValidationHelp)
+              )
+          )
+        <> command
+          "migrate"
+          ( info
+              ( Migrate
+                  <$> strArgument
+                    (metavar "CONFIG" <> help "Configuration file to migrate (JSON or YAML), or - for stdin.")
+              )
+              ( progDesc
+                  ( "Reshape a configuration into the recommended "
+                      <> "{ $schema, Version, MinNodeVersion, Configuration } envelope and print it as JSON. "
+                      <> "Preserves the values as written (no defaults are filled, no sub-files inlined)."
+                  )
               )
           )
     )
@@ -148,6 +171,17 @@ withGenesesFlag =
 run :: Command -> IO ()
 run (Resolve cli geneses) = runResolve cli geneses
 run (Schema cmd) = runSchema cmd
+run (Migrate path) = runMigrate path
+
+-- | Read a configuration and print it, reshaped into the Version1 envelope, as
+-- JSON. A purely structural migration: it does not resolve, default or validate.
+-- A path of @-@ reads the configuration from stdin (so it composes with @curl@).
+runMigrate :: FilePath -> IO ()
+runMigrate path = handleAny (die . displayException) $ do
+  raw <- case path of
+    "-" -> BS.getContents >>= decodeThrow
+    _ -> decodeValueFile Nothing path
+  dump (migrate raw)
 
 -- | Resolve a configuration and print it as YAML.
 runResolve :: CliArgs -> GenesisRendering -> IO ()
