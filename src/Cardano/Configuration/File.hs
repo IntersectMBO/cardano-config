@@ -103,7 +103,17 @@ type NodeConfigurationFromFile = NodeConfigurationFromFileF Identity
 -- finally fully parsed.
 data NodeConfigurationFromFileF f
   = NodeConfigurationFromFileV1
-  { storageConfiguration :: f (StorageConfiguration Maybe)
+  { minNodeVersion :: Maybe T.Text
+  -- ^ The minimum @cardano-node@ version expected to run this configuration,
+  -- taken from the optional top-level @MinNodeVersion@ key (a sibling of
+  -- @Version@, present in both the enveloped and legacy forms). Purely
+  -- informational here — it is recorded for a consumer to check.
+  --
+  -- Caveat: this is /not/ carried into the resolved
+  -- t'Cardano.Configuration.NodeConfiguration'; 'resolveConfiguration' drops it.
+  -- It lives only on this file-parse result, so a consumer that wants to act on
+  -- it must read it here, before resolving.
+  , storageConfiguration :: f (StorageConfiguration Maybe)
   , consensusConfiguration :: f (ConsensusConfiguration Maybe)
   , protocolConfiguration :: f (ProtocolConfiguration Maybe)
   , networkConfiguration :: f (NetworkConfiguration Maybe)
@@ -164,11 +174,11 @@ parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
   mainValue <- decodeValueFile Nothing cfgFile
-  (version, configValue) <- splitEnvelope mainValue
+  (version, minNodeVer, configValue) <- splitEnvelope mainValue
   let warnings = configWarnings configValue
       root = takeDirectory cfgFile
   config <- case version of
-    1 -> parseConfigurationVersion1 root configValue
+    1 -> parseConfigurationVersion1 root minNodeVer configValue
     n ->
       throwIO $
         ConfigurationParsingError
@@ -183,10 +193,12 @@ parseConfigurationFiles cfgFile = do
 parseConfigurationVersion1 ::
   -- | The directory sub-file paths are resolved against.
   FilePath ->
+  -- | The optional top-level @MinNodeVersion@ annotation.
+  Maybe T.Text ->
   -- | The configuration object.
   Value ->
   IO NodeConfigurationFromFile
-parseConfigurationVersion1 root configValue = do
+parseConfigurationVersion1 root minNodeVer configValue = do
   storage <- parseSection root configValue "StorageConfig"
   consensus <- parseSection root configValue "ConsensusConfig"
   protocol <- parseSection root configValue "ProtocolConfig"
@@ -216,7 +228,8 @@ parseConfigurationVersion1 root configValue = do
   experimentalGenesisData <- readExperimentalGenesisOrThrow root (experimentalGenesis testing)
   pure
     NodeConfigurationFromFileV1
-      { storageConfiguration = Identity storage
+      { minNodeVersion = minNodeVer
+      , storageConfiguration = Identity storage
       , consensusConfiguration = Identity consensus
       , protocolConfiguration = Identity protocol
       , networkConfiguration = Identity network

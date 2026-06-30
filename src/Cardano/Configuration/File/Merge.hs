@@ -150,16 +150,22 @@ parseSection root configValue section = do
   runCodec Nothing section withBase
 
 -- | Split the optional configuration envelope @{ \"Version\": N,
--- \"Configuration\": {..} }@ into the version and the configuration object. A
--- document that is not wrapped in an envelope is treated as the legacy version-1
--- format, in which the configuration keys sit at the top level (and an optional
--- flat @Version@ key may select the version).
-splitEnvelope :: Value -> IO (Int, Value)
+-- \"MinNodeVersion\": \"x.y.z\", \"Configuration\": {..} }@ into the version, the
+-- optional minimum node version and the configuration object. A document that is
+-- not wrapped in an envelope is treated as the legacy version-1 format, in which
+-- the configuration keys sit at the top level (and the optional flat @Version@
+-- and @MinNodeVersion@ keys may still appear there).
+--
+-- @MinNodeVersion@ is a top-level annotation (sibling of @Version@), not a
+-- configuration component: it records the lowest @cardano-node@ version expected
+-- to run this configuration, for a consumer to check.
+splitEnvelope :: Value -> IO (Int, Maybe T.Text, Value)
 splitEnvelope value =
   case value of
     Object o -> do
       version <- lookupVersion o
-      pure (version, fromMaybe value (KM.lookup "Configuration" o))
+      minNodeVersion <- lookupMinNodeVersion o
+      pure (version, minNodeVersion, fromMaybe value (KM.lookup "Configuration" o))
     _ ->
       throwIO $
         ConfigurationParsingError Nothing Nothing [] "expected the configuration to be a JSON/YAML object"
@@ -173,3 +179,14 @@ splitEnvelope value =
       maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
     Just _ -> throwIO (badVersion "expected an integer")
   badVersion msg = ConfigurationParsingError Nothing Nothing [Key "Version"] ("invalid Version: " <> msg)
+  -- @MinNodeVersion@ is optional and, when present, must be a string.
+  lookupMinNodeVersion o = case KM.lookup "MinNodeVersion" o of
+    Nothing -> pure Nothing
+    Just (String t) -> pure (Just t)
+    Just _ ->
+      throwIO $
+        ConfigurationParsingError
+          Nothing
+          Nothing
+          [Key "MinNodeVersion"]
+          "invalid MinNodeVersion: expected a string"

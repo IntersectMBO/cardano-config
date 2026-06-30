@@ -405,6 +405,11 @@
             "title": "MinBigLedgerPeersForTrustedState",
             "type": "integer"
         },
+        "MinNodeVersion": {
+            "description": "The minimum cardano-node version expected to run this configuration. A top-level annotation (a sibling of Version), recorded for a consumer to check.",
+            "title": "MinNodeVersion",
+            "type": "string"
+        },
         "PBftSignatureThreshold": {
             "description": "Byron PBFT signature threshold",
             "title": "PBftSignatureThreshold",

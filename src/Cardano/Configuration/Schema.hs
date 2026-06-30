@@ -195,6 +195,7 @@ splitConfigSchemaFrom components =
   envelopeProps =
     KM.fromList
       [ ("Version", versionRef)
+      , ("MinNodeVersion", minNodeVersionRef)
       , ("Configuration", configurationRef)
       ]
 
@@ -219,8 +220,10 @@ legacyOneFileConfigSchema =
       ]
  where
   -- Every component's keys, flat at the top level, plus the lone top-level
-  -- HermodTracing key.
-  singleFileProps = foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
+  -- HermodTracing key and the optional top-level MinNodeVersion annotation.
+  singleFileProps =
+    KM.insert "MinNodeVersion" minNodeVersionRef $
+      foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
 
 splitDescription :: Text
 splitDescription =
@@ -296,6 +299,17 @@ versionRef =
     , "$comment" .= ("The configuration format version (currently 1)." :: Text)
     ]
 
+minNodeVersionRef :: Value
+minNodeVersionRef =
+  object
+    [ "type" .= ("string" :: Text)
+    , "$comment"
+        .= ( "The minimum cardano-node version expected to run this configuration."
+               <> " A top-level annotation (a sibling of Version), recorded for a consumer to check." ::
+               Text
+           )
+    ]
+
 configurationRef :: Value
 configurationRef =
   object
@@ -316,7 +330,7 @@ recognisedKeys =
   nub $
     envelopeKeys <> sectionKeys <> tracingKeys <> concatMap snd componentPropertyNames
  where
-  envelopeKeys = ["Version", "Configuration"]
+  envelopeKeys = ["Version", "MinNodeVersion", "Configuration"]
   sectionKeys = map fst componentPropertyNames
   tracingKeys = map K.toText (KM.keys hermodTracingProps)
 

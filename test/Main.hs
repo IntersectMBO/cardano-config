@@ -81,6 +81,7 @@ cases =
   , parseCase "examples/split-all.json"
   , listMergeCase
   , shadowWarnCase
+  , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
   , roleVariantParityCase
@@ -178,6 +179,36 @@ shadowWarnCase =
   shadowsDijkstra (ShadowedKeys sks) =
     (T.pack "TestingConfig", T.pack "DijkstraGenesisFile") `elem` sks
   shadowsDijkstra _ = False
+
+-- | The optional top-level @MinNodeVersion@ annotation is read from the same
+-- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and
+-- — when the document is not enveloped — from the top level alongside the
+-- (section or flat) configuration keys. A document that omits it parses to
+-- 'Nothing'.
+minNodeVersionCase :: TestTree
+minNodeVersionCase =
+  testCase "MinNodeVersion is read at the top level (enveloped and legacy), or absent" $ do
+    enveloped <- parsedMinNodeVersion "examples/min-node-version.json"
+    legacy <- parsedMinNodeVersion "examples/min-node-version-legacy.json"
+    absent <- parsedMinNodeVersion "examples/split.json"
+    expectOk $
+      if enveloped == Just (T.pack "10.5.0")
+        && legacy == Just (T.pack "9.1.0")
+        && absent == Nothing
+        then Nothing
+        else
+          Just $
+            "unexpected MinNodeVersion: enveloped="
+              <> show enveloped
+              <> " legacy="
+              <> show legacy
+              <> " absent="
+              <> show absent
+ where
+  parsedMinNodeVersion fp = do
+    path <- getDataFileName fp
+    (cfg, _) <- parseConfigurationFiles path
+    pure (minNodeVersion cfg)
 
 -- | Resolving a parsed configuration with default CLI arguments must succeed and
 -- produce a complete (@Identity@) configuration, which exercises that the base
