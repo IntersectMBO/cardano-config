@@ -46,7 +46,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust, isNothing)
 import qualified Data.Text as T
 import Data.Word (Word64)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
@@ -82,6 +82,7 @@ cases =
   , parseCase "test/examples/fullconfig.json"
   , parseCase "test/examples/split.json"
   , parseCase "test/examples/split-all.json"
+  , tracingCase
   , shadowWarnCase
   , envelopeWarningCase
   , splitSubfileSchemaCase
@@ -294,6 +295,52 @@ resolveCase =
       Just cli -> case resolveConfiguration cli cfg of
         Left err -> assertFailure (show err)
         Right (nc, _) -> () <$ evaluate (length (show nc))
+
+-- | The top-level @HermodTracing@ key is resolved by trace-dispatcher's parser
+-- into a 'TraceConfig' — whether given inline (an object) or as a path to a
+-- separate file — and surfaced both on the parse result and, when the resolved
+-- configuration is dumped, back under a @HermodTracing@ key. A configuration
+-- without the key resolves to no tracing config and renders no such key.
+tracingCase :: TestTree
+tracingCase =
+  testCase "HermodTracing resolves to a TraceConfig (inline and file) and is rendered" $ do
+    inline <- parsed "test/examples/tracing-inline.json"
+    fromFile <- parsed "test/examples/tracing-file.json"
+    absent <- parsed "test/examples/fullconfig.json"
+    renderedInline <- rendersTracing "test/examples/tracing-inline.json"
+    renderedAbsent <- rendersTracing "test/examples/fullconfig.json"
+    expectOk $
+      if isJust (strictMaybeToMaybe (tracingConfiguration inline))
+        && isJust (strictMaybeToMaybe (tracingConfiguration fromFile))
+        && isNothing (strictMaybeToMaybe (tracingConfiguration absent))
+        && renderedInline == Right True
+        && renderedAbsent == Right False
+        then Nothing
+        else
+          Just $
+            "unexpected tracing resolution: inline="
+              <> show (isJust (strictMaybeToMaybe (tracingConfiguration inline)))
+              <> " file="
+              <> show (isJust (strictMaybeToMaybe (tracingConfiguration fromFile)))
+              <> " absent="
+              <> show (isNothing (strictMaybeToMaybe (tracingConfiguration absent)))
+              <> " renderedInline="
+              <> show renderedInline
+              <> " renderedAbsent="
+              <> show renderedAbsent
+ where
+  parsed fp = getDataFileName fp >>= fmap fst . parseConfigurationFiles
+  -- Whether the resolved configuration renders a HermodTracing key.
+  rendersTracing fp = do
+    path <- getDataFileName fp
+    (cfg, _) <- parseConfigurationFiles path
+    pure $ case cliArgs [] of
+      Nothing -> Left "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Left ("resolve failed: " <> show e)
+        Right (nc, _) -> case nodeConfigurationToJSON OmitGeneses nc of
+          Object o -> Right (KM.member (K.fromString "HermodTracing") o)
+          _ -> Left "rendered configuration was not an object"
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
 -- of every era genesis (Byron via its canonical-JSON form, the rest via the

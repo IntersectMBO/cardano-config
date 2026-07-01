@@ -166,6 +166,12 @@ parser (`readConfiguration`), which resolves it into a `TraceConfig`: a file
 reference is read via `FromFile` (after resolving the path to its canonical
 location), an inline object via `FromJSONObject`.
 
+The resolved `TraceConfig` is carried through to the final `NodeConfiguration`
+(as `tracingConfiguration :: Maybe TraceConfig`), so a consumer of the library
+gets the tracing configuration already parsed, and `cardano-config resolve`
+emits it back under the `HermodTracing` key (as an inline object). It is
+`Nothing`/absent when the configuration has no `HermodTracing` key.
+
 ## Mandatory keys
 
 Only **eight** keys are mandatory (no default; parsing fails if absent):
