@@ -44,6 +44,16 @@ source-repository-package
     libs/non-integral
     libs/small-steps
 
+-- trace-dispatcher (hermod tracing) — provides the tracing configuration parser
+-- (ConfigSource/readConfiguration) used to resolve the HermodTracing key.
+-- Pinned to the tip of hermod-tracing#18 (mkarg/config-source).
+source-repository-package
+  type: git
+  location: https://github.com/IntersectMBO/hermod-tracing
+  tag: 3d7aeb85d9ef01df48a44c751e45609b4c6dea00
+  subdir:
+    trace-dispatcher
+
 -- Ensures colourized output from test runners
 test-show-details: direct
 tests: true
@@ -73,6 +83,7 @@ if impl(ghc >=9.14)
     , canonical-json:containers
     , cborg:base
     , cborg:containers
+    , cborg-json:base
     , constrained-generators:QuickCheck
     , dependent-map:containers
     , dictionary-sharing:containers

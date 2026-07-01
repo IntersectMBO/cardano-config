@@ -86,6 +86,8 @@ module Cardano.Configuration
     -- * Configuration file
   , File.NodeConfigurationFromFile
   , File.TracingConfiguration (..)
+  , File.TracingConfigSource (..)
+  , File.TraceConfig
   , File.parseConfigurationFiles
   , File.ConfigWarning (..)
   , File.renderConfigWarning

@@ -236,10 +236,20 @@
             "type": "string"
         },
         "HermodTracing": {
-            "description": "Tracing configuration as a path to a separate file holding it. Consumed by the node tracing system (trace-dispatcher), not parsed or validated by cardano-config.",
-            "format": "path",
-            "title": "HermodTracing",
-            "type": "string"
+            "anyOf": [
+                {
+                    "format": "path",
+                    "title": "String",
+                    "type": "string"
+                },
+                {
+                    "additionalProperties": {},
+                    "title": "Object",
+                    "type": "object"
+                }
+            ],
+            "description": "Tracing configuration, given as a path to a separate file holding it or as that configuration object inline. Consumed by the node tracing system (trace-dispatcher), which owns its schema; not described further by cardano-config.",
+            "title": "HermodTracing"
         },
         "LedgerDB": {
             "description": "The LedgerDB configuration\nLedgerDB",
