@@ -111,7 +111,7 @@ $ cardano-config resolve --config <your-config.json> --<other node CLI options>
 ConsensusConfig:
   ConsensusMode: PraosMode
 LocalConnectionsConfig:
-  EnableRpc: false
+  EnableGrpc: false
 NetworkConfig:
   ...
 ```

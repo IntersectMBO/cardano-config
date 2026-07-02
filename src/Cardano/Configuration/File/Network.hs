@@ -396,12 +396,12 @@ relayRoleDefaults =
     , peerSharing = SJust True
     }
 
--- | Connections for local clients. @EnableRpc@ has a default; the socket paths
+-- | Connections for local clients. @EnableGrpc@ has a default; the socket paths
 -- are optional.
 data LocalConnectionsConfig f = LocalConnectionsConfig
   { socketPath :: StrictMaybe FilePath
-  , enableRpc :: f Bool
-  , rpcSocketPath :: StrictMaybe FilePath
+  , enableGrpc :: f Bool
+  , grpcSocketPath :: StrictMaybe FilePath
   }
   deriving Generic
 
@@ -424,14 +424,14 @@ instance HasCodec (LocalConnectionsConfig StrictMaybe) where
       LocalConnectionsConfig
         <$> optionalFieldWithStrict "SocketPath" filePathCodec "Path of the socket for local clients"
           .= socketPath
-        <*> optionalFieldStrict "EnableRpc" "Whether to enable the gRPC server" .= enableRpc
-        <*> optionalFieldWithStrict "RpcSocketPath" filePathCodec "Path of the gRPC server socket"
-          .= rpcSocketPath
+        <*> optionalFieldStrict "EnableGrpc" "Whether to enable the gRPC server" .= enableGrpc
+        <*> optionalFieldWithStrict "GrpcSocketPath" filePathCodec "Path of the gRPC server socket"
+          .= grpcSocketPath
 
--- | Resolve a partial local-connections configuration, taking @EnableRpc@ from
+-- | Resolve a partial local-connections configuration, taking @EnableGrpc@ from
 -- the (always-applied) defaults.
 finalizeLocalConnections ::
   LocalConnectionsConfig StrictMaybe -> Either ErrorMessage (LocalConnectionsConfig Identity)
 finalizeLocalConnections c = do
-  rpc <- requireField "EnableRpc" (enableRpc c)
-  pure $ LocalConnectionsConfig (socketPath c) rpc (rpcSocketPath c)
+  rpc <- requireField "EnableGrpc" (enableGrpc c)
+  pure $ LocalConnectionsConfig (socketPath c) rpc (grpcSocketPath c)

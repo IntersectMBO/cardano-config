@@ -70,8 +70,8 @@ module Cardano.Configuration
   , CLI.parseTopologyFile
   , CLI.parseSocketPath
   , CLI.parseValidateDB
-  , CLI.parseEnableRpc
-  , CLI.parseRpcSocketPath
+  , CLI.parseEnableGrpc
+  , CLI.parseGrpcSocketPath
   , CLI.parseCredentials
   , CLI.parseKESSource
   , CLI.parseHostIPv4Addr
@@ -190,8 +190,8 @@ defaultConfigChecks =
       "Enabling the gRPC endpoint requires a gRPC socket path, or a node socket path to derive one from"
       ( \nc ->
           let lcc = localConnectionsConfig nc
-           in not (runIdentity (File.enableRpc lcc))
-                || isSJust (File.rpcSocketPath lcc)
+           in not (runIdentity (File.enableGrpc lcc))
+                || isSJust (File.grpcSocketPath lcc)
                 || isSJust (File.socketPath lcc)
       )
   , ConfigCheck
@@ -270,8 +270,8 @@ resolveConfigurationWith checks cli file = do
       lccWithCli =
         lcc
           { File.socketPath = CLI.socketPath cli <|> File.socketPath lcc
-          , File.enableRpc = CLI.enableRpcCLI cli <|> File.enableRpc lcc
-          , File.rpcSocketPath = CLI.rpcSocketPathCLI cli <|> File.rpcSocketPath lcc
+          , File.enableGrpc = CLI.enableGrpcCLI cli <|> File.enableGrpc lcc
+          , File.grpcSocketPath = CLI.grpcSocketPathCLI cli <|> File.grpcSocketPath lcc
           }
   localConnections <- finalize $ File.finalizeLocalConnections lccWithCli
   -- Storage, consensus and the non-producing flag take their value from the CLI

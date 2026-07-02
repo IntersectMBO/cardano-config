@@ -109,16 +109,16 @@
                 {
                     "description": "LocalConnectionsConfig",
                     "properties": {
-                        "EnableRpc": {
+                        "EnableGrpc": {
                             "default": false,
                             "description": "Whether to enable the gRPC server",
-                            "title": "EnableRpc",
+                            "title": "EnableGrpc",
                             "type": "boolean"
                         },
-                        "RpcSocketPath": {
+                        "GrpcSocketPath": {
                             "description": "Path of the gRPC server socket",
                             "format": "path",
-                            "title": "RpcSocketPath",
+                            "title": "GrpcSocketPath",
                             "type": "string"
                         },
                         "SocketPath": {

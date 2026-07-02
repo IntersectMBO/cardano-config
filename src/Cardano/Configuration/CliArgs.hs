@@ -20,8 +20,8 @@ module Cardano.Configuration.CliArgs
   , parseTopologyFile
   , parseSocketPath
   , parseValidateDB
-  , parseEnableRpc
-  , parseRpcSocketPath
+  , parseEnableGrpc
+  , parseGrpcSocketPath
   , parseCredentials
   , parseKESSource
   , parseHostIPv4Addr
@@ -113,8 +113,8 @@ data CliArgs = CliArgs
   , tracerSocket :: StrictMaybe TracerConnection
   , shutdownIPC :: StrictMaybe Fd
   , shutdownOnTarget :: StrictMaybe ShutdownOn
-  , enableRpcCLI :: StrictMaybe Bool
-  , rpcSocketPathCLI :: StrictMaybe FilePath
+  , enableGrpcCLI :: StrictMaybe Bool
+  , grpcSocketPathCLI :: StrictMaybe FilePath
   }
   deriving Show
 
@@ -149,8 +149,8 @@ parseCliArgs =
     <*> parserOptionGroup "Tracing:" (optionalStrict parseTracerSocketMode)
     <*> parserOptionGroup "Shutdown:" (optionalStrict parseShutdownIPC)
     <*> parserOptionGroup "Shutdown:" (optionalStrict parseShutdownOn)
-    <*> optionalStrict parseEnableRpc
-    <*> optionalStrict parseRpcSocketPath
+    <*> optionalStrict parseEnableGrpc
+    <*> optionalStrict parseGrpcSocketPath
 
 parseTopologyFile :: Parser FilePath
 parseTopologyFile =
@@ -182,16 +182,16 @@ parseSocketPath =
       , completer (bashCompleter "file")
       ]
 
-parseEnableRpc :: Parser Bool
-parseEnableRpc =
+parseEnableGrpc :: Parser Bool
+parseEnableGrpc =
   flag' True $
     mconcat
       [ long "grpc-enable"
       , help "[EXPERIMENTAL] Enable node gRPC endpoint."
       ]
 
-parseRpcSocketPath :: Parser FilePath
-parseRpcSocketPath =
+parseGrpcSocketPath :: Parser FilePath
+parseGrpcSocketPath =
   strOption $
     mconcat
       [ long "grpc-socket-path"
