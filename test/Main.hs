@@ -83,6 +83,7 @@ cases =
   , parseCase "test/examples/split.json"
   , parseCase "test/examples/split-all.json"
   , tracingCase
+  , tracingDefaultParityCase
   , shadowWarnCase
   , envelopeWarningCase
   , splitSubfileSchemaCase
@@ -341,6 +342,27 @@ tracingCase =
         Right (nc, _) -> case nodeConfigurationToJSON OmitGeneses nc of
           Object o -> Right (KM.member (K.fromString "HermodTracing") o)
           _ -> Left "rendered configuration was not an object"
+
+-- | The committed @defaults/HermodTracing.json@ must equal the JSON of the
+-- in-tree 'defaultCardanoTracingConfig' literal (encoded through
+-- trace-dispatcher's own 'TraceConfig' codec), so the checked-in default cannot
+-- drift from the Haskell source. Regenerate the file from
+-- 'defaultCardanoTracingConfig' if this fails.
+tracingDefaultParityCase :: TestTree
+tracingDefaultParityCase =
+  testCase "defaults/HermodTracing.json matches defaultCardanoTracingConfig" $ do
+    path <- getDataFileName "defaults/HermodTracing.json"
+    committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
+    expectOk $ case committed of
+      Left e -> Just ("could not read defaults/HermodTracing.json: " <> e)
+      Right v
+        | toJSON defaultCardanoTracingConfig == v -> Nothing
+        | otherwise ->
+            Just $
+              "defaults/HermodTracing.json is out of date; regenerate from defaultCardanoTracingConfig: "
+                <> show (toJSON defaultCardanoTracingConfig)
+                <> " /= "
+                <> show v
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
 -- of every era genesis (Byron via its canonical-JSON form, the rest via the

@@ -18,19 +18,20 @@ module Cardano.Configuration.File.Tracing
   ( TracingConfiguration (..)
   , TracingConfigSource (..)
   , resolveTracingConfiguration
+  , defaultCardanoTracingConfig
   ) where
 
 import Autodocodec
 import Cardano.Configuration.Basic (optionalFieldStrict)
 import Cardano.Configuration.Common (filePathCodec)
+import Cardano.Logging
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Cardano.Logging.ConfigurationParser (ConfigSource (..), mkConfiguration, readConfigurationWithDefault)
-import Cardano.Logging.Types (TraceConfig)
 import Data.Aeson (FromJSON, Object, ToJSON)
 import qualified Data.Aeson.KeyMap as KM
 import GHC.Generics (Generic)
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>))
+import qualified Data.Map.Strict as Map
 
 -- | Where the @HermodTracing@ configuration comes from: either a path to a
 -- separate file holding it, or the configuration object given inline. Which one
@@ -105,6 +106,65 @@ resolveTracingConfiguration root (TracingConfiguration mSource) =
     SNothing -> pure SNothing
     SJust (TracingConfigFile path) -> do
       canonPath <- canonicalizePath (root </> path)
-      SJust <$> readConfigurationWithDefault (FromFile canonPath) mkConfiguration
+      SJust <$> readConfigurationWithDefault (FromFile canonPath) defaultCardanoTracingConfig
     SJust (TracingConfigInline obj) ->
-      SJust <$> readConfigurationWithDefault (FromJSONObject obj) mkConfiguration
+      SJust <$> readConfigurationWithDefault (FromJSONObject obj) defaultCardanoTracingConfig
+
+defaultCardanoTracingConfig :: TraceConfig
+defaultCardanoTracingConfig = emptyTraceConfig {
+    tcMetricsPrefix = Just "cardano.node.metrics."
+  , tcLedgerMetricsFrequency = Nothing             -- discard the default from 'trace-dispatcher'; Cardano has own ones, different for block producers and relays
+  , tcOptions = Map.fromList
+     [([],
+          [ ConfSeverity (SeverityF (Just Notice))
+          , ConfDetail DNormal
+          , ConfBackend  [ Stdout MachineFormat
+                         , EKGBackend
+                         ]])
+
+     -- more important tracers going here
+     ,(["BlockFetch", "Decision"],
+          [ ConfSeverity (SeverityF Nothing)])
+     ,(["ChainDB"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["ChainDB", "AddBlockEvent", "AddBlockValidation"],
+          [ ConfSeverity (SeverityF Nothing)])
+     ,(["ChainSync", "Client"],
+          [ ConfSeverity (SeverityF (Just Warning))])
+     ,(["Net", "ConnectionManager", "Remote"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Startup", "DiffusionInit"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Net", "ErrorPolicy"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Forge", "Loop"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Forge", "StateInfo"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Net", "InboundGovernor", "Remote"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Mempool"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Net", "Mux", "Remote"],
+          [ ConfSeverity (SeverityF (Just Info))])
+     ,(["Net", "InboundGovernor"],
+          [ ConfSeverity (SeverityF (Just Warning))])
+     ,(["Net", "PeerSelection"],
+          [ ConfSeverity (SeverityF Nothing)])
+     ,(["LedgerMetrics"],
+          [ ConfSeverity (SeverityF Nothing)])
+     ,(["Resources"],
+          [ ConfSeverity (SeverityF Nothing)])
+     --     Limiters
+          ,(["ChainDB","AddBlockEvent","AddedBlockToQueue"],
+               [ ConfLimiter 2.0])
+          ,(["ChainDB","AddBlockEvent","AddedBlockToVolatileDB"],
+               [ ConfLimiter 2.0])
+          ,(["ChainDB","AddBlockEvent","AddBlockValidation", "ValidCandidate"],
+               [ ConfLimiter 2.0])
+          ,(["ChainDB", "CopyToImmutableDBEvent", "CopiedBlockToImmutableDB"],
+               [ ConfLimiter 2.0])
+          ,(["BlockFetch", "Client", "CompletedBlockFetch"],
+               [ ConfLimiter 2.0])
+     ]
+  }

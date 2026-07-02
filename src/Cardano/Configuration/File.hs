@@ -33,6 +33,7 @@ module Cardano.Configuration.File
   , TracingConfiguration (..)
   , TracingConfigSource (..)
   , TraceConfig
+  , defaultCardanoTracingConfig
 
     -- * Resolving components
   , finalizeNetwork
@@ -73,6 +74,7 @@ import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
   ( TracingConfigSource (..)
   , TracingConfiguration (..)
+  , defaultCardanoTracingConfig
   , resolveTracingConfiguration
   )
 import Cardano.Configuration.Genesis
