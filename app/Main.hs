@@ -103,7 +103,7 @@ schemaValidationHelp = vsep (map pretty ls)
     [ "Validate a configuration against the schema with ajv-cli (https://ajv.js.org):"
     , ""
     , "  cardano-config schema > config.schema.json"
-    , "  ajv validate --strict=false -s config.schema.json -d my-config.json"
+    , "  ajv validate --spec=draft7 --strict=false -s config.schema.json -d my-config.json"
     , ""
     , "ajv reads JSON, so convert a YAML configuration to JSON first (e.g. with yq)."
     , "--strict=false lets ajv ignore the informational \"path\" format."
