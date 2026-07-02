@@ -138,15 +138,20 @@ loadBaseDefault section = do
     then Just <$> decodeValueFile (Just section) fp
     else pure Nothing
 
--- | The configuration layer the user supplied for a section: the top-level
--- object when the section key is absent (its keys live there), an inline object,
--- or a referenced sub-file.
+-- | The configuration layer the user supplied for a section: an inline object,
+-- or a referenced sub-file. A component is read only from its own section key; a
+-- section that is absent contributes no user layer (so the component takes its
+-- base defaults). Component keys placed flat under @Configuration@ are /not/
+-- resolved into their section — they are left unrecognised (see
+-- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-Version1 documents,
+-- where the keys are flat, are migrated (grouped into sections) before reaching
+-- here.
 sectionUserLayer :: FilePath -> Value -> String -> IO Value
 sectionUserLayer root configValue section =
   case configValue of
     Object o ->
       case KM.lookup (K.fromString section) o of
-        Nothing -> pure configValue
+        Nothing -> pure (Object KM.empty)
         Just source -> loadSectionSource root section source
     _ ->
       throwIO $

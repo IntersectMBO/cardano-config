@@ -18,6 +18,7 @@ import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
 import Cardano.Configuration.File
+import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.File.Storage
   ( LedgerDbBackendSelector (..)
   , LedgerDbConfiguration (..)
@@ -84,9 +85,12 @@ cases =
   , parseCase "test/examples/split-all.json"
   , tracingCase
   , tracingDefaultParityCase
-  , shadowWarnCase
-  , envelopeWarningCase
+  , misplacedKeyCase
+  , migrationWarningCase
+  , migrationErrorCase
   , splitSubfileSchemaCase
+  , migrateCase
+  , migrateRenameCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -173,47 +177,59 @@ subfilePathConfinementCase =
       Left (e :: SomeException) -> Just (show e)
       Right _ -> Nothing
 
--- | A top-level key belonging to a component that is also supplied as its own
--- section (here a top-level @DijkstraGenesisFile@ alongside a @TestingConfig@
--- section) is shadowed. Parsing still succeeds, and a 'ShadowedKeys' warning
--- naming the offending key is returned for the caller to surface.
-shadowWarnCase :: TestTree
-shadowWarnCase =
-  testCase "test/examples/shadow.json (shadowed top-level key returns a warning, still parses)" $ do
+-- | A component property placed flat under @Configuration@ (here a
+-- @DijkstraGenesisFile@ alongside the @TestingConfig@ section that owns it) is not
+-- resolved into that section: it is an unrecognised key. Parsing still succeeds
+-- (the component is read from its section) and an 'UnrecognisedKeys' warning names
+-- the misplaced key.
+misplacedKeyCase :: TestTree
+misplacedKeyCase =
+  testCase "test/examples/shadow.json (a misplaced component key is unrecognised, still parses)" $ do
     path <- getDataFileName "test/examples/shadow.json"
     res <- try (parseConfigurationFiles path)
     expectOk $ case res of
       Left (e :: SomeException) -> Just (show e)
       Right (_, warnings)
-        | any shadowsDijkstra warnings -> Nothing
+        | any mentionsDijkstra warnings -> Nothing
         | otherwise ->
-            Just ("expected a ShadowedKeys warning for DijkstraGenesisFile, got " <> show warnings)
+            Just ("expected an UnrecognisedKeys warning for DijkstraGenesisFile, got " <> show warnings)
  where
-  shadowsDijkstra (ShadowedKeys sks) =
-    (T.pack "TestingConfig", T.pack "DijkstraGenesisFile") `elem` sks
-  shadowsDijkstra _ = False
+  mentionsDijkstra (UnrecognisedKeys ks) = "DijkstraGenesisFile" `elem` ks
+  mentionsDijkstra _ = False
 
--- | A document not wrapped in the @{ Version, MinNodeVersion, Configuration }@
--- envelope returns a 'NotVersion1Envelope' warning; an enveloped one does not.
-envelopeWarningCase :: TestTree
-envelopeWarningCase =
-  testCase "non-enveloped config warns (NotVersion1Envelope); enveloped does not" $ do
-    flatPath <- getDataFileName "test/examples/split.json"
+-- | The parser accepts only the Version1 format. A document that is not in it
+-- (no top-level @Configuration@ envelope) is migrated to it before parsing and a
+-- 'MigratedToVersion1' warning is returned; a document already in the envelope is
+-- parsed as-is, with no such warning.
+migrationWarningCase :: TestTree
+migrationWarningCase =
+  testCase "non-Version1 config is migrated (warns MigratedToVersion1) and parses; Version1 is not" $ do
+    legacyPath <- getDataFileName "test/examples/fullconfig.json"
     envPath <- getDataFileName "test/examples/min-node-version.json"
-    (_, flatWarnings) <- parseConfigurationFiles flatPath
+    (_, legacyWarnings) <- parseConfigurationFiles legacyPath
     (_, envWarnings) <- parseConfigurationFiles envPath
     expectOk $
-      if any isEnvelope flatWarnings && not (any isEnvelope envWarnings)
+      if MigratedToVersion1 `elem` legacyWarnings && MigratedToVersion1 `notElem` envWarnings
         then Nothing
         else
           Just $
-            "expected NotVersion1Envelope only for the non-enveloped config: flat="
-              <> show flatWarnings
+            "expected MigratedToVersion1 only for the non-Version1 config: legacy="
+              <> show legacyWarnings
               <> " enveloped="
               <> show envWarnings
- where
-  isEnvelope NotVersion1Envelope{} = True
-  isEnvelope _ = False
+
+-- | A document that is not in the Version1 format /and/ whose migration still
+-- does not yield a parseable configuration is rejected (the parse error
+-- surfaces). Here a legacy document with an ill-typed @ConsensusMode@ migrates to
+-- a Version1 envelope, but the component codec then rejects the value.
+migrationErrorCase :: TestTree
+migrationErrorCase =
+  testCase "a non-Version1 document whose migration is still unparseable is rejected" $ do
+    path <- getDataFileName "test/examples/migration-unparseable.json"
+    res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
+    expectOk $ case res of
+      Left (_ :: SomeException) -> Nothing
+      Right _ -> Just "expected a parse error for a document whose migration is unparseable"
 
 -- | Each per-component split sub-file declares a @$schema@ pointing to that
 -- component's schema, and the component schema in turn declares a @$schema@
@@ -252,6 +268,104 @@ splitSubfileSchemaCase =
       _ -> Just (file <> ": not a JSON object")
   properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
   properties _ = KM.empty
+
+-- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
+-- envelope keys appear at the top, each component's flat keys are grouped under
+-- its section (e.g. ConsensusMode under ConsensusConfig), a removed key
+-- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
+migrateCase :: TestTree
+migrateCase =
+  testCase "migrate test/examples/fullconfig.json (legacy flat -> Version1 envelope)" $ do
+    res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
+    expectOk $ case res of
+      Left err -> Just ("could not read fixture: " <> err)
+      Right raw -> case migrate raw of
+        m@(Object top)
+          | not (all (`KM.member` top) (map K.fromString envelopeKeys)) ->
+              Just ("missing envelope keys; got " <> show (KM.keys top))
+          | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+              Just (Object cfg)
+                | not (nested cfg "ProtocolConfig" "ByronGenesisFile") ->
+                    Just "ProtocolConfig.ByronGenesisFile not grouped"
+                | not (nested cfg "ConsensusConfig" "ConsensusMode") ->
+                    Just "ConsensusConfig.ConsensusMode not grouped"
+                | not (nested cfg "StorageConfig" "LedgerDB") ->
+                    Just "StorageConfig.LedgerDB not grouped"
+                | KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg ->
+                    Just "removed key MaxKnownMajorProtocolVersion survived (should be dropped)"
+                | migrate m /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "Configuration is not an object"
+        _ -> Just "migrate did not produce an object"
+ where
+  envelopeKeys = ["$schema", "Version", "MinNodeVersion", "Configuration"]
+  nested cfg section key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+
+-- | 'migrate' rewrites the renamed fields to their current names and drops the
+-- removed ones. Renamed flat keys must end up grouped under their section using
+-- the /new/ name (a peer target under NetworkConfig, EnableGrpc under
+-- LocalConnectionsConfig); AcceptedConnectionsLimit's sub-keys are renamed in
+-- place, but that rename is scoped — a stray @delay@ elsewhere is left alone;
+-- no removed key survives anywhere (including @Protocol@ and
+-- @MaxKnownMajorProtocolVersion@); a genuinely-unrecognised key is kept; and the
+-- result is still idempotent.
+migrateRenameCase :: TestTree
+migrateRenameCase =
+  testCase "migrate rewrites renamed fields and drops removed ones" $ do
+    res <- decodeData "test/examples/legacy-renamed-fields.json" :: IO (Either String Value)
+    expectOk $ case res of
+      Left err -> Just ("could not read fixture: " <> err)
+      Right raw -> case migrate raw of
+        m@(Object top)
+          | any (`elem` removed) (allKeys m) ->
+              Just ("a removed key survived; keys: " <> show (allKeys m))
+          | any (`elem` oldNames) (allKeys m) ->
+              Just ("an old name survived; keys: " <> show (allKeys m))
+          | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+              Just (Object cfg)
+                | not (nested cfg "NetworkConfig" "DeadlineTargetNumberOfRootPeers") ->
+                    Just "renamed peer target not grouped under NetworkConfig"
+                | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
+                    Just "EnableGrpc not grouped under LocalConnectionsConfig"
+                | not (deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "HardLimit") ->
+                    Just "AcceptedConnectionsLimit.HardLimit not renamed in place"
+                | deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "hardLimit" ->
+                    Just "AcceptedConnectionsLimit.hardLimit not renamed"
+                -- The rename is scoped: a stray top-level "delay" is not touched.
+                | not (KM.member (K.fromString "delay") cfg) ->
+                    Just "a stray 'delay' outside AcceptedConnectionsLimit was renamed (should be scoped)"
+                -- A genuinely-unrecognised key (a typo) is kept, not dropped.
+                | not (KM.member (K.fromString "SomeUnrecognisedKey") cfg) ->
+                    Just "a genuinely-unrecognised key was dropped (should be kept)"
+                | migrate m /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "Configuration is not an object"
+        _ -> Just "migrate did not produce an object"
+ where
+  removed =
+    [ "PBftSignatureThreshold"
+    , "LastKnownBlockVersion-Major"
+    , "LastKnownBlockVersion-Minor"
+    , "LastKnownBlockVersion-Alt"
+    , "Protocol"
+    , "MaxKnownMajorProtocolVersion"
+    ]
+  -- Globally-unique old names that must never survive (the generic
+  -- AcceptedConnectionsLimit sub-keys are checked in place above, since a stray
+  -- one is deliberately left unchanged).
+  oldNames = ["EnableRpc", "RpcSocketPath", "TargetNumberOfRootPeers"]
+  nested cfg section key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+  deepNested cfg section sub key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> nested s sub key
+    _ -> False
+  -- Every object key appearing anywhere in the document.
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
 
 -- | The optional top-level @MinNodeVersion@ annotation is read from the same
 -- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and
