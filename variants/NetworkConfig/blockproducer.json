@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/NetworkConfig.schema.json",
     "DeadlineTargetNumberOfRootPeers": 100,
     "DeadlineTargetNumberOfKnownPeers": 100,
     "DeadlineTargetNumberOfEstablishedPeers": 30,

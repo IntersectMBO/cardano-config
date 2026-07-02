@@ -330,14 +330,16 @@ roleVariantParityCase =
     relayPath <- getDataFileName "variants/NetworkConfig/relay.json"
     bp <- eitherDecodeFileStrict' bpPath :: IO (Either String Value)
     relay <- eitherDecodeFileStrict' relayPath :: IO (Either String Value)
-    expectOk $ case (bp, relay) of
+    let dropSchema (Object km) = Object (KM.delete (K.fromString "$schema") km)
+        dropSchema _ = error "Impossible"
+    expectOk $ case (fmap dropSchema bp, fmap dropSchema relay) of
       (Left e, _) -> Just ("could not read blockproducer.json: " <> e)
       (_, Left e) -> Just ("could not read relay.json: " <> e)
       (Right bpV, Right relayV)
         | toJSON blockProducerRoleDefaults /= bpV ->
-            Just "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json"
+            Just $ "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json: " <> show (toJSON blockProducerRoleDefaults) <> " /= " <> show bpV
         | toJSON relayRoleDefaults /= relayV ->
-            Just "relayRoleDefaults differs from NetworkConfig.relay.json"
+            Just $ "relayRoleDefaults differs from NetworkConfig.relay.json: " <> show (toJSON relayRoleDefaults) <> " /= " <> show relayV
         | otherwise -> Nothing
 
 -- | The networking role defaults are chosen by credential presence: a credential

@@ -1,4 +1,5 @@
 {
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ProtocolConfig.schema.json",
     "RequiresNetworkMagic": "RequiresNoMagic",
     "LastKnownBlockVersion-Major": 3,
     "LastKnownBlockVersion-Minor": 0,

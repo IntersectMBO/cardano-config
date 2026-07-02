@@ -25,6 +25,10 @@
                 {
                     "description": "ConsensusConfiguration",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ConsensusConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "ConsensusMode": {
                             "default": "PraosMode",
                             "description": "Which consensus mode to run (PraosMode or GenesisMode)",
@@ -109,6 +113,10 @@
                 {
                     "description": "LocalConnectionsConfig",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/LocalConnectionsConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "EnableGrpc": {
                             "default": false,
                             "description": "Whether to enable the gRPC server",
@@ -146,6 +154,10 @@
                 {
                     "description": "MempoolConfiguration",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/MempoolConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "MempoolCapacityBytesOverride": {
                             "anyOf": [
                                 {
@@ -203,6 +215,10 @@
                 {
                     "description": "NetworkConfiguration",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/NetworkConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "AcceptedConnectionsLimit": {
                             "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
                             "properties": {
@@ -456,6 +472,10 @@
                 {
                     "description": "ProtocolConfiguration",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ProtocolConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "AlonzoGenesisFile": {
                             "description": "Path to the genesis file",
                             "format": "path",
@@ -585,6 +605,10 @@
                 {
                     "description": "StorageConfiguration",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/StorageConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "DatabasePath": {
                             "anyOf": [
                                 {
@@ -737,6 +761,10 @@
                 {
                     "description": "TestingConfiguration",
                     "properties": {
+                        "$schema": {
+                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/TestingConfig.schema.json",
+                            "title": "$schema"
+                        },
                         "DijkstraGenesisFile": {
                             "description": "Path to the genesis file",
                             "format": "path",

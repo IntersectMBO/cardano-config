@@ -3,6 +3,9 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "description": "The cardano-node configuration (legacy single-file form). Every component's keys are given directly at the top level. New configurations should prefer the split-file form (config.schema.json); this form is retained for compatibility and predates the { Version, Configuration } envelope. Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile, ConwayGenesisFile, LastKnownBlockVersion-Major and LastKnownBlockVersion-Minor.",
     "properties": {
+        "$schema": {
+            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/TestingConfig.schema.json"
+        },
         "AcceptedConnectionsLimit": {
             "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
             "properties": {
