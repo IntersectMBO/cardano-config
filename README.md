@@ -52,10 +52,15 @@ $ curl -sL <url-of-old-config> | cardano-config migrate - > config.json
 
 It reshapes the document into the envelope as JSON: it adds `$schema` and
 `Version`, carries `MinNodeVersion` through, and groups each component's keys
-under its section inside `Configuration`. It is a purely structural migration -
-it preserves the values as written and does not fill in defaults, inline
-referenced sub-files, or read genesis files; follow it with `resolve` to check
-the result.
+under its section inside `Configuration`. It also brings field names up to date:
+the parser rejects the old names, so `migrate` rewrites the ones that were
+renamed (`hardLimit`/`softLimit`/`delay` → `HardLimit`/`SoftLimit`/`Delay`,
+`EnableRpc`/`RpcSocketPath` → `EnableGrpc`/`GrpcSocketPath`, `TargetNumberOf*` →
+`DeadlineTargetNumberOf*`) and drops the ones that were removed
+(`PBftSignatureThreshold`, `LastKnownBlockVersion-Major`/`-Minor`/`-Alt`, now
+supplied by consensus defaults). Apart from that it preserves the values as
+written and does not fill in defaults, inline referenced sub-files, or read
+genesis files; follow it with `resolve` to check the result.
 
 Unrecognised keys (the vestigial `MaxKnownMajorProtocolVersion`, a stray
 `Protocol`, or a typo) are **kept** rather than silently dropped, so nothing is
