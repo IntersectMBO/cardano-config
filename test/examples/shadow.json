@@ -1,10 +1,14 @@
 {
-    "StorageConfig": "storage.json",
-    "ConsensusConfig": "consensus.json",
-    "ProtocolConfig": "protocol.json",
-    "NetworkConfig": "network.json",
-    "LocalConnectionsConfig": "localconnections.json",
-    "TestingConfig": "testing.json",
-    "MempoolConfig": "mempool.json",
-    "DijkstraGenesisFile": "dijkstra-genesis.json"
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
+    "Version": 1,
+    "Configuration": {
+        "StorageConfig": "storage.json",
+        "ConsensusConfig": "consensus.json",
+        "ProtocolConfig": "protocol.json",
+        "NetworkConfig": "network.json",
+        "LocalConnectionsConfig": "localconnections.json",
+        "TestingConfig": "testing.json",
+        "MempoolConfig": "mempool.json",
+        "DijkstraGenesisFile": "dijkstra-genesis.json"
+    }
 }
