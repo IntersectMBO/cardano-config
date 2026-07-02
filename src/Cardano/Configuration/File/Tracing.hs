@@ -7,7 +7,7 @@
 --
 -- We do not interpret the tracing configuration ourselves: its authoritative
 -- schema lives in @trace-dispatcher@. What we do is hand the @HermodTracing@
--- value to @trace-dispatcher@'s own parser ('readConfiguration'), which turns it
+-- value to @trace-dispatcher@'s own parser ('readConfigurationWithDefault'), which turns it
 -- into a 'TraceConfig' — a file reference via 'FromFile' (after resolving the
 -- path to its canonical location), an inline object via 'FromJSONObject'.
 --
@@ -24,7 +24,7 @@ import Autodocodec
 import Cardano.Configuration.Basic (optionalFieldStrict)
 import Cardano.Configuration.Common (filePathCodec)
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Cardano.Logging.ConfigurationParser (ConfigSource (..), readConfiguration)
+import Cardano.Logging.ConfigurationParser (ConfigSource (..), mkConfiguration, readConfigurationWithDefault)
 import Cardano.Logging.Types (TraceConfig)
 import Data.Aeson (FromJSON, Object, ToJSON)
 import qualified Data.Aeson.KeyMap as KM
@@ -86,7 +86,9 @@ instance HasCodec TracingConfiguration where
           .= hermodTracing
 
 -- | Resolve the captured @HermodTracing@ value into a 'TraceConfig' by handing it
--- to @trace-dispatcher@'s own parser ('readConfiguration'):
+-- to @trace-dispatcher@'s own parser ('readConfigurationWithDefault'), with
+-- 'mkConfiguration' (the minimal viable config) supplying defaults for any
+-- top-level fields the source leaves unspecified:
 --
 --   * a file reference is resolved to its canonical location (relative paths are
 --     taken against the configuration directory @root@) and read via 'FromFile';
@@ -103,6 +105,6 @@ resolveTracingConfiguration root (TracingConfiguration mSource) =
     SNothing -> pure SNothing
     SJust (TracingConfigFile path) -> do
       canonPath <- canonicalizePath (root </> path)
-      SJust <$> readConfiguration (FromFile canonPath)
+      SJust <$> readConfigurationWithDefault (FromFile canonPath) mkConfiguration
     SJust (TracingConfigInline obj) ->
-      SJust <$> readConfiguration (FromJSONObject obj)
+      SJust <$> readConfigurationWithDefault (FromJSONObject obj) mkConfiguration
