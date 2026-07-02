@@ -292,14 +292,16 @@ schemaRef =
            )
     ]
 
--- | Every top-level configuration key the parsers recognise: the keys of all
--- components (read at the top level in the single-file form), the section keys
--- used to reference split sub-files, and the envelope keys. Used to detect
--- unrecognised (e.g. misspelled) keys.
+-- | Every key the parsers recognise at the @Configuration@ level: the section
+-- keys (used to reference each component, inline or as a split sub-file), the
+-- tracing keys and the envelope keys. Used to detect unrecognised keys (typos, or
+-- a component property placed flat here rather than under its section — such a key
+-- is reported and ignored, not resolved). A component's own property names are
+-- recognised only inside its section, so they are deliberately /not/ listed here.
 recognisedKeys :: [Text]
 recognisedKeys =
   nub $
-    envelopeKeys <> sectionKeys <> tracingKeys <> concatMap snd componentPropertyNames
+    envelopeKeys <> sectionKeys <> tracingKeys
  where
   envelopeKeys = ["$schema", "Version", "MinNodeVersion", "Configuration"]
   sectionKeys = map fst componentPropertyNames
