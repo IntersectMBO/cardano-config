@@ -16,7 +16,6 @@ import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJ
 import Cardano.Configuration.Schema
   ( configurationSchemas
   , configurationSchemasWithDefaults
-  , genesisSchemas
   , legacyOneFileConfigSchemaWithDefaults
   , splitConfigSchemaWithDefaults
   )
@@ -164,7 +163,7 @@ runResolve cli geneses = handleAny (die . displayException) $ do
 
 -- | Print a JSON Schema, or list the component names.
 runSchema :: SchemaCmd -> IO ()
-runSchema SchemaList = mapM_ (putStrLn . T.unpack . fst) (configurationSchemas <> genesisSchemas)
+runSchema SchemaList = mapM_ (putStrLn . T.unpack . fst) configurationSchemas
 runSchema (SchemaWhole form) = do
   defs <- componentDefaults
   dump $ case form of
@@ -172,16 +171,14 @@ runSchema (SchemaWhole form) = do
     LegacyOneFileForm -> legacyOneFileConfigSchemaWithDefaults defs
 runSchema (SchemaComponent name) = do
   defs <- componentDefaults
-  -- Configuration components (with their defaults) and the standalone genesis
-  -- schemas are both addressable by name.
-  case lookup (T.pack name) (configurationSchemasWithDefaults defs <> genesisSchemas) of
+  case lookup (T.pack name) (configurationSchemasWithDefaults defs) of
     Just s -> dump s
     Nothing ->
       die $
         "Unknown component: "
           <> name
           <> "\nAvailable components: "
-          <> intercalate ", " (map (T.unpack . fst) (configurationSchemas <> genesisSchemas))
+          <> intercalate ", " (map (T.unpack . fst) configurationSchemas)
 
 -- | Print a schema with sorted keys for stable output.
 dump :: Value -> IO ()

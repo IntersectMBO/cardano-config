@@ -12,7 +12,6 @@
 -- runs them and sets the process exit code.
 module Main (main) where
 
-import Autodocodec (JSONCodec, parseJSONVia, toJSONVia)
 import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
@@ -25,24 +24,22 @@ import Cardano.Configuration.File.Storage
   , resolveSnapshotPolicy
   )
 import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
-import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
-import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
-import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configurationSchemasWithDefaults
-  , genesisSchemas
   , legacyOneFileConfigSchemaWithDefaults
   , splitConfigSchemaWithDefaults
   )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
+import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
+import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Data.Aeson (FromJSON, ToJSON, Value (..), eitherDecodeFileStrict', parseJSON, toJSON)
+import Data.Aeson (FromJSON, Value (..), eitherDecodeFileStrict', toJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.Aeson.Types (parseEither)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
 import Data.Maybe (fromJust)
@@ -104,18 +101,15 @@ cases =
   , dijkstraGenesisHashMismatchCase
   , genesisHashRequiredCase
   , genesisHashPresentCase
-  , roundTripCase
-      "test/examples/mainnet-shelley-genesis.json (round-trips against the ledger instances)"
-      "test/examples/mainnet-shelley-genesis.json"
-      shelleyGenesisCodec
-  , roundTripCase
-      "test/examples/mainnet-alonzo-genesis.json (round-trips against the ledger instances)"
-      "test/examples/mainnet-alonzo-genesis.json"
-      alonzoGenesisCodec
-  , roundTripCase
-      "test/examples/mainnet-conway-genesis.json (round-trips against the ledger instances)"
-      "test/examples/mainnet-conway-genesis.json"
-      conwayGenesisCodec
+  , decodeCase
+      "test/examples/mainnet-shelley-genesis.json (decodes via the ledger instances)"
+      (decodeData "test/examples/mainnet-shelley-genesis.json" :: IO (Either String ShelleyGenesis))
+  , decodeCase
+      "test/examples/mainnet-alonzo-genesis.json (decodes via the ledger instances)"
+      (decodeData "test/examples/mainnet-alonzo-genesis.json" :: IO (Either String AlonzoGenesis))
+  , decodeCase
+      "test/examples/mainnet-conway-genesis.json (decodes via the ledger instances)"
+      (decodeData "test/examples/mainnet-conway-genesis.json" :: IO (Either String ConwayGenesis))
   , byronGenesisDecodeCase
   ]
 
@@ -298,9 +292,9 @@ resolveCase =
         Right (nc, _) -> () <$ evaluate (length (show nc))
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
--- of every era genesis (Byron via its canonical-JSON form, the rest via their
--- codecs), not just the file references; with 'OmitGeneses' none appear. These
--- are the files read and hash-checked at parse time.
+-- of every era genesis (Byron via its canonical-JSON form, the rest via the
+-- ledger's aeson instances), not just the file references; with 'OmitGeneses'
+-- none appear. These are the files read and hash-checked at parse time.
 genesisRenderCase :: TestTree
 genesisRenderCase =
   testCase "resolve renders era geneses only with IncludeGeneses" $ do
@@ -564,11 +558,11 @@ lsmDatabasePathDefaultCase =
           Just (V2LSM (Just "lsm") (Just "export-dir")) -> Nothing
           other -> Just ("unexpected backend: " <> show other)
 
--- | The Dijkstra genesis example decodes through this library's codec (with no
--- pinned hash, so the read succeeds without a hash check).
+-- | The Dijkstra genesis example decodes through the ledger's aeson instance
+-- (the pinned hash is checked, so the read verifies the file too).
 dijkstraGenesisDecodeCase :: TestTree
 dijkstraGenesisDecodeCase =
-  testCase "test/examples/dijkstra-genesis.json (decodes via the Dijkstra codec)" $ do
+  testCase "test/examples/dijkstra-genesis.json (decodes via the ledger instance)" $ do
     path <- getDataFileName "test/examples/dijkstra-genesis.json"
     res <-
       readDijkstraGenesisFile
@@ -628,26 +622,6 @@ byronGenesisDecodeCase =
         res <- readByronGenesisConfig RequiresNoMagic expected path
         expectOk (either (Just . ("Byron read failed: " <>)) (const Nothing) res)
 
--- | A genesis codec must agree with the ledger's own instances, both ways:
--- decoding the example with our codec yields the same value the ledger's
--- 'FromJSON' does, and re-encoding it with our codec yields the same JSON the
--- ledger's 'ToJSON' does.
-roundTripCase :: (FromJSON a, ToJSON a, Eq a) => String -> FilePath -> JSONCodec a -> TestTree
-roundTripCase label file genesisCodec =
-  testCase label $ do
-    res <- decodeData file :: IO (Either String Value)
-    expectOk $ case res of
-      Left err -> Just ("could not read example: " <> err)
-      Right value ->
-        case (parseEither parseJSON value, parseEither (parseJSONVia genesisCodec) value) of
-          (Left err, _) -> Just ("ledger decode failed: " <> err)
-          (_, Left err) -> Just ("our codec decode failed: " <> err)
-          (Right ref, Right mine)
-            | ref /= mine -> Just "decoded value differs from the ledger's decode"
-            | toJSON ref /= toJSONVia genesisCodec mine ->
-                Just "re-encoded JSON differs from the ledger's encode"
-            | otherwise -> Nothing
-
 -- | The committed schemas under @schemas/@ (the whole configuration and one per
 -- component) must match the schema derived from the codecs, so the documented
 -- schema cannot drift from the parsers. Regenerate them with @scripts/gen-schemas.sh@.
@@ -661,7 +635,7 @@ schemaTests = do
           "schemas/config.legacy-one-file.schema.json"
           (legacyOneFileConfigSchemaWithDefaults defs)
         : [ schemaTest ("schemas/" <> T.unpack name <> ".schema.json") schema
-          | (name, schema) <- configurationSchemasWithDefaults defs <> genesisSchemas
+          | (name, schema) <- configurationSchemasWithDefaults defs
           ]
 
 -- | Assert that a committed schema file equals the given derived schema.

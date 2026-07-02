@@ -19,15 +19,10 @@ module Cardano.Configuration.Render
   , GenesisRendering (..)
   ) where
 
-import Autodocodec (toJSONVia)
 import Cardano.Configuration (NodeConfiguration (..))
 import qualified Cardano.Configuration.CliArgs as CLI
 import qualified Cardano.Configuration.File as File
-import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (byronGenesisToJSON)
-import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
-import Cardano.Configuration.Genesis.Dijkstra (dijkstraGenesisCodec)
-import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Data.Aeson (Value, object, toJSON, (.=))
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Maybe (catMaybes)
@@ -59,23 +54,23 @@ nodeConfigurationToJSON geneses nc =
     ]
       <> genesisFields
  where
-  -- The resolved (parsed) era geneses, rendered through their own codecs (and,
-  -- for Byron, its canonical-JSON form), so the dump shows the decoded genesis
-  -- content rather than just the file reference and hash (which always appear
-  -- under @ProtocolConfig@). These are exactly the files read and hash-checked
-  -- while parsing the configuration. Included only under 'IncludeGeneses', as
-  -- they are large.
+  -- The resolved (parsed) era geneses, rendered through the ledger's @aeson@
+  -- 'toJSON' instances (and, for Byron, its canonical-JSON form), so the dump
+  -- shows the decoded genesis content rather than just the file reference and
+  -- hash (which always appear under @ProtocolConfig@). These are exactly the
+  -- files read and hash-checked while parsing the configuration. Included only
+  -- under 'IncludeGeneses', as they are large.
   genesisFields = case geneses of
     OmitGeneses -> []
     IncludeGeneses ->
       [ "ByronGenesis" .= byronGenesisToJSON (byronGenesisConfig nc)
-      , "ShelleyGenesis" .= toJSONVia shelleyGenesisCodec (shelleyGenesisConfig nc)
-      , "AlonzoGenesis" .= toJSONVia alonzoGenesisCodec (alonzoGenesisConfig nc)
-      , "ConwayGenesis" .= toJSONVia conwayGenesisCodec (conwayGenesisConfig nc)
+      , "ShelleyGenesis" .= toJSON (shelleyGenesisConfig nc)
+      , "AlonzoGenesis" .= toJSON (alonzoGenesisConfig nc)
+      , "ConwayGenesis" .= toJSON (conwayGenesisConfig nc)
       ]
         -- The experimental (Dijkstra) genesis is optional: only when referenced.
         <> catMaybes
-          [ ("ExperimentalGenesis" .=) . toJSONVia dijkstraGenesisCodec
+          [ ("ExperimentalGenesis" .=) . toJSON
               <$> experimentalGenesisConfig nc
           ]
 

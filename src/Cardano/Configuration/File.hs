@@ -47,7 +47,6 @@ module Cardano.Configuration.File
   , emptyNetworkConfiguration
   ) where
 
-import Autodocodec (JSONCodec)
 import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Configuration.File.Lint
@@ -73,13 +72,10 @@ import Cardano.Configuration.File.Tracing
 import Cardano.Configuration.Genesis
   ( GenesisReadError
   , genesisErrorFile
-  , readGenesisFileWith
+  , readGenesisFile
   , resolveExperimentalGenesis
   )
-import Cardano.Configuration.Genesis.Alonzo (alonzoGenesisCodec)
 import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig, readByronGenesisConfig)
-import Cardano.Configuration.Genesis.Conway (conwayGenesisCodec)
-import Cardano.Configuration.Genesis.Shelley (shelleyGenesisCodec)
 import Cardano.Configuration.Schema (componentPropertyNames)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
@@ -87,7 +83,7 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (throwIO)
-import Data.Aeson (Value)
+import Data.Aeson (FromJSON, Value)
 import qualified Data.Aeson.Key as K
 import Data.Aeson.Types (JSONPathElement (..))
 import Data.Functor.Identity (Identity (..))
@@ -223,11 +219,11 @@ parseConfigurationVersion1 root minNodeVer configValue = do
       (toByronReqNetworkMagic (byronReqNetworkMagic byronCfg))
       (byronGenesisFile byronCfg)
   shelleyGenesisData <-
-    readEraGenesisOrThrow shelleyGenesisCodec root "ShelleyGenesisFile" (shelleyGenesis protocol)
+    readEraGenesisOrThrow root "ShelleyGenesisFile" (shelleyGenesis protocol)
   alonzoGenesisData <-
-    readEraGenesisOrThrow alonzoGenesisCodec root "AlonzoGenesisFile" (alonzoGenesis protocol)
+    readEraGenesisOrThrow root "AlonzoGenesisFile" (alonzoGenesis protocol)
   conwayGenesisData <-
-    readEraGenesisOrThrow conwayGenesisCodec root "ConwayGenesisFile" (conwayGenesis protocol)
+    readEraGenesisOrThrow root "ConwayGenesisFile" (conwayGenesis protocol)
   experimentalGenesisData <- readExperimentalGenesisOrThrow root (experimentalGenesis testing)
   pure
     NodeConfigurationFromFileV1
@@ -260,9 +256,9 @@ toByronReqNetworkMagic = \case
 -- | Read, hash-check and decode an (aeson) era genesis file referenced by the
 -- protocol configuration, throwing a 'ConfigurationParsingError' on failure.
 readEraGenesisOrThrow ::
-  JSONCodec a -> FilePath -> String -> Hashed FilePath -> IO a
-readEraGenesisOrThrow genesisCodec root fileKey (Hashed file mHash) = do
-  result <- readGenesisFileWith genesisCodec mHash (root </> file)
+  FromJSON a => FilePath -> String -> Hashed FilePath -> IO a
+readEraGenesisOrThrow root fileKey (Hashed file mHash) = do
+  result <- readGenesisFile mHash (root </> file)
   case result of
     Left err -> throwIO (genesisReadErrorAt "ProtocolConfig" fileKey err)
     Right genesis -> pure genesis

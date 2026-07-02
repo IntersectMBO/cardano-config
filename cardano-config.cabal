@@ -59,12 +59,7 @@ library internal
     Cardano.Configuration.File.Testing
     Cardano.Configuration.File.Tracing
     Cardano.Configuration.Genesis
-    Cardano.Configuration.Genesis.Alonzo
     Cardano.Configuration.Genesis.Byron
-    Cardano.Configuration.Genesis.Conway
-    Cardano.Configuration.Genesis.Dijkstra
-    Cardano.Configuration.Genesis.Ledger
-    Cardano.Configuration.Genesis.Shelley
     Cardano.Configuration.Render
     Cardano.Configuration.Schema
 
@@ -81,20 +76,15 @@ library internal
     autodocodec,
     autodocodec-schema,
     base,
-    base16-bytestring,
     bytestring,
     canonical-json,
     cardano-crypto-class,
     cardano-crypto-wrapper,
-    cardano-data,
     cardano-ledger-alonzo,
-    cardano-ledger-binary,
     cardano-ledger-byron,
     cardano-ledger-conway,
-    cardano-ledger-core,
     cardano-ledger-dijkstra,
     cardano-ledger-shelley,
-    cardano-slotting,
     containers,
     data-default,
     directory,
@@ -164,11 +154,13 @@ test-suite cardano-config-test
 
   build-depends:
     aeson,
-    autodocodec,
     base,
     cardano-config:internal,
     cardano-crypto-class,
     cardano-crypto-wrapper,
+    cardano-ledger-alonzo,
+    cardano-ledger-conway,
+    cardano-ledger-shelley,
     optparse-applicative,
     tasty,
     tasty-hunit,
