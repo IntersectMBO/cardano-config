@@ -23,9 +23,10 @@ import Cardano.Configuration (NodeConfiguration (..))
 import qualified Cardano.Configuration.CliArgs as CLI
 import qualified Cardano.Configuration.File as File
 import Cardano.Configuration.Genesis.Byron (byronGenesisToJSON)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
 import Data.Aeson (Value, object, toJSON, (.=))
 import Data.Functor.Identity (Identity, runIdentity)
-import Data.Maybe (catMaybes)
+import Data.Maybe (mapMaybe)
 
 -- | Whether the rendered configuration includes the (large) decoded era genesis
 -- values.
@@ -69,28 +70,29 @@ nodeConfigurationToJSON geneses nc =
       , "ConwayGenesis" .= toJSON (conwayGenesisConfig nc)
       ]
         -- The experimental (Dijkstra) genesis is optional: only when referenced.
-        <> catMaybes
+        <> mapMaybe
+          strictMaybeToMaybe
           [ ("ExperimentalGenesis" .=) . toJSON
               <$> experimentalGenesisConfig nc
           ]
 
--- | Lift a resolved (@Identity@) field back into the @Maybe@-parameterised form
--- the component's 'ToJSON' instance expects.
-j :: Identity a -> Maybe a
-j = Just . runIdentity
+-- | Lift a resolved (@Identity@) field back into the @StrictMaybe@-parameterised
+-- form the component's 'ToJSON' instance expects.
+j :: Identity a -> StrictMaybe a
+j = SJust . runIdentity
 
-weakenStorage :: File.StorageConfiguration Identity -> File.StorageConfiguration Maybe
+weakenStorage :: File.StorageConfiguration Identity -> File.StorageConfiguration StrictMaybe
 weakenStorage s =
   File.StorageConfiguration
     { File.databasePath = j (File.databasePath s)
     , File.ledgerDbConfiguration = j (File.ledgerDbConfiguration s)
     }
 
-weakenConsensus :: File.ConsensusConfiguration Identity -> File.ConsensusConfiguration Maybe
+weakenConsensus :: File.ConsensusConfiguration Identity -> File.ConsensusConfiguration StrictMaybe
 weakenConsensus c =
   File.ConsensusConfiguration{File.getConsensusConfiguration = j (File.getConsensusConfiguration c)}
 
-weakenProtocol :: File.ProtocolConfiguration Identity -> File.ProtocolConfiguration Maybe
+weakenProtocol :: File.ProtocolConfiguration Identity -> File.ProtocolConfiguration StrictMaybe
 weakenProtocol p =
   File.ProtocolConfiguration
     { File.byronGenesis = File.byronGenesis p
@@ -101,7 +103,7 @@ weakenProtocol p =
     , File.checkpointsFile = File.checkpointsFile p
     }
 
-weakenNetwork :: File.NetworkConfiguration Identity -> File.NetworkConfiguration Maybe
+weakenNetwork :: File.NetworkConfiguration Identity -> File.NetworkConfiguration StrictMaybe
 weakenNetwork n =
   File.NetworkConfiguration
     { File.diffusionMode = j (File.diffusionMode n)
@@ -134,7 +136,8 @@ weakenNetwork n =
     , File.txSubmissionInitDelay = j (File.txSubmissionInitDelay n)
     }
 
-weakenLocalConnections :: File.LocalConnectionsConfig Identity -> File.LocalConnectionsConfig Maybe
+weakenLocalConnections ::
+  File.LocalConnectionsConfig Identity -> File.LocalConnectionsConfig StrictMaybe
 weakenLocalConnections l =
   File.LocalConnectionsConfig
     { File.socketPath = File.socketPath l
@@ -142,7 +145,7 @@ weakenLocalConnections l =
     , File.rpcSocketPath = File.rpcSocketPath l
     }
 
-weakenTesting :: File.TestingConfiguration Identity -> File.TestingConfiguration Maybe
+weakenTesting :: File.TestingConfiguration Identity -> File.TestingConfiguration StrictMaybe
 weakenTesting t =
   File.TestingConfiguration
     { File.experimentalHardForksEnabled = j (File.experimentalHardForksEnabled t)
@@ -163,7 +166,7 @@ weakenTesting t =
     , File.experimentalGenesis = File.experimentalGenesis t
     }
 
-weakenMempool :: File.MempoolConfiguration Identity -> File.MempoolConfiguration Maybe
+weakenMempool :: File.MempoolConfiguration Identity -> File.MempoolConfiguration StrictMaybe
 weakenMempool m =
   File.MempoolConfiguration
     { File.mempoolCapacityOverride = File.mempoolCapacityOverride m
@@ -182,7 +185,8 @@ runtimeValue nc =
     , "ValidateDatabase" .= validateDatabase nc
     , "Credentials" .= credentialsValue (credentials nc)
     ]
-      <> catMaybes
+      <> mapMaybe
+        strictMaybeToMaybe
         [ ("HostAddr" .=) . show <$> hostAddr nc
         , ("HostIPv6Addr" .=) . show <$> hostIPv6Addr nc
         , ("Port" .=) . portNumber <$> port nc
@@ -197,7 +201,8 @@ runtimeValue nc =
 credentialsValue :: CLI.Credentials -> Value
 credentialsValue c =
   object $
-    catMaybes
+    mapMaybe
+      strictMaybeToMaybe
       [ ("ByronDelegationCertificate" .=) <$> CLI.byronDelegationCertificate c
       , ("ByronSigningKey" .=) <$> CLI.byronSigningKey c
       , ("ShelleyKES" .=) . kesSourceValue <$> CLI.shelleyKES c

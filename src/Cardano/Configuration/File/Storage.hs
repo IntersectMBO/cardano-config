@@ -18,13 +18,19 @@ module Cardano.Configuration.File.Storage
   ) where
 
 import Autodocodec
+import Cardano.Configuration.Basic (optionalFieldStrict, optionalFieldWithStrict)
 import Cardano.Configuration.Common
+import Cardano.Ledger.BaseTypes
+  ( StrictMaybe (..)
+  , fromSMaybe
+  , maybeToStrictMaybe
+  , strictMaybeToMaybe
+  )
 import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default
 import Data.Functor.Identity
 import Data.List.NonEmpty (NonEmpty (..))
-import Data.Maybe (fromMaybe)
 import Data.Word
 import GHC.Generics
 
@@ -39,18 +45,18 @@ snapshotIntervalCodec = bimapCodec validate id codec
 -- unset the node applies its own defaults (which are the Mithril values in
 -- @mithrilSnapshotOptions@).
 data SnapshotOptions = SnapshotOptions
-  { snapshotInterval :: Maybe Word64
+  { snapshotInterval :: StrictMaybe Word64
   -- ^ How many slots between attempts to write a snapshot to disk (non-zero).
-  , slotOffset :: Maybe Word64
+  , slotOffset :: StrictMaybe Word64
   -- ^ The slot at which the snapshot schedule is anchored: snapshots are taken
   --     at @slotOffset + n * snapshotInterval@.
-  , snapshotRateLimit :: Maybe Word64
+  , snapshotRateLimit :: StrictMaybe Word64
   -- ^ The minimum wall-clock time, in seconds, between two snapshots.
-  , minDelay :: Maybe Word64
+  , minDelay :: StrictMaybe Word64
   -- ^ Lower bound, in seconds, of the random delay before taking a snapshot.
-  , maxDelay :: Maybe Word64
+  , maxDelay :: StrictMaybe Word64
   -- ^ Upper bound, in seconds, of the random delay before taking a snapshot.
-  , numOfDiskSnapshots :: Maybe Word64
+  , numOfDiskSnapshots :: StrictMaybe Word64
   -- ^ How many snapshots the node should keep on disk.
   }
   deriving (Generic, Show)
@@ -60,15 +66,18 @@ instance HasCodec SnapshotOptions where
     bimapCodec validateDelays id $
       object "SnapshotOptions" $
         SnapshotOptions
-          <$> optionalFieldWith "SnapshotInterval" snapshotIntervalCodec "Slots between snapshots (non-zero)"
+          <$> optionalFieldWithStrict
+            "SnapshotInterval"
+            snapshotIntervalCodec
+            "Slots between snapshots (non-zero)"
             .= snapshotInterval
-          <*> optionalField "SlotOffset" "Slot at which the snapshot schedule is anchored" .= slotOffset
-          <*> optionalField "RateLimit" "Minimum seconds between snapshots" .= snapshotRateLimit
-          <*> optionalField "MinDelay" "Lower bound (seconds) of the random snapshot delay" .= minDelay
-          <*> optionalField "MaxDelay" "Upper bound (seconds) of the random snapshot delay" .= maxDelay
-          <*> optionalField "NumOfDiskSnapshots" "How many snapshots to keep on disk" .= numOfDiskSnapshots
+          <*> optionalFieldStrict "SlotOffset" "Slot at which the snapshot schedule is anchored" .= slotOffset
+          <*> optionalFieldStrict "RateLimit" "Minimum seconds between snapshots" .= snapshotRateLimit
+          <*> optionalFieldStrict "MinDelay" "Lower bound (seconds) of the random snapshot delay" .= minDelay
+          <*> optionalFieldStrict "MaxDelay" "Upper bound (seconds) of the random snapshot delay" .= maxDelay
+          <*> optionalFieldStrict "NumOfDiskSnapshots" "How many snapshots to keep on disk" .= numOfDiskSnapshots
    where
-    validateDelays so@SnapshotOptions{minDelay = Just lo, maxDelay = Just hi}
+    validateDelays so@SnapshotOptions{minDelay = SJust lo, maxDelay = SJust hi}
       | lo > hi =
           Left $ "Invalid snapshot delay range, MinDelay > MaxDelay: " <> show lo <> " > " <> show hi
       | otherwise = Right so
@@ -106,12 +115,12 @@ instance HasCodec SnapshotPolicy where
 mithrilSnapshotOptions :: SnapshotOptions
 mithrilSnapshotOptions =
   SnapshotOptions
-    { snapshotInterval = Just 432000
-    , slotOffset = Just 388800
-    , snapshotRateLimit = Just 600
-    , minDelay = Just 300
-    , maxDelay = Just 600
-    , numOfDiskSnapshots = Just 2
+    { snapshotInterval = SJust 432000
+    , slotOffset = SJust 388800
+    , snapshotRateLimit = SJust 600
+    , minDelay = SJust 300
+    , maxDelay = SJust 600
+    , numOfDiskSnapshots = SJust 2
     }
 
 -- | Resolve a snapshot policy to a concrete, fully-populated set of options:
@@ -139,10 +148,10 @@ data LedgerDbBackendSelector
     V2LSM
       -- | An optional custom path to the
       -- database (the @LSMDatabasePath@ key)
-      (Maybe FilePath)
+      (StrictMaybe FilePath)
       -- | An optional directory into which the backend
       -- exports snapshots as it takes them (the @LSMExportPath@ key)
-      (Maybe FilePath)
+      (StrictMaybe FilePath)
   deriving (Generic, Show)
 
 -- | The @Backend@ discriminator. Kept separate from 'LedgerDbBackendSelector'
@@ -178,16 +187,16 @@ backendCodec =
   -- Total: 'backendNameCodec' rejects any other string before we get here.
   toSelector (Nothing, _, _) = Right Nothing
   toSelector (Just V2InMemoryName, _, _) = Right (Just V2InMemory)
-  toSelector (Just V2LSMName, p, e) = Right (Just (V2LSM p e))
+  toSelector (Just V2LSMName, p, e) = Right (Just (V2LSM (maybeToStrictMaybe p) (maybeToStrictMaybe e)))
   fromSelector Nothing = (Nothing, Nothing, Nothing)
   fromSelector (Just V2InMemory) = (Just V2InMemoryName, Nothing, Nothing)
-  fromSelector (Just (V2LSM p e)) = (Just V2LSMName, p, e)
+  fromSelector (Just (V2LSM p e)) = (Just V2LSMName, strictMaybeToMaybe p, strictMaybeToMaybe e)
 
 -- | The Ledger DB configuration
 data LedgerDbConfiguration = LedgerDbConfiguration
-  { snapshots :: Maybe SnapshotPolicy
-  , queryBatchSize :: Maybe Word64
-  , backendSelector :: Maybe LedgerDbBackendSelector
+  { snapshots :: StrictMaybe SnapshotPolicy
+  , queryBatchSize :: StrictMaybe Word64
+  , backendSelector :: StrictMaybe LedgerDbBackendSelector
   }
   deriving (Generic, Show)
   deriving (FromJSON, ToJSON) via (Autodocodec LedgerDbConfiguration)
@@ -196,28 +205,30 @@ instance HasCodec LedgerDbConfiguration where
   codec =
     object "LedgerDB" $
       LedgerDbConfiguration
-        <$> optionalField "Snapshots" "Snapshot policy: \"Mithril\" or an object of snapshot options"
+        <$> optionalFieldStrict "Snapshots" "Snapshot policy: \"Mithril\" or an object of snapshot options"
           .= snapshots
-        <*> optionalField "QueryBatchSize" "Chunk size for large backend reads" .= queryBatchSize
-        <*> backendCodec .= backendSelector
+        <*> optionalFieldStrict "QueryBatchSize" "Chunk size for large backend reads" .= queryBatchSize
+        <*> dimapCodec maybeToStrictMaybe strictMaybeToMaybe backendCodec .= backendSelector
 
 instance Default LedgerDbConfiguration where
-  def = LedgerDbConfiguration Nothing Nothing Nothing
+  def = LedgerDbConfiguration SNothing SNothing SNothing
 
 -- | Finally resolve the storage configuration with a final 'NodeDatabasePaths'.
 -- The V2LSM backend's database path defaults to @"lsm"@ when unset (the export
 -- path stays optional). The snapshot policy is /not/ resolved here — that happens
 -- in 'resolveSnapshotOptions', after the consistency checks, which need to see
 -- the originally-requested @"Mithril"@ policy.
-adjustDbPath :: StorageConfiguration Maybe -> NodeDatabasePaths -> StorageConfiguration Identity
+adjustDbPath ::
+  StorageConfiguration StrictMaybe -> NodeDatabasePaths -> StorageConfiguration Identity
 adjustDbPath sc db =
   sc
     { databasePath = Identity db
-    , ledgerDbConfiguration = Identity $ defaultLsmDatabasePath $ fromMaybe def $ ledgerDbConfiguration sc
+    , ledgerDbConfiguration =
+        Identity $ defaultLsmDatabasePath $ fromSMaybe def $ ledgerDbConfiguration sc
     }
  where
   defaultLsmDatabasePath ldb = ldb{backendSelector = withLsmDefault <$> backendSelector ldb}
-  withLsmDefault (V2LSM dbPath exportPath) = V2LSM (dbPath <|> Just "lsm") exportPath
+  withLsmDefault (V2LSM dbPath exportPath) = V2LSM (dbPath <|> SJust "lsm") exportPath
   withLsmDefault other = other
 
 -- | Resolve the snapshot policy to a concrete set of options (see
@@ -238,20 +249,23 @@ data StorageConfiguration f = StorageConfiguration
   }
   deriving Generic
 
-deriving instance Show (StorageConfiguration Maybe)
+deriving instance Show (StorageConfiguration StrictMaybe)
 deriving instance Show (StorageConfiguration Identity)
 
 deriving via
-  (Autodocodec (StorageConfiguration Maybe))
+  (Autodocodec (StorageConfiguration StrictMaybe))
   instance
-    FromJSON (StorageConfiguration Maybe)
+    FromJSON (StorageConfiguration StrictMaybe)
 
-deriving via (Autodocodec (StorageConfiguration Maybe)) instance ToJSON (StorageConfiguration Maybe)
+deriving via
+  (Autodocodec (StorageConfiguration StrictMaybe))
+  instance
+    ToJSON (StorageConfiguration StrictMaybe)
 
-instance HasCodec (StorageConfiguration Maybe) where
+instance HasCodec (StorageConfiguration StrictMaybe) where
   codec =
     object "StorageConfiguration" $
       StorageConfiguration
-        <$> optionalField "DatabasePath" "Directory (or split directories) where the state is stored"
+        <$> optionalFieldStrict "DatabasePath" "Directory (or split directories) where the state is stored"
           .= databasePath
-        <*> optionalField "LedgerDB" "The LedgerDB configuration" .= ledgerDbConfiguration
+        <*> optionalFieldStrict "LedgerDB" "The LedgerDB configuration" .= ledgerDbConfiguration

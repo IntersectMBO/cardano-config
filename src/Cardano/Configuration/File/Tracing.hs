@@ -13,7 +13,9 @@ module Cardano.Configuration.File.Tracing
   ) where
 
 import Autodocodec
+import Cardano.Configuration.Basic (optionalFieldWithStrict)
 import Cardano.Configuration.Common (filePathFormatMarker)
+import Cardano.Ledger.BaseTypes (StrictMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -22,7 +24,7 @@ import GHC.Generics (Generic)
 -- whose value is a path (a string) to a separate file holding that object. It
 -- is captured opaquely; see the module documentation.
 newtype TracingConfiguration = TracingConfiguration
-  { hermodTracing :: Maybe Text
+  { hermodTracing :: StrictMaybe Text
   -- ^ A path to a file holding the tracing configuration.
   }
   deriving (Generic, Show)
@@ -32,7 +34,7 @@ instance HasCodec TracingConfiguration where
   codec =
     object "TracingConfiguration" $
       TracingConfiguration
-        <$> optionalFieldWith
+        <$> optionalFieldWithStrict
           "HermodTracing"
           (codec @Text <?> filePathFormatMarker)
           ( "Tracing configuration as a path to a separate file holding it. "

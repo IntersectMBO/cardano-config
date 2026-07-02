@@ -5,7 +5,8 @@ module Cardano.Configuration.File.Mempool
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (ErrorMessage, diffTimeCodec)
+import Cardano.Configuration.Basic (ErrorMessage, diffTimeCodec, optionalFieldWithStrict)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
@@ -19,53 +20,61 @@ import GHC.Generics (Generic)
 -- so they carry the @f@ parameter — @Maybe@ in the partial form, @Identity@ in
 -- the resolved form. See "Cardano.Configuration.File" for the @f@ convention.
 data MempoolConfiguration f = MempoolConfiguration
-  { mempoolCapacityOverride :: Maybe Word64
+  { mempoolCapacityOverride :: StrictMaybe Word64
   , mempoolTimeoutSoft :: f DiffTime
   , mempoolTimeoutHard :: f DiffTime
   , mempoolTimeoutCapacity :: f DiffTime
   }
   deriving Generic
 
-deriving instance Show (MempoolConfiguration Maybe)
+deriving instance Show (MempoolConfiguration StrictMaybe)
 deriving instance Show (MempoolConfiguration Identity)
 
 deriving via
-  (Autodocodec (MempoolConfiguration Maybe))
+  (Autodocodec (MempoolConfiguration StrictMaybe))
   instance
-    FromJSON (MempoolConfiguration Maybe)
+    FromJSON (MempoolConfiguration StrictMaybe)
 
 deriving via
-  (Autodocodec (MempoolConfiguration Maybe))
+  (Autodocodec (MempoolConfiguration StrictMaybe))
   instance
-    ToJSON (MempoolConfiguration Maybe)
+    ToJSON (MempoolConfiguration StrictMaybe)
 
-instance HasCodec (MempoolConfiguration Maybe) where
+instance HasCodec (MempoolConfiguration StrictMaybe) where
   codec =
     object "MempoolConfiguration" $
       MempoolConfiguration
-        <$> optionalFieldWithDefaultWith
-          "MempoolCapacityBytesOverride"
-          mempoolCapacityOverrideCodec
-          Nothing
-          "Override for the maximum mempool size in bytes, or the string \"NoOverride\""
+        <$> dimapCodec
+          maybeToStrictMaybe
+          strictMaybeToMaybe
+          ( optionalFieldWithDefaultWith
+              "MempoolCapacityBytesOverride"
+              mempoolCapacityOverrideCodec
+              Nothing
+              "Override for the maximum mempool size in bytes, or the string \"NoOverride\""
+          )
           .= mempoolCapacityOverride
-        <*> optionalFieldWith "MempoolTimeoutSoft" diffTimeCodec "Soft mempool timeout, in seconds"
+        <*> optionalFieldWithStrict "MempoolTimeoutSoft" diffTimeCodec "Soft mempool timeout, in seconds"
           .= mempoolTimeoutSoft
-        <*> optionalFieldWith "MempoolTimeoutHard" diffTimeCodec "Hard mempool timeout, in seconds"
+        <*> optionalFieldWithStrict "MempoolTimeoutHard" diffTimeCodec "Hard mempool timeout, in seconds"
           .= mempoolTimeoutHard
-        <*> optionalFieldWith "MempoolTimeoutCapacity" diffTimeCodec "Capacity mempool timeout, in seconds"
+        <*> optionalFieldWithStrict
+          "MempoolTimeoutCapacity"
+          diffTimeCodec
+          "Capacity mempool timeout, in seconds"
           .= mempoolTimeoutCapacity
 
 -- | Resolve a partial mempool configuration. The three timeouts are coupled:
 -- they must be either all set or all unset. All-unset takes the node's coupled
 -- default of @(1, 1.5, 5)@ seconds (soft, hard, capacity); a mix of set and
 -- unset is rejected. @mempoolCapacityOverride@ is independent and passes through.
-finalizeMempool :: MempoolConfiguration Maybe -> Either ErrorMessage (MempoolConfiguration Identity)
+finalizeMempool ::
+  MempoolConfiguration StrictMaybe -> Either ErrorMessage (MempoolConfiguration Identity)
 finalizeMempool c =
   case (mempoolTimeoutSoft c, mempoolTimeoutHard c, mempoolTimeoutCapacity c) of
-    (Just s, Just h, Just cap) ->
+    (SJust s, SJust h, SJust cap) ->
       Right (MempoolConfiguration (mempoolCapacityOverride c) (Identity s) (Identity h) (Identity cap))
-    (Nothing, Nothing, Nothing) ->
+    (SNothing, SNothing, SNothing) ->
       Right (MempoolConfiguration (mempoolCapacityOverride c) (Identity 1) (Identity 1.5) (Identity 5))
     _ ->
       Left "mempool timeouts (Soft, Hard, Capacity) must be all set or all unset"

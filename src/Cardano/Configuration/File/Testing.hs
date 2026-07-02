@@ -5,8 +5,9 @@ module Cardano.Configuration.File.Testing
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (ErrorMessage, requireField)
+import Cardano.Configuration.Basic (ErrorMessage, optionalFieldStrict, requireField)
 import Cardano.Configuration.File.Protocol
+import Cardano.Ledger.BaseTypes (StrictMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Word
@@ -17,70 +18,80 @@ import GHC.Generics (Generic)
 -- @ExperimentalHardForksEnabled@ has a default; the rest are optional by nature.
 data TestingConfiguration f = TestingConfiguration
   { experimentalHardForksEnabled :: f Bool
-  , testShelleyHardForkAtEpoch :: Maybe Word64
-  , testShelleyHardForkAtVersion :: Maybe Word
-  , testAllegraHardForkAtEpoch :: Maybe Word64
-  , testAllegraHardForkAtVersion :: Maybe Word
-  , testMaryHardForkAtEpoch :: Maybe Word64
-  , testMaryHardForkAtVersion :: Maybe Word
-  , testAlonzoHardForkAtEpoch :: Maybe Word64
-  , testAlonzoHardForkAtVersion :: Maybe Word
-  , testBabbageHardForkAtEpoch :: Maybe Word64
-  , testBabbageHardForkAtVersion :: Maybe Word
-  , testConwayHardForkAtEpoch :: Maybe Word64
-  , testConwayHardForkAtVersion :: Maybe Word
-  , testDijkstraHardForkAtEpoch :: Maybe Word64
-  , testDijkstraHardForkAtVersion :: Maybe Word
-  , experimentalGenesis :: Maybe (Hashed FilePath)
+  , testShelleyHardForkAtEpoch :: StrictMaybe Word64
+  , testShelleyHardForkAtVersion :: StrictMaybe Word
+  , testAllegraHardForkAtEpoch :: StrictMaybe Word64
+  , testAllegraHardForkAtVersion :: StrictMaybe Word
+  , testMaryHardForkAtEpoch :: StrictMaybe Word64
+  , testMaryHardForkAtVersion :: StrictMaybe Word
+  , testAlonzoHardForkAtEpoch :: StrictMaybe Word64
+  , testAlonzoHardForkAtVersion :: StrictMaybe Word
+  , testBabbageHardForkAtEpoch :: StrictMaybe Word64
+  , testBabbageHardForkAtVersion :: StrictMaybe Word
+  , testConwayHardForkAtEpoch :: StrictMaybe Word64
+  , testConwayHardForkAtVersion :: StrictMaybe Word
+  , testDijkstraHardForkAtEpoch :: StrictMaybe Word64
+  , testDijkstraHardForkAtVersion :: StrictMaybe Word
+  , experimentalGenesis :: StrictMaybe (Hashed FilePath)
   }
   deriving Generic
 
-deriving instance Show (TestingConfiguration Maybe)
+deriving instance Show (TestingConfiguration StrictMaybe)
 deriving instance Show (TestingConfiguration Identity)
 
 deriving via
-  (Autodocodec (TestingConfiguration Maybe))
+  (Autodocodec (TestingConfiguration StrictMaybe))
   instance
-    FromJSON (TestingConfiguration Maybe)
+    FromJSON (TestingConfiguration StrictMaybe)
 
 deriving via
-  (Autodocodec (TestingConfiguration Maybe))
+  (Autodocodec (TestingConfiguration StrictMaybe))
   instance
-    ToJSON (TestingConfiguration Maybe)
+    ToJSON (TestingConfiguration StrictMaybe)
 
-instance HasCodec (TestingConfiguration Maybe) where
+instance HasCodec (TestingConfiguration StrictMaybe) where
   codec =
     object "TestingConfiguration" $ do
       TestingConfiguration
-        <$> optionalField "ExperimentalHardForksEnabled" "Enable the experimental eras"
+        <$> optionalFieldStrict "ExperimentalHardForksEnabled" "Enable the experimental eras"
           .= experimentalHardForksEnabled
-        <*> optionalField "TestShelleyHardForkAtEpoch" "Force the Shelley hard fork at this epoch"
+        <*> optionalFieldStrict "TestShelleyHardForkAtEpoch" "Force the Shelley hard fork at this epoch"
           .= testShelleyHardForkAtEpoch
-        <*> optionalField "TestShelleyHardForkAtVersion" "Force the Shelley hard fork at this protocol version"
+        <*> optionalFieldStrict
+          "TestShelleyHardForkAtVersion"
+          "Force the Shelley hard fork at this protocol version"
           .= testShelleyHardForkAtVersion
-        <*> optionalField "TestAllegraHardForkAtEpoch" "Force the Allegra hard fork at this epoch"
+        <*> optionalFieldStrict "TestAllegraHardForkAtEpoch" "Force the Allegra hard fork at this epoch"
           .= testAllegraHardForkAtEpoch
-        <*> optionalField "TestAllegraHardForkAtVersion" "Force the Allegra hard fork at this protocol version"
+        <*> optionalFieldStrict
+          "TestAllegraHardForkAtVersion"
+          "Force the Allegra hard fork at this protocol version"
           .= testAllegraHardForkAtVersion
-        <*> optionalField "TestMaryHardForkAtEpoch" "Force the Mary hard fork at this epoch"
+        <*> optionalFieldStrict "TestMaryHardForkAtEpoch" "Force the Mary hard fork at this epoch"
           .= testMaryHardForkAtEpoch
-        <*> optionalField "TestMaryHardForkAtVersion" "Force the Mary hard fork at this protocol version"
+        <*> optionalFieldStrict "TestMaryHardForkAtVersion" "Force the Mary hard fork at this protocol version"
           .= testMaryHardForkAtVersion
-        <*> optionalField "TestAlonzoHardForkAtEpoch" "Force the Alonzo hard fork at this epoch"
+        <*> optionalFieldStrict "TestAlonzoHardForkAtEpoch" "Force the Alonzo hard fork at this epoch"
           .= testAlonzoHardForkAtEpoch
-        <*> optionalField "TestAlonzoHardForkAtVersion" "Force the Alonzo hard fork at this protocol version"
+        <*> optionalFieldStrict
+          "TestAlonzoHardForkAtVersion"
+          "Force the Alonzo hard fork at this protocol version"
           .= testAlonzoHardForkAtVersion
-        <*> optionalField "TestBabbageHardForkAtEpoch" "Force the Babbage hard fork at this epoch"
+        <*> optionalFieldStrict "TestBabbageHardForkAtEpoch" "Force the Babbage hard fork at this epoch"
           .= testBabbageHardForkAtEpoch
-        <*> optionalField "TestBabbageHardForkAtVersion" "Force the Babbage hard fork at this protocol version"
+        <*> optionalFieldStrict
+          "TestBabbageHardForkAtVersion"
+          "Force the Babbage hard fork at this protocol version"
           .= testBabbageHardForkAtVersion
-        <*> optionalField "TestConwayHardForkAtEpoch" "Force the Conway hard fork at this epoch"
+        <*> optionalFieldStrict "TestConwayHardForkAtEpoch" "Force the Conway hard fork at this epoch"
           .= testConwayHardForkAtEpoch
-        <*> optionalField "TestConwayHardForkAtVersion" "Force the Conway hard fork at this protocol version"
+        <*> optionalFieldStrict
+          "TestConwayHardForkAtVersion"
+          "Force the Conway hard fork at this protocol version"
           .= testConwayHardForkAtVersion
-        <*> optionalField "TestDijkstraHardForkAtEpoch" "Force the Dijkstra hard fork at this epoch"
+        <*> optionalFieldStrict "TestDijkstraHardForkAtEpoch" "Force the Dijkstra hard fork at this epoch"
           .= testDijkstraHardForkAtEpoch
-        <*> optionalField
+        <*> optionalFieldStrict
           "TestDijkstraHardForkAtVersion"
           "Force the Dijkstra hard fork at this protocol version"
           .= testDijkstraHardForkAtVersion
@@ -88,7 +99,8 @@ instance HasCodec (TestingConfiguration Maybe) where
 
 -- | Resolve a partial testing configuration, taking @ExperimentalHardForksEnabled@
 -- from the (always-applied) defaults.
-finalizeTesting :: TestingConfiguration Maybe -> Either ErrorMessage (TestingConfiguration Identity)
+finalizeTesting ::
+  TestingConfiguration StrictMaybe -> Either ErrorMessage (TestingConfiguration Identity)
 finalizeTesting c = do
   enabled <- requireField "ExperimentalHardForksEnabled" (experimentalHardForksEnabled c)
   pure $

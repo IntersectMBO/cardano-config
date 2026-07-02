@@ -36,6 +36,7 @@ import Cardano.Configuration.Schema
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
@@ -63,20 +64,20 @@ cases :: [TestTree]
 cases =
   [ decodeCase
       "test/examples/storage.json"
-      (decodeData "test/examples/storage.json" :: IO (Either String (StorageConfiguration Maybe)))
+      (decodeData "test/examples/storage.json" :: IO (Either String (StorageConfiguration StrictMaybe)))
   , decodeCase
       "test/examples/consensus.json"
-      (decodeData "test/examples/consensus.json" :: IO (Either String (ConsensusConfiguration Maybe)))
+      (decodeData "test/examples/consensus.json" :: IO (Either String (ConsensusConfiguration StrictMaybe)))
   , decodeCase
       "test/examples/protocol.json"
-      (decodeData "test/examples/protocol.json" :: IO (Either String (ProtocolConfiguration Maybe)))
+      (decodeData "test/examples/protocol.json" :: IO (Either String (ProtocolConfiguration StrictMaybe)))
   , decodeCase
       "test/examples/network.json"
-      (decodeData "test/examples/network.json" :: IO (Either String (NetworkConfiguration Maybe)))
+      (decodeData "test/examples/network.json" :: IO (Either String (NetworkConfiguration StrictMaybe)))
   , decodeCase
       "test/examples/localconnections.json"
       ( decodeData "test/examples/localconnections.json" ::
-          IO (Either String (LocalConnectionsConfig Maybe))
+          IO (Either String (LocalConnectionsConfig StrictMaybe))
       )
   , parseCase "test/examples/fullconfig.json"
   , parseCase "test/examples/split.json"
@@ -262,9 +263,9 @@ minNodeVersionCase =
     legacy <- parsedMinNodeVersion "test/examples/min-node-version-legacy.json"
     absent <- parsedMinNodeVersion "test/examples/split.json"
     expectOk $
-      if enveloped == Just (T.pack "10.5.0")
-        && legacy == Just (T.pack "9.1.0")
-        && absent == Nothing
+      if enveloped == SJust (T.pack "10.5.0")
+        && legacy == SJust (T.pack "9.1.0")
+        && absent == SNothing
         then Nothing
         else
           Just $
@@ -357,12 +358,12 @@ roleSelectionCase =
             let bn = C.networkConfiguration bpNc
                 rn = C.networkConfiguration relayNc
                 ok =
-                  deadlineTargetOfRootPeers bn == Just 100
-                    && deadlineTargetOfKnownPeers bn == Just 100
-                    && peerSharing bn == Just False
-                    && deadlineTargetOfRootPeers rn == Just 60
-                    && deadlineTargetOfKnownPeers rn == Just 150
-                    && peerSharing rn == Just True
+                  deadlineTargetOfRootPeers bn == SJust 100
+                    && deadlineTargetOfKnownPeers bn == SJust 100
+                    && peerSharing bn == SJust False
+                    && deadlineTargetOfRootPeers rn == SJust 60
+                    && deadlineTargetOfKnownPeers rn == SJust 150
+                    && peerSharing rn == SJust True
              in if ok
                   then Nothing
                   else Just "resolved role targets do not match the expected block-producer/relay values"
@@ -383,9 +384,9 @@ rolePrecedenceCase =
         Left e -> Just ("resolve failed: " <> show e)
         Right (nc, _) ->
           let n = C.networkConfiguration nc
-           in if peerSharing n == Just True -- file wins over block-producer's False
-                && deadlineTargetOfRootPeers n == Just 999 -- file wins over 100
-                && deadlineTargetOfKnownPeers n == Just 100 -- unset in file, block-producer default
+           in if peerSharing n == SJust True -- file wins over block-producer's False
+                && deadlineTargetOfRootPeers n == SJust 999 -- file wins over 100
+                && deadlineTargetOfKnownPeers n == SJust 100 -- unset in file, block-producer default
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
 
@@ -397,8 +398,8 @@ roleBeatsBaseDefaultCase :: TestTree
 roleBeatsBaseDefaultCase =
   testCase "role default overrides a base default (base < role < user)" $
     expectOk
-      ( if peerSharing resolved == Just False -- role's False beats the base's True
-          && deadlineTargetOfRootPeers resolved == Just 100 -- role's 100 beats the base's 7
+      ( if peerSharing resolved == SJust False -- role's False beats the base's True
+          && deadlineTargetOfRootPeers resolved == SJust 100 -- role's 100 beats the base's 7
           then Nothing
           else Just ("role default did not override the base default: " <> show resolved)
       )
@@ -407,8 +408,8 @@ roleBeatsBaseDefaultCase =
   -- merged layer (base defaults plus the user layer) then equals the base here.
   base =
     emptyNetworkConfiguration
-      { peerSharing = Just True
-      , deadlineTargetOfRootPeers = Just 7
+      { peerSharing = SJust True
+      , deadlineTargetOfRootPeers = SJust 7
       }
   user = emptyNetworkConfiguration
   resolved = withRoleDefaults blockProducerRoleDefaults user base
@@ -418,7 +419,7 @@ mempoolAllUnsetCase :: TestTree
 mempoolAllUnsetCase =
   testCase "mempool timeouts: all-unset takes the coupled (1, 1.5, 5) default" $
     expectOk
-      ( case finalizeMempool (MempoolConfiguration Nothing Nothing Nothing Nothing) of
+      ( case finalizeMempool (MempoolConfiguration SNothing SNothing SNothing SNothing) of
           Left e -> Just ("unexpected rejection: " <> e)
           Right c
             | runIdentity (mempoolTimeoutSoft c) == 1
@@ -433,7 +434,7 @@ mempoolAllSetCase :: TestTree
 mempoolAllSetCase =
   testCase "mempool timeouts: all-set are preserved" $
     expectOk
-      ( case finalizeMempool (MempoolConfiguration Nothing (Just 2) (Just 3) (Just 4)) of
+      ( case finalizeMempool (MempoolConfiguration SNothing (SJust 2) (SJust 3) (SJust 4)) of
           Left e -> Just ("unexpected rejection: " <> e)
           Right c
             | runIdentity (mempoolTimeoutSoft c) == 2
@@ -448,7 +449,7 @@ mempoolMixedCase :: TestTree
 mempoolMixedCase =
   testCase "mempool timeouts: a partial set is rejected" $
     expectOk
-      ( case finalizeMempool (MempoolConfiguration Nothing (Just 1) Nothing Nothing) of
+      ( case finalizeMempool (MempoolConfiguration SNothing (SJust 1) SNothing SNothing) of
           Left _ -> Nothing
           Right _ -> Just "expected a partial set of timeouts to be rejected"
       )
@@ -474,13 +475,15 @@ cliArgs = getParseResult . execParserPure defaultPrefs (info parseCliArgs mempty
 -- | The snapshot fields, in a fixed order, for comparison.
 snapshotFields :: SnapshotOptions -> [Maybe Word64]
 snapshotFields o =
-  [ snapshotInterval o
-  , slotOffset o
-  , snapshotRateLimit o
-  , minDelay o
-  , maxDelay o
-  , numOfDiskSnapshots o
-  ]
+  map
+    strictMaybeToMaybe
+    [ snapshotInterval o
+    , slotOffset o
+    , snapshotRateLimit o
+    , minDelay o
+    , maxDelay o
+    , numOfDiskSnapshots o
+    ]
 
 -- | The concrete values the @"Mithril"@ policy resolves to.
 mithrilFields :: [Maybe Word64]
@@ -509,7 +512,7 @@ snapshotMithrilResolveCase =
       Just cli -> case resolveConfiguration cli cfg of
         Left e -> Left (show e)
         Right (nc, _) -> case snapshots (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
-          Just (CustomSnapshotPolicy o) -> Right (snapshotFields o)
+          SJust (CustomSnapshotPolicy o) -> Right (snapshotFields o)
           other -> Left ("expected resolved custom snapshot options, got " <> show other)
 
 -- | 'resolveSnapshotPolicy': @"Mithril"@ yields its values, and a partial custom
@@ -520,7 +523,7 @@ snapshotResolvePolicyCase =
   testCase "resolveSnapshotPolicy fills a partial custom policy from Mithril" $
     expectOk
       ( let mithril = snapshotFields (resolveSnapshotPolicy MithrilSnapshotPolicy)
-            partial = SnapshotOptions (Just 7777) Nothing Nothing Nothing Nothing Nothing
+            partial = SnapshotOptions (SJust 7777) SNothing SNothing SNothing SNothing SNothing
             filled = snapshotFields (resolveSnapshotPolicy (CustomSnapshotPolicy partial))
          in if mithril == mithrilFields && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 600, Just 2]
               then Nothing
@@ -558,7 +561,7 @@ lsmDatabasePathDefaultCase =
       Just cli -> case resolveConfiguration cli cfg of
         Left e -> Just ("resolve failed: " <> show e)
         Right (nc, _) -> case backendSelector (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
-          Just (V2LSM (Just "lsm") (Just "export-dir")) -> Nothing
+          SJust (V2LSM (SJust "lsm") (SJust "export-dir")) -> Nothing
           other -> Just ("unexpected backend: " <> show other)
 
 -- | The Dijkstra genesis example decodes through the ledger's aeson instance
@@ -597,7 +600,7 @@ genesisHashRequiredCase =
   testCase "test/examples/testing-dijkstra-nohash.json (genesis file requires a hash)" $ do
     res <-
       decodeData "test/examples/testing-dijkstra-nohash.json" ::
-        IO (Either String (TestingConfiguration Maybe))
+        IO (Either String (TestingConfiguration StrictMaybe))
     expectOk $ case res of
       Left err
         | "DijkstraGenesisHash" `isInfixOf` err -> Nothing
@@ -610,7 +613,7 @@ genesisHashPresentCase =
   decodeCase
     "test/examples/testing-dijkstra.json (genesis file + hash decodes)"
     ( decodeData "test/examples/testing-dijkstra.json" ::
-        IO (Either String (TestingConfiguration Maybe))
+        IO (Either String (TestingConfiguration StrictMaybe))
     )
 
 -- | The Byron genesis decodes (canonical JSON) and its hash checks out via the

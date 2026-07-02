@@ -19,8 +19,15 @@ module Cardano.Configuration.File.Network
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (ErrorMessage, diffTimeCodec, requireField)
+import Cardano.Configuration.Basic
+  ( ErrorMessage
+  , diffTimeCodec
+  , optionalFieldStrict
+  , optionalFieldWithStrict
+  , requireField
+  )
 import Cardano.Configuration.Common (filePathCodec)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
@@ -100,13 +107,13 @@ data NetworkConfiguration f = NetworkConfiguration
   , egressPollInterval :: f DiffTime
   , chainSyncIdleTimeout :: f DiffTime
   , acceptedConnectionsLimit :: f AcceptedConnectionsLimit
-  , deadlineTargetOfRootPeers :: Maybe Int
-  , deadlineTargetOfKnownPeers :: Maybe Int
-  , deadlineTargetOfEstablishedPeers :: Maybe Int
-  , deadlineTargetOfActivePeers :: Maybe Int
-  , deadlineTargetOfKnownBigLedgerPeers :: Maybe Int
-  , deadlineTargetOfEstablishedBigLedgerPeers :: Maybe Int
-  , deadlineTargetOfActiveBigLedgerPeers :: Maybe Int
+  , deadlineTargetOfRootPeers :: StrictMaybe Int
+  , deadlineTargetOfKnownPeers :: StrictMaybe Int
+  , deadlineTargetOfEstablishedPeers :: StrictMaybe Int
+  , deadlineTargetOfActivePeers :: StrictMaybe Int
+  , deadlineTargetOfKnownBigLedgerPeers :: StrictMaybe Int
+  , deadlineTargetOfEstablishedBigLedgerPeers :: StrictMaybe Int
+  , deadlineTargetOfActiveBigLedgerPeers :: StrictMaybe Int
   , syncTargetOfRootPeers :: f Int
   , syncTargetOfKnownPeers :: f Int
   , syncTargetOfEstablishedPeers :: f Int
@@ -115,7 +122,7 @@ data NetworkConfiguration f = NetworkConfiguration
   , syncTargetOfEstablishedBigLedgerPeers :: f Int
   , syncTargetOfActiveBigLedgerPeers :: f Int
   , minBigLedgerPeersForTrustedState :: f Int
-  , peerSharing :: Maybe Bool
+  , peerSharing :: StrictMaybe Bool
   , responderCoreAffinityPolicy :: f ResponderCoreAffinityPolicy
   , experimentalProtocolsEnabled :: f Bool
   , txSubmissionLogicVersion :: f TxSubmissionLogicVersion
@@ -123,85 +130,94 @@ data NetworkConfiguration f = NetworkConfiguration
   }
   deriving Generic
 
-deriving instance Show (NetworkConfiguration Maybe)
+deriving instance Show (NetworkConfiguration StrictMaybe)
 deriving instance Show (NetworkConfiguration Identity)
 
 deriving via
-  (Autodocodec (NetworkConfiguration Maybe))
+  (Autodocodec (NetworkConfiguration StrictMaybe))
   instance
-    FromJSON (NetworkConfiguration Maybe)
+    FromJSON (NetworkConfiguration StrictMaybe)
 
 deriving via
-  (Autodocodec (NetworkConfiguration Maybe))
+  (Autodocodec (NetworkConfiguration StrictMaybe))
   instance
-    ToJSON (NetworkConfiguration Maybe)
+    ToJSON (NetworkConfiguration StrictMaybe)
 
-instance HasCodec (NetworkConfiguration Maybe) where
+instance HasCodec (NetworkConfiguration StrictMaybe) where
   codec =
     object "NetworkConfiguration" $
       NetworkConfiguration
-        <$> optionalField "DiffusionMode" "Initiator-only or initiator-and-responder"
+        <$> optionalFieldStrict "DiffusionMode" "Initiator-only or initiator-and-responder"
           .= diffusionMode
-        <*> optionalField "MaxConcurrencyBulkSync" "Bulk-sync block-fetch concurrency"
+        <*> optionalFieldStrict "MaxConcurrencyBulkSync" "Bulk-sync block-fetch concurrency"
           .= maxConcurrencyBulkSync
-        <*> optionalField "MaxConcurrencyDeadline" "Deadline block-fetch concurrency"
+        <*> optionalFieldStrict "MaxConcurrencyDeadline" "Deadline block-fetch concurrency"
           .= maxConcurrencyDeadline
-        <*> optionalFieldWith "ProtocolIdleTimeout" diffTimeCodec "Protocol idle timeout, in seconds"
+        <*> optionalFieldWithStrict "ProtocolIdleTimeout" diffTimeCodec "Protocol idle timeout, in seconds"
           .= protocolIdleTimeout
-        <*> optionalFieldWith "TimeWaitTimeout" diffTimeCodec "TIME-WAIT timeout, in seconds"
+        <*> optionalFieldWithStrict "TimeWaitTimeout" diffTimeCodec "TIME-WAIT timeout, in seconds"
           .= timeWaitTimeout
-        <*> optionalFieldWith "EgressPollInterval" diffTimeCodec "Egress poll interval, in seconds"
+        <*> optionalFieldWithStrict "EgressPollInterval" diffTimeCodec "Egress poll interval, in seconds"
           .= egressPollInterval
-        <*> optionalFieldWith "ChainSyncIdleTimeout" diffTimeCodec "ChainSync idle timeout, in seconds"
+        <*> optionalFieldWithStrict "ChainSyncIdleTimeout" diffTimeCodec "ChainSync idle timeout, in seconds"
           .= chainSyncIdleTimeout
-        <*> optionalField "AcceptedConnectionsLimit" "Limits on accepted connections"
+        <*> optionalFieldStrict "AcceptedConnectionsLimit" "Limits on accepted connections"
           .= acceptedConnectionsLimit
-        <*> optionalField "TargetNumberOfRootPeers" "Deadline target of root peers"
+        <*> optionalFieldStrict "TargetNumberOfRootPeers" "Deadline target of root peers"
           .= deadlineTargetOfRootPeers
-        <*> optionalField "TargetNumberOfKnownPeers" "Deadline target of known peers"
+        <*> optionalFieldStrict "TargetNumberOfKnownPeers" "Deadline target of known peers"
           .= deadlineTargetOfKnownPeers
-        <*> optionalField "TargetNumberOfEstablishedPeers" "Deadline target of established peers"
+        <*> optionalFieldStrict "TargetNumberOfEstablishedPeers" "Deadline target of established peers"
           .= deadlineTargetOfEstablishedPeers
-        <*> optionalField "TargetNumberOfActivePeers" "Deadline target of active peers"
+        <*> optionalFieldStrict "TargetNumberOfActivePeers" "Deadline target of active peers"
           .= deadlineTargetOfActivePeers
-        <*> optionalField "TargetNumberOfKnownBigLedgerPeers" "Deadline target of known big ledger peers"
+        <*> optionalFieldStrict "TargetNumberOfKnownBigLedgerPeers" "Deadline target of known big ledger peers"
           .= deadlineTargetOfKnownBigLedgerPeers
-        <*> optionalField
+        <*> optionalFieldStrict
           "TargetNumberOfEstablishedBigLedgerPeers"
           "Deadline target of established big ledger peers"
           .= deadlineTargetOfEstablishedBigLedgerPeers
-        <*> optionalField "TargetNumberOfActiveBigLedgerPeers" "Deadline target of active big ledger peers"
+        <*> optionalFieldStrict
+          "TargetNumberOfActiveBigLedgerPeers"
+          "Deadline target of active big ledger peers"
           .= deadlineTargetOfActiveBigLedgerPeers
-        <*> optionalField "SyncTargetNumberOfRootPeers" "Sync target of root peers" .= syncTargetOfRootPeers
-        <*> optionalField "SyncTargetNumberOfKnownPeers" "Sync target of known peers"
+        <*> optionalFieldStrict "SyncTargetNumberOfRootPeers" "Sync target of root peers"
+          .= syncTargetOfRootPeers
+        <*> optionalFieldStrict "SyncTargetNumberOfKnownPeers" "Sync target of known peers"
           .= syncTargetOfKnownPeers
-        <*> optionalField "SyncTargetNumberOfEstablishedPeers" "Sync target of established peers"
+        <*> optionalFieldStrict "SyncTargetNumberOfEstablishedPeers" "Sync target of established peers"
           .= syncTargetOfEstablishedPeers
-        <*> optionalField "SyncTargetNumberOfActivePeers" "Sync target of active peers"
+        <*> optionalFieldStrict "SyncTargetNumberOfActivePeers" "Sync target of active peers"
           .= syncTargetOfActivePeers
-        <*> optionalField "SyncTargetNumberOfKnownBigLedgerPeers" "Sync target of known big ledger peers"
+        <*> optionalFieldStrict "SyncTargetNumberOfKnownBigLedgerPeers" "Sync target of known big ledger peers"
           .= syncTargetOfKnownBigLedgerPeers
-        <*> optionalField
+        <*> optionalFieldStrict
           "SyncTargetNumberOfEstablishedBigLedgerPeers"
           "Sync target of established big ledger peers"
           .= syncTargetOfEstablishedBigLedgerPeers
-        <*> optionalField "SyncTargetNumberOfActiveBigLedgerPeers" "Sync target of active big ledger peers"
+        <*> optionalFieldStrict
+          "SyncTargetNumberOfActiveBigLedgerPeers"
+          "Sync target of active big ledger peers"
           .= syncTargetOfActiveBigLedgerPeers
-        <*> optionalField "MinBigLedgerPeersForTrustedState" "Minimum big ledger peers for trusted state"
+        <*> optionalFieldStrict "MinBigLedgerPeersForTrustedState" "Minimum big ledger peers for trusted state"
           .= minBigLedgerPeersForTrustedState
-        <*> optionalField "PeerSharing" "Whether to enable peer sharing" .= peerSharing
-        <*> optionalField "ResponderCoreAffinityPolicy" "Whether responders are pinned to a core"
+        <*> optionalFieldStrict "PeerSharing" "Whether to enable peer sharing" .= peerSharing
+        <*> optionalFieldStrict "ResponderCoreAffinityPolicy" "Whether responders are pinned to a core"
           .= responderCoreAffinityPolicy
-        <*> optionalField "ExperimentalProtocolsEnabled" "Enable experimental network protocols"
+        <*> optionalFieldStrict "ExperimentalProtocolsEnabled" "Enable experimental network protocols"
           .= experimentalProtocolsEnabled
-        <*> optionalField "TxSubmissionLogicVersion" "Which tx-submission inbound logic to run"
+        <*> optionalFieldStrict "TxSubmissionLogicVersion" "Which tx-submission inbound logic to run"
           .= txSubmissionLogicVersion
-        <*> optionalFieldWith "TxSubmissionInitDelay" diffTimeCodec "Tx-submission initial delay, in seconds"
+        <*> optionalFieldWithStrict
+          "TxSubmissionInitDelay"
+          diffTimeCodec
+          "Tx-submission initial delay, in seconds"
           .= txSubmissionInitDelay
 
 -- | Resolve a partial network configuration, taking the defaulted fields from
 -- the (always-applied) base defaults.
-finalizeNetwork :: NetworkConfiguration Maybe -> Either ErrorMessage (NetworkConfiguration Identity)
+finalizeNetwork ::
+  NetworkConfiguration StrictMaybe -> Either ErrorMessage (NetworkConfiguration Identity)
 finalizeNetwork c = do
   diffusionMode' <- requireField "DiffusionMode" (diffusionMode c)
   maxBulk <- requireField "MaxConcurrencyBulkSync" (maxConcurrencyBulkSync c)
@@ -283,12 +299,12 @@ data BlockProducerOrRelay
 -- through from @merged@ unchanged.
 withRoleDefaults ::
   -- | The role defaults (block producer or relay).
-  NetworkConfiguration Maybe ->
+  NetworkConfiguration StrictMaybe ->
   -- | The user-supplied layer alone (no base defaults merged in).
-  NetworkConfiguration Maybe ->
+  NetworkConfiguration StrictMaybe ->
   -- | The base defaults.
-  NetworkConfiguration Maybe ->
-  NetworkConfiguration Maybe
+  NetworkConfiguration StrictMaybe ->
+  NetworkConfiguration StrictMaybe
 withRoleDefaults role user merged =
   merged
     { deadlineTargetOfRootPeers = pick deadlineTargetOfRootPeers
@@ -303,117 +319,119 @@ withRoleDefaults role user merged =
  where
   -- user value (if any) wins, then the role default, then the base value (held in
   -- the merge when the user left the field unset).
-  pick :: (NetworkConfiguration Maybe -> Maybe a) -> Maybe a
+  pick :: (NetworkConfiguration StrictMaybe -> StrictMaybe a) -> StrictMaybe a
   pick f = f user <|> f role <|> f merged
 
 -- | The role defaults for the given role.
-networkRoleDefaults :: BlockProducerOrRelay -> NetworkConfiguration Maybe
+networkRoleDefaults :: BlockProducerOrRelay -> NetworkConfiguration StrictMaybe
 networkRoleDefaults IsBlockProducer = blockProducerRoleDefaults
 networkRoleDefaults IsRelay = relayRoleDefaults
 
--- | A wholly-unset partial network configuration: every field 'Nothing'. The
+-- | A wholly-unset partial network configuration: every field 'SNothing'. The
 -- starting point for the role-default literals below, which set only the eight
 -- role fields.
-emptyNetworkConfiguration :: NetworkConfiguration Maybe
+emptyNetworkConfiguration :: NetworkConfiguration StrictMaybe
 emptyNetworkConfiguration =
   NetworkConfiguration
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
-    Nothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
+    SNothing
 
 -- | The block-producer role defaults. These must equal
 -- @variants\/NetworkConfig\/blockproducer.json@ (asserted
 -- by a test) and the node's @Ouroboros.defaultDeadlineTargets BlockProducer@ /
 -- @PeerSharingDisabled@.
-blockProducerRoleDefaults :: NetworkConfiguration Maybe
+blockProducerRoleDefaults :: NetworkConfiguration StrictMaybe
 blockProducerRoleDefaults =
   emptyNetworkConfiguration
-    { deadlineTargetOfRootPeers = Just 100
-    , deadlineTargetOfKnownPeers = Just 100
-    , deadlineTargetOfEstablishedPeers = Just 30
-    , deadlineTargetOfActivePeers = Just 20
-    , deadlineTargetOfKnownBigLedgerPeers = Just 15
-    , deadlineTargetOfEstablishedBigLedgerPeers = Just 10
-    , deadlineTargetOfActiveBigLedgerPeers = Just 5
-    , peerSharing = Just False
+    { deadlineTargetOfRootPeers = SJust 100
+    , deadlineTargetOfKnownPeers = SJust 100
+    , deadlineTargetOfEstablishedPeers = SJust 30
+    , deadlineTargetOfActivePeers = SJust 20
+    , deadlineTargetOfKnownBigLedgerPeers = SJust 15
+    , deadlineTargetOfEstablishedBigLedgerPeers = SJust 10
+    , deadlineTargetOfActiveBigLedgerPeers = SJust 5
+    , peerSharing = SJust False
     }
 
 -- | The relay role defaults. These must equal
 -- @variants\/NetworkConfig\/relay.json@ (asserted by a
 -- test) and the node's @Ouroboros.defaultDeadlineTargets Relay@ /
 -- @PeerSharingEnabled@.
-relayRoleDefaults :: NetworkConfiguration Maybe
+relayRoleDefaults :: NetworkConfiguration StrictMaybe
 relayRoleDefaults =
   emptyNetworkConfiguration
-    { deadlineTargetOfRootPeers = Just 60
-    , deadlineTargetOfKnownPeers = Just 150
-    , deadlineTargetOfEstablishedPeers = Just 30
-    , deadlineTargetOfActivePeers = Just 20
-    , deadlineTargetOfKnownBigLedgerPeers = Just 15
-    , deadlineTargetOfEstablishedBigLedgerPeers = Just 10
-    , deadlineTargetOfActiveBigLedgerPeers = Just 5
-    , peerSharing = Just True
+    { deadlineTargetOfRootPeers = SJust 60
+    , deadlineTargetOfKnownPeers = SJust 150
+    , deadlineTargetOfEstablishedPeers = SJust 30
+    , deadlineTargetOfActivePeers = SJust 20
+    , deadlineTargetOfKnownBigLedgerPeers = SJust 15
+    , deadlineTargetOfEstablishedBigLedgerPeers = SJust 10
+    , deadlineTargetOfActiveBigLedgerPeers = SJust 5
+    , peerSharing = SJust True
     }
 
 -- | Connections for local clients. @EnableRpc@ has a default; the socket paths
 -- are optional.
 data LocalConnectionsConfig f = LocalConnectionsConfig
-  { socketPath :: Maybe FilePath
+  { socketPath :: StrictMaybe FilePath
   , enableRpc :: f Bool
-  , rpcSocketPath :: Maybe FilePath
+  , rpcSocketPath :: StrictMaybe FilePath
   }
   deriving Generic
 
-deriving instance Show (LocalConnectionsConfig Maybe)
+deriving instance Show (LocalConnectionsConfig StrictMaybe)
 deriving instance Show (LocalConnectionsConfig Identity)
 
 deriving via
-  (Autodocodec (LocalConnectionsConfig Maybe))
+  (Autodocodec (LocalConnectionsConfig StrictMaybe))
   instance
-    FromJSON (LocalConnectionsConfig Maybe)
+    FromJSON (LocalConnectionsConfig StrictMaybe)
 
 deriving via
-  (Autodocodec (LocalConnectionsConfig Maybe))
+  (Autodocodec (LocalConnectionsConfig StrictMaybe))
   instance
-    ToJSON (LocalConnectionsConfig Maybe)
+    ToJSON (LocalConnectionsConfig StrictMaybe)
 
-instance HasCodec (LocalConnectionsConfig Maybe) where
+instance HasCodec (LocalConnectionsConfig StrictMaybe) where
   codec =
     object "LocalConnectionsConfig" $
       LocalConnectionsConfig
-        <$> optionalFieldWith "SocketPath" filePathCodec "Path of the socket for local clients" .= socketPath
-        <*> optionalField "EnableRpc" "Whether to enable the gRPC server" .= enableRpc
-        <*> optionalFieldWith "RpcSocketPath" filePathCodec "Path of the gRPC server socket" .= rpcSocketPath
+        <$> optionalFieldWithStrict "SocketPath" filePathCodec "Path of the socket for local clients"
+          .= socketPath
+        <*> optionalFieldStrict "EnableRpc" "Whether to enable the gRPC server" .= enableRpc
+        <*> optionalFieldWithStrict "RpcSocketPath" filePathCodec "Path of the gRPC server socket"
+          .= rpcSocketPath
 
 -- | Resolve a partial local-connections configuration, taking @EnableRpc@ from
 -- the (always-applied) defaults.
 finalizeLocalConnections ::
-  LocalConnectionsConfig Maybe -> Either ErrorMessage (LocalConnectionsConfig Identity)
+  LocalConnectionsConfig StrictMaybe -> Either ErrorMessage (LocalConnectionsConfig Identity)
 finalizeLocalConnections c = do
   rpc <- requireField "EnableRpc" (enableRpc c)
   pure $ LocalConnectionsConfig (socketPath c) rpc (rpcSocketPath c)

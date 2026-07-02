@@ -56,6 +56,7 @@ import Cardano.Configuration.File.Protocol (ProtocolConfiguration)
 import Cardano.Configuration.File.Storage (StorageConfiguration)
 import Cardano.Configuration.File.Testing (TestingConfiguration)
 import Cardano.Configuration.File.Tracing (TracingConfiguration)
+import Cardano.Ledger.BaseTypes (StrictMaybe)
 import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
@@ -90,13 +91,13 @@ testingSchema = component "TestingConfig" rawTestingSchema
 -- no @$schema@). Used internally for merging; 'publish' makes them public.
 rawStorageSchema, rawConsensusSchema, rawProtocolSchema, rawNetworkSchema :: Value
 rawLocalConnectionsSchema, rawMempoolSchema, rawTestingSchema, rawTracingSchema :: Value
-rawStorageSchema = toJSON (jsonSchemaViaCodec @(StorageConfiguration Maybe))
-rawConsensusSchema = toJSON (jsonSchemaViaCodec @(ConsensusConfiguration Maybe))
-rawProtocolSchema = toJSON (jsonSchemaViaCodec @(ProtocolConfiguration Maybe))
-rawNetworkSchema = toJSON (jsonSchemaViaCodec @(NetworkConfiguration Maybe))
-rawLocalConnectionsSchema = toJSON (jsonSchemaViaCodec @(LocalConnectionsConfig Maybe))
-rawMempoolSchema = toJSON (jsonSchemaViaCodec @(MempoolConfiguration Maybe))
-rawTestingSchema = toJSON (jsonSchemaViaCodec @(TestingConfiguration Maybe))
+rawStorageSchema = toJSON (jsonSchemaViaCodec @(StorageConfiguration StrictMaybe))
+rawConsensusSchema = toJSON (jsonSchemaViaCodec @(ConsensusConfiguration StrictMaybe))
+rawProtocolSchema = toJSON (jsonSchemaViaCodec @(ProtocolConfiguration StrictMaybe))
+rawNetworkSchema = toJSON (jsonSchemaViaCodec @(NetworkConfiguration StrictMaybe))
+rawLocalConnectionsSchema = toJSON (jsonSchemaViaCodec @(LocalConnectionsConfig StrictMaybe))
+rawMempoolSchema = toJSON (jsonSchemaViaCodec @(MempoolConfiguration StrictMaybe))
+rawTestingSchema = toJSON (jsonSchemaViaCodec @(TestingConfiguration StrictMaybe))
 rawTracingSchema = toJSON (jsonSchemaViaCodec @TracingConfiguration)
 
 -- The components that are sections of their own (given inline, as a sub-file, or

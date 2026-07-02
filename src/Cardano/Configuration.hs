@@ -101,6 +101,7 @@ import qualified Cardano.Configuration.File.Protocol as File
 import qualified Cardano.Configuration.File.Storage as File
 import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig)
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), isSJust, strictMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
@@ -109,7 +110,6 @@ import Control.Exception (Exception)
 import Data.Functor.Identity
 import Data.IP
 import Data.List.NonEmpty (NonEmpty (..))
-import Data.Maybe
 import Network.Socket
 import System.Posix.Types
 
@@ -131,19 +131,19 @@ data NodeConfiguration = NodeConfiguration
   -- ^ The parsed Alonzo genesis.
   , conwayGenesisConfig :: ConwayGenesis
   -- ^ The parsed Conway genesis.
-  , experimentalGenesisConfig :: Maybe DijkstraGenesis
+  , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
   -- ^ The parsed experimental (Dijkstra) genesis, decoded from the
   --     @DijkstraGenesisFile@ referenced by the testing configuration, if any.
   , configFilePath :: FilePath
   , topologyFile :: FilePath
   , validateDatabase :: Bool
   , credentials :: CLI.Credentials
-  , hostAddr :: Maybe IPv4
-  , hostIPv6Addr :: Maybe IPv6
-  , port :: Maybe PortNumber
-  , tracerSocket :: Maybe CLI.TracerConnection
-  , shutdownIPC :: Maybe Fd
-  , shutdownOnTarget :: Maybe CLI.ShutdownOn
+  , hostAddr :: StrictMaybe IPv4
+  , hostIPv6Addr :: StrictMaybe IPv6
+  , port :: StrictMaybe PortNumber
+  , tracerSocket :: StrictMaybe CLI.TracerConnection
+  , shutdownIPC :: StrictMaybe Fd
+  , shutdownOnTarget :: StrictMaybe CLI.ShutdownOn
   }
   deriving Show
 
@@ -191,8 +191,8 @@ defaultConfigChecks =
       ( \nc ->
           let lcc = localConnectionsConfig nc
            in not (runIdentity (File.enableRpc lcc))
-                || isJust (File.rpcSocketPath lcc)
-                || isJust (File.socketPath lcc)
+                || isSJust (File.rpcSocketPath lcc)
+                || isSJust (File.socketPath lcc)
       )
   , ConfigCheck
       CheckWarning
@@ -202,11 +202,11 @@ defaultConfigChecks =
       ( \nc ->
           let ldb = runIdentity (File.ledgerDbConfiguration (storageConfiguration nc))
            in case File.snapshots ldb of
-                Just File.MithrilSnapshotPolicy ->
+                SJust File.MithrilSnapshotPolicy ->
                   case File.backendSelector ldb of
-                    Nothing -> True -- defaults to V2InMemory, which satisfies Mithril
-                    Just File.V2InMemory -> True
-                    Just (File.V2LSM _ exportPath) -> isJust exportPath
+                    SNothing -> True -- defaults to V2InMemory, which satisfies Mithril
+                    SJust File.V2InMemory -> True
+                    SJust (File.V2LSM _ exportPath) -> isSJust exportPath
                 _ -> True
       )
   ]
@@ -324,7 +324,7 @@ resolveConfigurationWith checks cli file = do
     )
  where
   finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
-  require name = maybe (Left (name <> " has no value and no base default")) Right
+  require name = strictMaybe (Left (name <> " has no value and no base default")) Right
 
 -- | Derive the node's role from its credentials: it is a block producer iff
 -- /any/ block-forging credential was supplied, otherwise a relay. This matches
@@ -333,7 +333,7 @@ resolveConfigurationWith checks cli file = do
 roleFromCredentials :: CLI.Credentials -> File.BlockProducerOrRelay
 roleFromCredentials c
   | any
-      isJust
+      isSJust
       [ () <$ CLI.byronDelegationCertificate c
       , () <$ CLI.byronSigningKey c
       , () <$ CLI.shelleyKES c

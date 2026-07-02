@@ -79,6 +79,7 @@ import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig, readByronGenesis
 import Cardano.Configuration.Schema (componentPropertyNames)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
@@ -100,7 +101,7 @@ type NodeConfigurationFromFile = NodeConfigurationFromFileF Identity
 -- finally fully parsed.
 data NodeConfigurationFromFileF f
   = NodeConfigurationFromFileV1
-  { minNodeVersion :: Maybe T.Text
+  { minNodeVersion :: StrictMaybe T.Text
   -- ^ The minimum @cardano-node@ version expected to run this configuration,
   -- taken from the optional top-level @MinNodeVersion@ key (a sibling of
   -- @Version@, present in both the enveloped and legacy forms). Purely
@@ -110,11 +111,11 @@ data NodeConfigurationFromFileF f
   -- t'Cardano.Configuration.NodeConfiguration'; 'resolveConfiguration' drops it.
   -- It lives only on this file-parse result, so a consumer that wants to act on
   -- it must read it here, before resolving.
-  , storageConfiguration :: f (StorageConfiguration Maybe)
-  , consensusConfiguration :: f (ConsensusConfiguration Maybe)
-  , protocolConfiguration :: f (ProtocolConfiguration Maybe)
-  , networkConfiguration :: f (NetworkConfiguration Maybe)
-  , networkUserLayer :: f (NetworkConfiguration Maybe)
+  , storageConfiguration :: f (StorageConfiguration StrictMaybe)
+  , consensusConfiguration :: f (ConsensusConfiguration StrictMaybe)
+  , protocolConfiguration :: f (ProtocolConfiguration StrictMaybe)
+  , networkConfiguration :: f (NetworkConfiguration StrictMaybe)
+  , networkUserLayer :: f (NetworkConfiguration StrictMaybe)
   -- ^ The user-supplied network layer alone, /without/ the base defaults merged
   -- in (unlike 'networkConfiguration', which is the full merge of the base
   -- defaults with the user layer on top).
@@ -122,9 +123,9 @@ data NodeConfigurationFromFileF f
   -- Resolution needs to tell a value the user actually wrote from one that only
   -- came from the base defaults, so the role defaults can sit between them
   -- (@base \< role \< user@); see 'withRoleDefaults'.
-  , localConnectionsConfig :: f (LocalConnectionsConfig Maybe)
-  , testingConfiguration :: f (TestingConfiguration Maybe)
-  , mempoolConfiguration :: f (MempoolConfiguration Maybe)
+  , localConnectionsConfig :: f (LocalConnectionsConfig StrictMaybe)
+  , testingConfiguration :: f (TestingConfiguration StrictMaybe)
+  , mempoolConfiguration :: f (MempoolConfiguration StrictMaybe)
   , tracingConfiguration :: TracingConfiguration
   -- ^ Tracing keys, captured opaquely; see 'TracingConfiguration'. Unlike the
   -- other components this is never read from a sub-file: the node's tracing
@@ -137,7 +138,7 @@ data NodeConfigurationFromFileF f
   -- ^ The parsed Alonzo genesis (read from the @AlonzoGenesisFile@).
   , conwayGenesisConfig :: ConwayGenesis
   -- ^ The parsed Conway genesis (read from the @ConwayGenesisFile@).
-  , experimentalGenesisConfig :: Maybe DijkstraGenesis
+  , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
   -- ^ The experimental (Dijkstra) genesis, read and decoded from the
   -- @DijkstraGenesisFile@ referenced by the testing configuration (if any).
   --
@@ -181,8 +182,8 @@ parseConfigurationFiles cfgFile = do
     n ->
       throwIO $
         ConfigurationParsingError
-          (Just cfgFile)
-          Nothing
+          (SJust cfgFile)
+          SNothing
           [Key "Version"]
           ("unsupported configuration version: " <> show n)
   pure (config, warnings)
@@ -224,10 +225,11 @@ parseConfigurationVersion1 root minNodeVer configValue = do
     readEraGenesisOrThrow root "AlonzoGenesisFile" (alonzoGenesis protocol)
   conwayGenesisData <-
     readEraGenesisOrThrow root "ConwayGenesisFile" (conwayGenesis protocol)
-  experimentalGenesisData <- readExperimentalGenesisOrThrow root (experimentalGenesis testing)
+  experimentalGenesisData <-
+    readExperimentalGenesisOrThrow root (strictMaybeToMaybe (experimentalGenesis testing))
   pure
     NodeConfigurationFromFileV1
-      { minNodeVersion = minNodeVer
+      { minNodeVersion = maybeToStrictMaybe minNodeVer
       , storageConfiguration = Identity storage
       , consensusConfiguration = Identity consensus
       , protocolConfiguration = Identity protocol
@@ -241,17 +243,17 @@ parseConfigurationVersion1 root minNodeVer configValue = do
       , shelleyGenesisConfig = shelleyGenesisData
       , alonzoGenesisConfig = alonzoGenesisData
       , conwayGenesisConfig = conwayGenesisData
-      , experimentalGenesisConfig = experimentalGenesisData
+      , experimentalGenesisConfig = maybeToStrictMaybe experimentalGenesisData
       }
 
 -- | Convert this library's 'RequiresNetworkMagic' to the Byron ledger's, used
 -- when reading the Byron genesis. Absent in the configuration defaults to
 -- requiring no magic.
-toByronReqNetworkMagic :: Maybe RequiresNetworkMagic -> Byron.RequiresNetworkMagic
+toByronReqNetworkMagic :: StrictMaybe RequiresNetworkMagic -> Byron.RequiresNetworkMagic
 toByronReqNetworkMagic = \case
-  Just RequiresMagic -> Byron.RequiresMagic
-  Just RequiresNoMagic -> Byron.RequiresNoMagic
-  Nothing -> Byron.RequiresNoMagic
+  SJust RequiresMagic -> Byron.RequiresMagic
+  SJust RequiresNoMagic -> Byron.RequiresNoMagic
+  SNothing -> Byron.RequiresNoMagic
 
 -- | Read, hash-check and decode an (aeson) era genesis file referenced by the
 -- protocol configuration, throwing a 'ConfigurationParsingError' on failure.
@@ -273,8 +275,8 @@ readByronGenesisOrThrow root rnm (Hashed file expected) = do
     Left err ->
       throwIO $
         ConfigurationParsingError
-          (Just (root </> file))
-          (Just "ProtocolConfig")
+          (SJust (root </> file))
+          (SJust "ProtocolConfig")
           [Key "ByronGenesisFile"]
           err
     Right cfg -> pure cfg
@@ -295,7 +297,7 @@ readExperimentalGenesisOrThrow root mRef = do
 genesisReadErrorAt :: String -> String -> GenesisReadError -> ConfigurationParsingError
 genesisReadErrorAt section fileKey err =
   ConfigurationParsingError
-    (genesisErrorFile err)
-    (Just section)
+    (maybeToStrictMaybe (genesisErrorFile err))
+    (SJust section)
     [Key (K.fromString fileKey)]
     (show err)

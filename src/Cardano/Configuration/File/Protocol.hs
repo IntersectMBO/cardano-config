@@ -14,8 +14,10 @@ module Cardano.Configuration.File.Protocol
   ) where
 
 import Autodocodec
+import Cardano.Configuration.Basic (optionalFieldStrict, optionalFieldWithStrict)
 import Cardano.Configuration.Common (filePathCodec)
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex, hashToTextAsHex)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString (ByteString)
 import Data.Functor.Identity (Identity)
@@ -34,7 +36,7 @@ data Hashed a = Hashed
 -- | A maybe hashed entity, possibly a file.
 data MaybeHashed a = MaybeHashed
   { maybeHashed :: a
-  , maybeHash :: Maybe (Hash Blake2b_256 ByteString)
+  , maybeHash :: StrictMaybe (Hash Blake2b_256 ByteString)
   }
   deriving (Generic, Show)
 
@@ -66,34 +68,35 @@ hashedGenesisObjectCodec fileKey hashKey =
 -- 'Nothing' when the file key is absent, but if the file key is present the hash
 -- key must be too (a genesis file without a pinned hash is rejected at parse
 -- time). The resulting 'Hashed' therefore always carries a @'Just' hash@.
-optionalHashedGenesisObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (Hashed FilePath))
+optionalHashedGenesisObjectCodec :: Text -> Text -> JSONObjectCodec (StrictMaybe (Hashed FilePath))
 optionalHashedGenesisObjectCodec fileKey hashKey =
   bimapCodec toG fromG $
     (,)
       <$> optionalFieldWith fileKey filePathCodec "Path to the genesis file" .= fst
       <*> optionalFieldWith hashKey hashCodec "Hash of the genesis file" .= snd
  where
-  toG (Nothing, Nothing) = Right Nothing
-  toG (Just f, Just h) = Right (Just (Hashed f h))
+  toG (Nothing, Nothing) = Right SNothing
+  toG (Just f, Just h) = Right (SJust (Hashed f h))
   toG (Just _, Nothing) =
     Left (T.unpack hashKey <> " is required when " <> T.unpack fileKey <> " is provided")
   toG (Nothing, Just _) =
     Left (T.unpack hashKey <> " was given without " <> T.unpack fileKey)
-  fromG Nothing = (Nothing, Nothing)
-  fromG (Just (Hashed f mh)) = (Just f, Just mh)
+  fromG SNothing = (Nothing, Nothing)
+  fromG (SJust (Hashed f mh)) = (Just f, Just mh)
 
--- | An optional (optionally hashed) file: 'Nothing' when the file key is absent.
-optionalHashedFileObjectCodec :: Text -> Text -> JSONObjectCodec (Maybe (MaybeHashed FilePath))
+-- | An optional (optionally hashed) file: 'SNothing' when the file key is absent.
+optionalHashedFileObjectCodec ::
+  Text -> Text -> JSONObjectCodec (StrictMaybe (MaybeHashed FilePath))
 optionalHashedFileObjectCodec fileKey hashKey =
   dimapCodec toG fromG $
     (,)
       <$> optionalFieldWith fileKey filePathCodec "Path to the file" .= fst
       <*> optionalFieldWith hashKey hashCodec "Hash of the file" .= snd
  where
-  toG (Nothing, _) = Nothing
-  toG (Just f, mh) = Just (MaybeHashed f mh)
-  fromG Nothing = (Nothing, Nothing)
-  fromG (Just (MaybeHashed f mh)) = (Just f, mh)
+  toG (Nothing, _) = SNothing
+  toG (Just f, mh) = SJust (MaybeHashed f (maybeToStrictMaybe mh))
+  fromG SNothing = (Nothing, Nothing)
+  fromG (SJust (MaybeHashed f mh)) = (Just f, strictMaybeToMaybe mh)
 
 -- | Whether the Byron network magic is required. Enumerated so the schema lists
 -- the valid values and typos are caught at parse time.
@@ -109,11 +112,11 @@ instance HasCodec RequiresNetworkMagic where
 -- | Configuration for byron era
 data ByronGenesisConfiguration = ByronGenesisConfiguration
   { byronGenesisFile :: !(Hashed FilePath)
-  , byronReqNetworkMagic :: !(Maybe RequiresNetworkMagic)
-  , byronPbftSignatureThresh :: !(Maybe Double)
+  , byronReqNetworkMagic :: !(StrictMaybe RequiresNetworkMagic)
+  , byronPbftSignatureThresh :: !(StrictMaybe Double)
   , byronSupportedProtocolVersionMajor :: !Word16
   , byronSupportedProtocolVersionMinor :: !Word16
-  , byronSupportedProtocolVersionAlt :: !(Maybe Word8)
+  , byronSupportedProtocolVersionAlt :: !(StrictMaybe Word8)
   }
   deriving (Generic, Show)
 
@@ -121,19 +124,19 @@ byronGenesisObjectCodec :: JSONObjectCodec ByronGenesisConfiguration
 byronGenesisObjectCodec =
   ByronGenesisConfiguration
     <$> hashedGenesisObjectCodec "ByronGenesisFile" "ByronGenesisHash" .= byronGenesisFile
-    <*> optionalField "RequiresNetworkMagic" "Whether network magic is required"
+    <*> optionalFieldStrict "RequiresNetworkMagic" "Whether network magic is required"
       .= byronReqNetworkMagic
-    <*> optionalFieldWith "PBftSignatureThreshold" doubleCodec "Byron PBFT signature threshold"
+    <*> optionalFieldWithStrict "PBftSignatureThreshold" doubleCodec "Byron PBFT signature threshold"
       .= byronPbftSignatureThresh
     <*> requiredField "LastKnownBlockVersion-Major" "Last known block version, major"
       .= byronSupportedProtocolVersionMajor
     <*> requiredField "LastKnownBlockVersion-Minor" "Last known block version, minor"
       .= byronSupportedProtocolVersionMinor
-    <*> optionalField "LastKnownBlockVersion-Alt" "Last known block version, alt"
+    <*> optionalFieldStrict "LastKnownBlockVersion-Alt" "Last known block version, alt"
       .= byronSupportedProtocolVersionAlt
 
 -- | The genesis file (and optional hash) for the checkpoints.
-checkpointsObjectCodec :: JSONObjectCodec (Maybe (MaybeHashed FilePath))
+checkpointsObjectCodec :: JSONObjectCodec (StrictMaybe (MaybeHashed FilePath))
 checkpointsObjectCodec = optionalHashedFileObjectCodec "CheckpointsFile" "CheckpointsFileHash"
 
 -- | Configuration for the protocol
@@ -143,24 +146,24 @@ data ProtocolConfiguration f = ProtocolConfiguration
   , alonzoGenesis :: !(Hashed FilePath)
   , conwayGenesis :: !(Hashed FilePath)
   , startAsNonProducingNode :: !(f Bool)
-  , checkpointsFile :: !(Maybe (MaybeHashed FilePath))
+  , checkpointsFile :: !(StrictMaybe (MaybeHashed FilePath))
   }
   deriving Generic
 
-deriving instance Show (ProtocolConfiguration Maybe)
+deriving instance Show (ProtocolConfiguration StrictMaybe)
 deriving instance Show (ProtocolConfiguration Identity)
 
 deriving via
-  (Autodocodec (ProtocolConfiguration Maybe))
+  (Autodocodec (ProtocolConfiguration StrictMaybe))
   instance
-    FromJSON (ProtocolConfiguration Maybe)
+    FromJSON (ProtocolConfiguration StrictMaybe)
 
 deriving via
-  (Autodocodec (ProtocolConfiguration Maybe))
+  (Autodocodec (ProtocolConfiguration StrictMaybe))
   instance
-    ToJSON (ProtocolConfiguration Maybe)
+    ToJSON (ProtocolConfiguration StrictMaybe)
 
-instance HasCodec (ProtocolConfiguration Maybe) where
+instance HasCodec (ProtocolConfiguration StrictMaybe) where
   codec =
     object "ProtocolConfiguration" $
       ProtocolConfiguration
@@ -168,7 +171,7 @@ instance HasCodec (ProtocolConfiguration Maybe) where
         <*> hashedGenesisObjectCodec "ShelleyGenesisFile" "ShelleyGenesisHash" .= shelleyGenesis
         <*> hashedGenesisObjectCodec "AlonzoGenesisFile" "AlonzoGenesisHash" .= alonzoGenesis
         <*> hashedGenesisObjectCodec "ConwayGenesisFile" "ConwayGenesisHash" .= conwayGenesis
-        <*> optionalField
+        <*> optionalFieldStrict
           "StartAsNonProducingNode"
           ( "Start the node without block production even when block-forging credentials are supplied. "
               <> "false (the default) behaves normally — producing blocks if credentials were supplied, "

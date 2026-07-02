@@ -161,6 +161,7 @@ test-suite cardano-config-test
     cardano-crypto-wrapper,
     cardano-ledger-alonzo,
     cardano-ledger-conway,
+    cardano-ledger-core,
     cardano-ledger-dijkstra,
     cardano-ledger-shelley,
     optparse-applicative,

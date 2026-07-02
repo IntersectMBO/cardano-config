@@ -14,6 +14,7 @@ module Cardano.Configuration.File.Merge
   ) where
 
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe)
 import Control.Exception (throwIO)
 import Data.Aeson (FromJSON, Value (..), parseJSON)
 import qualified Data.Aeson.Key as K
@@ -41,7 +42,11 @@ decodeValueFile section fp = do
   case result of
     Left e ->
       throwIO $
-        ConfigurationParsingError (Just fp) section [] (Yaml.prettyPrintParseException e)
+        ConfigurationParsingError
+          (SJust fp)
+          (maybeToStrictMaybe section)
+          []
+          (Yaml.prettyPrintParseException e)
     Right v -> pure v
 
 -- | Run a component parser on a 'Value', turning a failure into a structured
@@ -57,7 +62,7 @@ runCodec ::
   IO a
 runCodec mFile section value =
   case iparseEither parseJSON value of
-    Left (path, msg) -> throwIO $ ConfigurationParsingError mFile (Just section) path msg
+    Left (path, msg) -> throwIO $ ConfigurationParsingError (maybeToStrictMaybe mFile) (SJust section) path msg
     Right a -> pure a
 
 -- | Deep, right-biased merge of two JSON values: two objects are merged key by
@@ -81,16 +86,16 @@ loadSectionSource root section src =
         else
           throwIO $
             ConfigurationParsingError
-              (Just fp)
-              (Just section)
+              (SJust fp)
+              (SJust section)
               [Key (K.fromString section)]
               "the referenced configuration file does not exist"
     Object _ -> pure src
     _ ->
       throwIO $
         ConfigurationParsingError
-          Nothing
-          (Just section)
+          SNothing
+          (SJust section)
           [Key (K.fromString section)]
           "expected a path to a configuration file (a string) or an inline object"
 
@@ -118,8 +123,8 @@ resolveSectionPath root section path
   reject why =
     throwIO $
       ConfigurationParsingError
-        (Just path)
-        (Just section)
+        (SJust path)
+        (SJust section)
         [Key (K.fromString section)]
         ("invalid configuration file path: it " <> why)
 
@@ -145,7 +150,7 @@ sectionUserLayer root configValue section =
         Just source -> loadSectionSource root section source
     _ ->
       throwIO $
-        ConfigurationParsingError Nothing Nothing [] "expected the configuration to be a JSON/YAML object"
+        ConfigurationParsingError SNothing SNothing [] "expected the configuration to be a JSON/YAML object"
 
 -- | Parse a single component. The package's base default for the section is
 -- always read as the bottom layer; the user's layer (see 'sectionUserLayer') is
@@ -185,7 +190,7 @@ splitEnvelope value =
       pure (version, minNodeVersion, fromMaybe value (KM.lookup "Configuration" o))
     _ ->
       throwIO $
-        ConfigurationParsingError Nothing Nothing [] "expected the configuration to be a JSON/YAML object"
+        ConfigurationParsingError SNothing SNothing [] "expected the configuration to be a JSON/YAML object"
  where
   -- A missing @Version@ is the legacy version 1. A present one must be an
   -- integer in range (not e.g. 1.4 or a huge scientific literal): the schema
@@ -195,7 +200,7 @@ splitEnvelope value =
     Just (Number n) ->
       maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
     Just _ -> throwIO (badVersion "expected an integer")
-  badVersion msg = ConfigurationParsingError Nothing Nothing [Key "Version"] ("invalid Version: " <> msg)
+  badVersion msg = ConfigurationParsingError SNothing SNothing [Key "Version"] ("invalid Version: " <> msg)
   -- @MinNodeVersion@ is optional and, when present, must be a string.
   lookupMinNodeVersion o = case KM.lookup "MinNodeVersion" o of
     Nothing -> pure Nothing
@@ -203,7 +208,7 @@ splitEnvelope value =
     Just _ ->
       throwIO $
         ConfigurationParsingError
-          Nothing
-          Nothing
+          SNothing
+          SNothing
           [Key "MinNodeVersion"]
           "invalid MinNodeVersion: expected a string"

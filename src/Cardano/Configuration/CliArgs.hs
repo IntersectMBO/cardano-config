@@ -39,6 +39,7 @@ module Cardano.Configuration.CliArgs
   ) where
 
 import Cardano.Configuration.Common
+import Cardano.Ledger.BaseTypes (StrictMaybe, maybeToStrictMaybe)
 import Control.Monad (when)
 import Data.Bifunctor (second)
 import Data.IP (IPv4, IPv6)
@@ -88,12 +89,12 @@ data KESSource
 -- their presence is what makes the node a block producer (see
 -- @roleFromCredentials@).
 data Credentials = Credentials
-  { byronDelegationCertificate :: Maybe FilePath
-  , byronSigningKey :: Maybe FilePath
-  , shelleyKES :: Maybe KESSource
-  , shelleyVRFKey :: Maybe FilePath
-  , shelleyOperationalCertificate :: Maybe FilePath
-  , bulkCredentialsFile :: Maybe FilePath
+  { byronDelegationCertificate :: StrictMaybe FilePath
+  , byronSigningKey :: StrictMaybe FilePath
+  , shelleyKES :: StrictMaybe KESSource
+  , shelleyVRFKey :: StrictMaybe FilePath
+  , shelleyOperationalCertificate :: StrictMaybe FilePath
+  , bulkCredentialsFile :: StrictMaybe FilePath
   }
   deriving Show
 
@@ -101,50 +102,55 @@ data Credentials = Credentials
 data CliArgs = CliArgs
   { configFilePath :: FilePath
   , topologyFile :: FilePath
-  , databasePathCLI :: Maybe NodeDatabasePaths
+  , databasePathCLI :: StrictMaybe NodeDatabasePaths
   , validateDatabase :: Bool
-  , socketPath :: Maybe FilePath
+  , socketPath :: StrictMaybe FilePath
   , credentials :: Credentials
-  , startAsNonProducingNode :: Maybe Bool
-  , hostAddr :: Maybe IPv4
-  , hostIPv6Addr :: Maybe IPv6
-  , port :: Maybe PortNumber
-  , tracerSocket :: Maybe TracerConnection
-  , shutdownIPC :: Maybe Fd
-  , shutdownOnTarget :: Maybe ShutdownOn
-  , enableRpcCLI :: Maybe Bool
-  , rpcSocketPathCLI :: Maybe FilePath
+  , startAsNonProducingNode :: StrictMaybe Bool
+  , hostAddr :: StrictMaybe IPv4
+  , hostIPv6Addr :: StrictMaybe IPv6
+  , port :: StrictMaybe PortNumber
+  , tracerSocket :: StrictMaybe TracerConnection
+  , shutdownIPC :: StrictMaybe Fd
+  , shutdownOnTarget :: StrictMaybe ShutdownOn
+  , enableRpcCLI :: StrictMaybe Bool
+  , rpcSocketPathCLI :: StrictMaybe FilePath
   }
   deriving Show
 
 parseCredentials :: Parser Credentials
 parseCredentials =
   Credentials
-    <$> optional parseByronDelegationCert
-    <*> optional parseByronSigningKey
-    <*> optional parseKESSource
-    <*> optional parseVrfKeyFilePath
-    <*> optional parseOperationalCertFilePath
-    <*> optional parseBulkCredsFilePath
+    <$> optionalStrict parseByronDelegationCert
+    <*> optionalStrict parseByronSigningKey
+    <*> optionalStrict parseKESSource
+    <*> optionalStrict parseVrfKeyFilePath
+    <*> optionalStrict parseOperationalCertFilePath
+    <*> optionalStrict parseBulkCredsFilePath
+
+-- | Like optparse-applicative's 'optional', but yielding a 'StrictMaybe' to
+-- match the strict CLI-argument fields (see the package's @StrictData@ usage).
+optionalStrict :: Alternative f => f a -> f (StrictMaybe a)
+optionalStrict = fmap maybeToStrictMaybe . optional
 
 parseCliArgs :: Parser CliArgs
 parseCliArgs =
   CliArgs
     <$> parseConfigFile
     <*> parseTopologyFile
-    <*> parserOptionGroup "Storage:" parseNodeDatabasePaths
+    <*> parserOptionGroup "Storage:" (maybeToStrictMaybe <$> parseNodeDatabasePaths)
     <*> parserOptionGroup "Storage:" parseValidateDB
-    <*> optional parseSocketPath
+    <*> optionalStrict parseSocketPath
     <*> parserOptionGroup "Credentials:" parseCredentials
-    <*> parserOptionGroup "Credentials:" parseStartAsNonProducingNode
-    <*> parserOptionGroup "Host:" (optional parseHostIPv4Addr)
-    <*> parserOptionGroup "Host:" (optional parseHostIPv6Addr)
-    <*> parserOptionGroup "Host:" (optional parsePort)
-    <*> parserOptionGroup "Tracing:" (optional parseTracerSocketMode)
-    <*> parserOptionGroup "Shutdown:" (optional parseShutdownIPC)
-    <*> parserOptionGroup "Shutdown:" (optional parseShutdownOn)
-    <*> optional parseEnableRpc
-    <*> optional parseRpcSocketPath
+    <*> parserOptionGroup "Credentials:" (maybeToStrictMaybe <$> parseStartAsNonProducingNode)
+    <*> parserOptionGroup "Host:" (optionalStrict parseHostIPv4Addr)
+    <*> parserOptionGroup "Host:" (optionalStrict parseHostIPv6Addr)
+    <*> parserOptionGroup "Host:" (optionalStrict parsePort)
+    <*> parserOptionGroup "Tracing:" (optionalStrict parseTracerSocketMode)
+    <*> parserOptionGroup "Shutdown:" (optionalStrict parseShutdownIPC)
+    <*> parserOptionGroup "Shutdown:" (optionalStrict parseShutdownOn)
+    <*> optionalStrict parseEnableRpc
+    <*> optionalStrict parseRpcSocketPath
 
 parseTopologyFile :: Parser FilePath
 parseTopologyFile =
