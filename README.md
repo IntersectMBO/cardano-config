@@ -170,5 +170,5 @@ Only **ten** keys are mandatory (no default; parsing fails if absent):
 - `LastKnownBlockVersion-Minor`.
 
 These are network-specific, so they are deliberately not in the base defaults;
-supply them directly or by referencing a`variants/ProtocolConfig/<network>.json`
+supply them directly or by referencing a `variants/ProtocolConfig/<network>.json`
 file.
