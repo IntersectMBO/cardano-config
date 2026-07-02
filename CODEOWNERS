@@ -8,6 +8,11 @@
 # Default maintainer.
 * @jasagredo
 
+flake      @IntersectMBO/cardano-node-sre
+perSystem  @IntersectMBO/cardano-node-sre
+*.nix      @IntersectMBO/cardano-node-sre
+flake.lock @IntersectMBO/cardano-node-sre
+
 # Whole directories (the specific rules below override these for individual
 # files). The two whole-configuration schemas (config.schema.json,
 # config.legacy-one-file.schema.json) are covered here.
