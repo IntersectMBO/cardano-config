@@ -49,6 +49,55 @@
             "title": "ChainSyncIdleTimeout",
             "type": "number"
         },
+        "DeadlineTargetNumberOfActiveBigLedgerPeers": {
+            "description": "Deadline target of active big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfActiveBigLedgerPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfActivePeers": {
+            "description": "Deadline target of active peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfActivePeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfEstablishedBigLedgerPeers": {
+            "description": "Deadline target of established big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfEstablishedBigLedgerPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfEstablishedPeers": {
+            "description": "Deadline target of established peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfEstablishedPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfKnownBigLedgerPeers": {
+            "description": "Deadline target of known big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfKnownBigLedgerPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfKnownPeers": {
+            "description": "Deadline target of known peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfKnownPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfRootPeers": {
+            "description": "Deadline target of root peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfRootPeers",
+            "type": "integer"
+        },
         "DiffusionMode": {
             "default": "InitiatorAndResponder",
             "description": "Initiator-only or initiator-and-responder",
@@ -170,55 +219,6 @@
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
             "title": "SyncTargetNumberOfRootPeers",
-            "type": "integer"
-        },
-        "TargetNumberOfActiveBigLedgerPeers": {
-            "description": "Deadline target of active big ledger peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfActiveBigLedgerPeers",
-            "type": "integer"
-        },
-        "TargetNumberOfActivePeers": {
-            "description": "Deadline target of active peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfActivePeers",
-            "type": "integer"
-        },
-        "TargetNumberOfEstablishedBigLedgerPeers": {
-            "description": "Deadline target of established big ledger peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfEstablishedBigLedgerPeers",
-            "type": "integer"
-        },
-        "TargetNumberOfEstablishedPeers": {
-            "description": "Deadline target of established peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfEstablishedPeers",
-            "type": "integer"
-        },
-        "TargetNumberOfKnownBigLedgerPeers": {
-            "description": "Deadline target of known big ledger peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfKnownBigLedgerPeers",
-            "type": "integer"
-        },
-        "TargetNumberOfKnownPeers": {
-            "description": "Deadline target of known peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfKnownPeers",
-            "type": "integer"
-        },
-        "TargetNumberOfRootPeers": {
-            "description": "Deadline target of root peers",
-            "maximum": 9223372036854775807,
-            "minimum": -9223372036854775808,
-            "title": "TargetNumberOfRootPeers",
             "type": "integer"
         },
         "TimeWaitTimeout": {

@@ -1,10 +1,10 @@
 {
-    "TargetNumberOfRootPeers": 60,
-    "TargetNumberOfKnownPeers": 150,
-    "TargetNumberOfEstablishedPeers": 30,
-    "TargetNumberOfActivePeers": 20,
-    "TargetNumberOfKnownBigLedgerPeers": 15,
-    "TargetNumberOfEstablishedBigLedgerPeers": 10,
-    "TargetNumberOfActiveBigLedgerPeers": 5,
+    "DeadlineTargetNumberOfRootPeers": 60,
+    "DeadlineTargetNumberOfKnownPeers": 150,
+    "DeadlineTargetNumberOfEstablishedPeers": 30,
+    "DeadlineTargetNumberOfActivePeers": 20,
+    "DeadlineTargetNumberOfKnownBigLedgerPeers": 15,
+    "DeadlineTargetNumberOfEstablishedBigLedgerPeers": 10,
+    "DeadlineTargetNumberOfActiveBigLedgerPeers": 5,
     "PeerSharing": true
 }

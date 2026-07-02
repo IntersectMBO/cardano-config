@@ -163,22 +163,22 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
           .= chainSyncIdleTimeout
         <*> optionalFieldStrict "AcceptedConnectionsLimit" "Limits on accepted connections"
           .= acceptedConnectionsLimit
-        <*> optionalFieldStrict "TargetNumberOfRootPeers" "Deadline target of root peers"
+        <*> optionalFieldStrict "DeadlineTargetNumberOfRootPeers" "Deadline target of root peers"
           .= deadlineTargetOfRootPeers
-        <*> optionalFieldStrict "TargetNumberOfKnownPeers" "Deadline target of known peers"
+        <*> optionalFieldStrict "DeadlineTargetNumberOfKnownPeers" "Deadline target of known peers"
           .= deadlineTargetOfKnownPeers
-        <*> optionalFieldStrict "TargetNumberOfEstablishedPeers" "Deadline target of established peers"
+        <*> optionalFieldStrict "DeadlineTargetNumberOfEstablishedPeers" "Deadline target of established peers"
           .= deadlineTargetOfEstablishedPeers
-        <*> optionalFieldStrict "TargetNumberOfActivePeers" "Deadline target of active peers"
+        <*> optionalFieldStrict "DeadlineTargetNumberOfActivePeers" "Deadline target of active peers"
           .= deadlineTargetOfActivePeers
-        <*> optionalFieldStrict "TargetNumberOfKnownBigLedgerPeers" "Deadline target of known big ledger peers"
+        <*> optionalFieldStrict "DeadlineTargetNumberOfKnownBigLedgerPeers" "Deadline target of known big ledger peers"
           .= deadlineTargetOfKnownBigLedgerPeers
         <*> optionalFieldStrict
-          "TargetNumberOfEstablishedBigLedgerPeers"
+          "DeadlineTargetNumberOfEstablishedBigLedgerPeers"
           "Deadline target of established big ledger peers"
           .= deadlineTargetOfEstablishedBigLedgerPeers
         <*> optionalFieldStrict
-          "TargetNumberOfActiveBigLedgerPeers"
+          "DeadlineTargetNumberOfActiveBigLedgerPeers"
           "Deadline target of active big ledger peers"
           .= deadlineTargetOfActiveBigLedgerPeers
         <*> optionalFieldStrict "SyncTargetNumberOfRootPeers" "Sync target of root peers"
