@@ -45,6 +45,7 @@ module Cardano.Configuration.Schema
   , localConnectionsSchema
   , mempoolSchema
   , testingSchema
+  , schemaId
   ) where
 
 import Autodocodec.Schema (jsonSchemaViaCodec)

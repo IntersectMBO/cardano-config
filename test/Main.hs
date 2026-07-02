@@ -89,6 +89,7 @@ cases =
   , envelopeWarningCase
   , splitSubfileSchemaCase
   , migrateCase
+  , migrateRenameCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -288,6 +289,63 @@ migrateCase =
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
     _ -> False
+
+-- | 'migrate' rewrites the renamed fields to their current names and drops the
+-- removed ones. Renamed flat keys must end up grouped under their section using
+-- the /new/ name (a peer target under NetworkConfig, EnableGrpc under
+-- LocalConnectionsConfig); AcceptedConnectionsLimit's sub-keys are renamed in
+-- place, but that rename is scoped — a stray @delay@ elsewhere is left alone;
+-- no removed key survives anywhere; and the result is still idempotent.
+migrateRenameCase :: TestTree
+migrateRenameCase =
+  testCase "migrate rewrites renamed fields and drops removed ones" $ do
+    res <- decodeData "test/examples/legacy-renamed-fields.json" :: IO (Either String Value)
+    expectOk $ case res of
+      Left err -> Just ("could not read fixture: " <> err)
+      Right raw -> case migrate raw of
+        m@(Object top)
+          | any (`elem` removed) (allKeys m) ->
+              Just ("a removed key survived; keys: " <> show (allKeys m))
+          | any (`elem` oldNames) (allKeys m) ->
+              Just ("an old name survived; keys: " <> show (allKeys m))
+          | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+              Just (Object cfg)
+                | not (nested cfg "NetworkConfig" "DeadlineTargetNumberOfRootPeers") ->
+                    Just "renamed peer target not grouped under NetworkConfig"
+                | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
+                    Just "EnableGrpc not grouped under LocalConnectionsConfig"
+                | not (deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "HardLimit") ->
+                    Just "AcceptedConnectionsLimit.HardLimit not renamed in place"
+                | deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "hardLimit" ->
+                    Just "AcceptedConnectionsLimit.hardLimit not renamed"
+                -- The rename is scoped: a stray top-level "delay" is not touched.
+                | not (KM.member (K.fromString "delay") cfg) ->
+                    Just "a stray 'delay' outside AcceptedConnectionsLimit was renamed (should be scoped)"
+                | migrate m /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "Configuration is not an object"
+        _ -> Just "migrate did not produce an object"
+ where
+  removed =
+    [ "PBftSignatureThreshold"
+    , "LastKnownBlockVersion-Major"
+    , "LastKnownBlockVersion-Minor"
+    , "LastKnownBlockVersion-Alt"
+    ]
+  -- Globally-unique old names that must never survive (the generic
+  -- AcceptedConnectionsLimit sub-keys are checked in place above, since a stray
+  -- one is deliberately left unchanged).
+  oldNames = ["EnableRpc", "RpcSocketPath", "TargetNumberOfRootPeers"]
+  nested cfg section key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+  deepNested cfg section sub key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> nested s sub key
+    _ -> False
+  -- Every object key appearing anywhere in the document.
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
 
 -- | The optional top-level @MinNodeVersion@ annotation is read from the same
 -- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and
