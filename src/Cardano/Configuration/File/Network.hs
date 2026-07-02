@@ -171,7 +171,9 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
           .= deadlineTargetOfEstablishedPeers
         <*> optionalFieldStrict "DeadlineTargetNumberOfActivePeers" "Deadline target of active peers"
           .= deadlineTargetOfActivePeers
-        <*> optionalFieldStrict "DeadlineTargetNumberOfKnownBigLedgerPeers" "Deadline target of known big ledger peers"
+        <*> optionalFieldStrict
+          "DeadlineTargetNumberOfKnownBigLedgerPeers"
+          "Deadline target of known big ledger peers"
           .= deadlineTargetOfKnownBigLedgerPeers
         <*> optionalFieldStrict
           "DeadlineTargetNumberOfEstablishedBigLedgerPeers"

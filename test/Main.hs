@@ -337,9 +337,17 @@ roleVariantParityCase =
       (_, Left e) -> Just ("could not read relay.json: " <> e)
       (Right bpV, Right relayV)
         | toJSON blockProducerRoleDefaults /= bpV ->
-            Just $ "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json: " <> show (toJSON blockProducerRoleDefaults) <> " /= " <> show bpV
+            Just $
+              "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json: "
+                <> show (toJSON blockProducerRoleDefaults)
+                <> " /= "
+                <> show bpV
         | toJSON relayRoleDefaults /= relayV ->
-            Just $ "relayRoleDefaults differs from NetworkConfig.relay.json: " <> show (toJSON relayRoleDefaults) <> " /= " <> show relayV
+            Just $
+              "relayRoleDefaults differs from NetworkConfig.relay.json: "
+                <> show (toJSON relayRoleDefaults)
+                <> " /= "
+                <> show relayV
         | otherwise -> Nothing
 
 -- | The networking role defaults are chosen by credential presence: a credential
