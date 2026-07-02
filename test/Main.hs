@@ -46,7 +46,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
-import Data.Maybe (fromJust, isJust, isNothing)
+import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Word (Word64)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
@@ -301,30 +301,33 @@ resolveCase =
 -- into a 'TraceConfig' — whether given inline (an object) or as a path to a
 -- separate file — and surfaced both on the parse result and, when the resolved
 -- configuration is dumped, back under a @HermodTracing@ key. A configuration
--- without the key resolves to no tracing config and renders no such key.
+-- without the key falls back to 'defaultCardanoTracingConfig', which is likewise
+-- surfaced and rendered (so the @HermodTracing@ key always appears).
 tracingCase :: TestTree
 tracingCase =
-  testCase "HermodTracing resolves to a TraceConfig (inline and file) and is rendered" $ do
+  testCase "HermodTracing resolves to a TraceConfig (inline, file, default) and is always rendered" $ do
     inline <- parsed "test/examples/tracing-inline.json"
     fromFile <- parsed "test/examples/tracing-file.json"
     absent <- parsed "test/examples/fullconfig.json"
     renderedInline <- rendersTracing "test/examples/tracing-inline.json"
     renderedAbsent <- rendersTracing "test/examples/fullconfig.json"
+    let asJSON = toJSON . tracingConfiguration
+        deflt = toJSON defaultCardanoTracingConfig
     expectOk $
-      if isJust (strictMaybeToMaybe (tracingConfiguration inline))
-        && isJust (strictMaybeToMaybe (tracingConfiguration fromFile))
-        && isNothing (strictMaybeToMaybe (tracingConfiguration absent))
+      if asJSON inline /= deflt -- the inline object was applied
+        && asJSON fromFile /= deflt -- the referenced file was applied
+        && asJSON absent == deflt -- no key falls back to the default
         && renderedInline == Right True
-        && renderedAbsent == Right False
+        && renderedAbsent == Right True -- rendered even without a key
         then Nothing
         else
           Just $
-            "unexpected tracing resolution: inline="
-              <> show (isJust (strictMaybeToMaybe (tracingConfiguration inline)))
-              <> " file="
-              <> show (isJust (strictMaybeToMaybe (tracingConfiguration fromFile)))
-              <> " absent="
-              <> show (isNothing (strictMaybeToMaybe (tracingConfiguration absent)))
+            "unexpected tracing resolution: inlineIsDefault="
+              <> show (asJSON inline == deflt)
+              <> " fileIsDefault="
+              <> show (asJSON fromFile == deflt)
+              <> " absentIsDefault="
+              <> show (asJSON absent == deflt)
               <> " renderedInline="
               <> show renderedInline
               <> " renderedAbsent="

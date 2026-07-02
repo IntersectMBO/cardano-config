@@ -59,10 +59,10 @@ nodeConfigurationToJSON geneses nc =
  where
   -- The tracing configuration resolved by trace-dispatcher, rendered under the
   -- same @HermodTracing@ key it is read from (as an inline object, via
-  -- trace-dispatcher's own 'ToJSON'). Present only when the configuration set a
-  -- @HermodTracing@ key.
+  -- trace-dispatcher's own 'ToJSON'). Always present: absent a @HermodTracing@
+  -- key it holds 'File.defaultCardanoTracingConfig'.
   tracingFields =
-    mapMaybe strictMaybeToMaybe [("HermodTracing" .=) <$> tracingConfiguration nc]
+    ["HermodTracing" .= tracingConfiguration nc]
   -- The resolved (parsed) era geneses, rendered through the ledger's @aeson@
   -- 'toJSON' instances (and, for Byron, its canonical-JSON form), so the dump
   -- shows the decoded genesis content rather than just the file reference and

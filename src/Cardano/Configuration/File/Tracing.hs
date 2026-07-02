@@ -88,27 +88,29 @@ instance HasCodec TracingConfiguration where
 
 -- | Resolve the captured @HermodTracing@ value into a 'TraceConfig' by handing it
 -- to @trace-dispatcher@'s own parser ('readConfigurationWithDefault'), with
--- 'mkConfiguration' (the minimal viable config) supplying defaults for any
--- top-level fields the source leaves unspecified:
+-- 'defaultCardanoTracingConfig' supplying defaults for any top-level fields the
+-- source leaves unspecified:
 --
 --   * a file reference is resolved to its canonical location (relative paths are
 --     taken against the configuration directory @root@) and read via 'FromFile';
 --   * an inline object is read via 'FromJSONObject'.
 --
--- 'SNothing' when no @HermodTracing@ key is present.
+-- When no @HermodTracing@ key is present, the tracing system still needs a
+-- configuration, so we fall back to 'defaultCardanoTracingConfig' unchanged
+-- rather than to no configuration at all.
 resolveTracingConfiguration ::
   -- | The directory a relative @HermodTracing@ file path is resolved against.
   FilePath ->
   TracingConfiguration ->
-  IO (StrictMaybe TraceConfig)
+  IO TraceConfig
 resolveTracingConfiguration root (TracingConfiguration mSource) =
   case mSource of
-    SNothing -> pure SNothing
+    SNothing -> pure defaultCardanoTracingConfig
     SJust (TracingConfigFile path) -> do
       canonPath <- canonicalizePath (root </> path)
-      SJust <$> readConfigurationWithDefault (FromFile canonPath) defaultCardanoTracingConfig
+      readConfigurationWithDefault (FromFile canonPath) defaultCardanoTracingConfig
     SJust (TracingConfigInline obj) ->
-      SJust <$> readConfigurationWithDefault (FromJSONObject obj) defaultCardanoTracingConfig
+      readConfigurationWithDefault (FromJSONObject obj) defaultCardanoTracingConfig
 
 defaultCardanoTracingConfig :: TraceConfig
 defaultCardanoTracingConfig =

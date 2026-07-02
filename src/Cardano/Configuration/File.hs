@@ -135,12 +135,14 @@ data NodeConfigurationFromFileF f
   , localConnectionsConfig :: f (LocalConnectionsConfig StrictMaybe)
   , testingConfiguration :: f (TestingConfiguration StrictMaybe)
   , mempoolConfiguration :: f (MempoolConfiguration StrictMaybe)
-  , tracingConfiguration :: StrictMaybe TraceConfig
+  , tracingConfiguration :: TraceConfig
   -- ^ The tracing configuration referenced by the top-level @HermodTracing@ key,
   -- resolved by @trace-dispatcher@'s own parser ('resolveTracingConfiguration'):
   -- a @HermodTracing@ file path is read from that file, an inline object is read
-  -- directly. 'SNothing' when no @HermodTracing@ key is present. Its schema is
-  -- owned by @trace-dispatcher@, not described here (see 'TracingConfiguration').
+  -- directly. When no @HermodTracing@ key is present it falls back to
+  -- 'defaultCardanoTracingConfig', so a tracing configuration is always present.
+  -- Its schema is owned by @trace-dispatcher@, not described here (see
+  -- 'TracingConfiguration').
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
   , shelleyGenesisConfig :: ShelleyGenesis
