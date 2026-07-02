@@ -172,3 +172,13 @@ Only **ten** keys are mandatory (no default; parsing fails if absent):
 These are network-specific, so they are deliberately not in the base defaults;
 supply them directly or by referencing a `variants/ProtocolConfig/<network>.json`
 file.
+
+## Notes on networks
+
+Due to the nature of each network, some features are enabled in ones and not in
+others:
+
+|             |Mainnet|Preprod|Preview|
+|-------------|-------|-------|-------|
+|Checkpoints  |Yes    |No     |Yes    |
+|Test*HardFork|No     |No     |Yes    |
