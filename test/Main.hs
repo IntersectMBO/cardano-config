@@ -326,8 +326,8 @@ genesisRenderCase =
 roleVariantParityCase :: TestTree
 roleVariantParityCase =
   testCase "network role defaults match the committed variant JSON" $ do
-    bpPath <- getDataFileName "variants/NetworkConfig/blockproducer.json"
-    relayPath <- getDataFileName "variants/NetworkConfig/relay.json"
+    bpPath <- getDataFileName "defaults/NetworkConfig/blockproducer.json"
+    relayPath <- getDataFileName "defaults/NetworkConfig/relay.json"
     bp <- eitherDecodeFileStrict' bpPath :: IO (Either String Value)
     relay <- eitherDecodeFileStrict' relayPath :: IO (Either String Value)
     let dropSchema (Object km) = Object (KM.delete (K.fromString "$schema") km)
