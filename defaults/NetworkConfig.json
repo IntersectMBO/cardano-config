@@ -5,9 +5,9 @@
     "EgressPollInterval": 0,
     "ChainSyncIdleTimeout": 3373,
     "AcceptedConnectionsLimit": {
-        "hardLimit": 512,
-        "softLimit": 384,
-        "delay": 5
+        "HardLimit": 512,
+        "SoftLimit": 384,
+        "Delay": 5
     },
     "SyncTargetNumberOfRootPeers": 0,
     "SyncTargetNumberOfKnownPeers": 150,

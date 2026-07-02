@@ -206,33 +206,33 @@
                         "AcceptedConnectionsLimit": {
                             "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
                             "properties": {
-                                "delay": {
+                                "Delay": {
                                     "default": 5,
                                     "description": "Delay, in seconds, applied once the soft limit is reached",
-                                    "title": "delay",
+                                    "title": "Delay",
                                     "type": "number"
                                 },
-                                "hardLimit": {
+                                "HardLimit": {
                                     "default": 512,
                                     "description": "Hard limit on the number of connections",
                                     "maximum": 4294967295,
                                     "minimum": 0,
-                                    "title": "hardLimit",
+                                    "title": "HardLimit",
                                     "type": "integer"
                                 },
-                                "softLimit": {
+                                "SoftLimit": {
                                     "default": 384,
                                     "description": "Soft limit on the number of connections",
                                     "maximum": 4294967295,
                                     "minimum": 0,
-                                    "title": "softLimit",
+                                    "title": "SoftLimit",
                                     "type": "integer"
                                 }
                             },
                             "required": [
-                                "delay",
-                                "softLimit",
-                                "hardLimit"
+                                "Delay",
+                                "SoftLimit",
+                                "HardLimit"
                             ],
                             "title": "AcceptedConnectionsLimit",
                             "type": "object"

@@ -87,11 +87,11 @@ instance HasCodec AcceptedConnectionsLimit where
   codec =
     object "AcceptedConnectionsLimit" $
       AcceptedConnectionsLimit
-        <$> requiredField "hardLimit" "Hard limit on the number of connections"
+        <$> requiredField "HardLimit" "Hard limit on the number of connections"
           .= hardLimit
-        <*> requiredField "softLimit" "Soft limit on the number of connections"
+        <*> requiredField "SoftLimit" "Soft limit on the number of connections"
           .= softLimit
-        <*> requiredFieldWith "delay" diffTimeCodec "Delay, in seconds, applied once the soft limit is reached"
+        <*> requiredFieldWith "Delay" diffTimeCodec "Delay, in seconds, applied once the soft limit is reached"
           .= delayOnSoftLimit
 
 -- | Options related to networking. Fields that have an always-applied default
