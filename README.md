@@ -10,8 +10,8 @@ The goal is one shared parser for applications that need the node's configuratio
 such as [`cardano-cli`](https://github.com/IntersectMBO/cardano-cli),
 [`dmq-node`](https://github.com/IntersectMBO/dmq-node/) and
 [the `ouroboros-consensus` tools](https://github.com/IntersectMBO/ouroboros-consensus/tree/main/ouroboros-consensus-cardano#consensus-db-tools).
-The bundled `cardano-config` executable exposes the same via its `resolve` and
-`schema` subcommands.
+The bundled `cardano-config` executable exposes the same via its `resolve`,
+`schema` and `migrate` subcommands.
 
 ## Recommended format
 
@@ -42,10 +42,37 @@ pointing to that component's schema (e.g. a `StorageConfig` sub-file uses `schem
 so editors and validators pick up the right schema for the sub-file. The key is
 an annotation: the parser accepts and ignores it.
 
-To port an old config to the new format, group the component keys under their
-sections inside `Configuration` and add the `Version` / `MinNodeVersion`
-envelope. `cardano-config schema` documents the recommended form;
-`--legacy-one-file` documents the flat form.
+To port an old config to the new format, run `cardano-config migrate` (it reads
+`-` as stdin, so you can fetch and convert in one step):
+
+```console
+$ cardano-config migrate old-config.json > config.json
+$ curl -sL <url-of-old-config> | cardano-config migrate - > config.json
+```
+
+It reshapes the document into the envelope as JSON: it adds `$schema` and
+`Version`, carries `MinNodeVersion` through, and groups each component's keys
+under its section inside `Configuration`. It also brings field names up to date:
+the parser rejects the old names, so `migrate` rewrites the ones that were
+renamed (`hardLimit`/`softLimit`/`delay` → `HardLimit`/`SoftLimit`/`Delay`,
+`EnableRpc`/`RpcSocketPath` → `EnableGrpc`/`GrpcSocketPath`, `TargetNumberOf*` →
+`DeadlineTargetNumberOf*`) and drops the ones that were removed
+(`PBftSignatureThreshold`, `LastKnownBlockVersion-Major`/`-Minor`/`-Alt`, now
+supplied by consensus defaults; the vestigial `Protocol`; and
+`MaxKnownMajorProtocolVersion`, a dead key the node never read). Apart from that
+it preserves the values as written and does not fill in defaults, inline
+referenced sub-files, or read genesis files; follow it with `resolve` to check
+the result.
+
+A genuinely unrecognised key (a typo, say) is **kept** rather than silently
+dropped, so nothing is lost - but it remains unrecognised and so still surfaces
+as an `UnrecognisedKeys` warning on the next parse. Remove it by hand if you want
+a warning-free config.
+
+(To port by hand instead: group the component keys under their sections inside
+`Configuration` and add the `Version` / `MinNodeVersion` envelope. `cardano-config
+schema` documents the recommended form; `--legacy-one-file` documents the flat
+form.)
 
 ## Defaults and layering
 

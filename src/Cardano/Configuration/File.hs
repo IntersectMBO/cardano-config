@@ -54,8 +54,8 @@ import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Configuration.File.Lint
   ( ConfigWarning (..)
-  , checkEnvelope
   , configWarnings
+  , inVersion1Format
   , renderConfigWarning
   )
 import Cardano.Configuration.File.Mempool
@@ -67,6 +67,7 @@ import Cardano.Configuration.File.Merge
   , sectionUserLayer
   , splitEnvelope
   )
+import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.File.Network
 import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
@@ -184,11 +185,19 @@ componentDefaults =
 parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
-  mainValue <- decodeValueFile Nothing cfgFile
+  rawValue <- decodeValueFile Nothing cfgFile
+  -- The parser accepts only the Version1 format (a top-level @Configuration@
+  -- envelope). A document that is not in it is not parsed as-is: it is migrated
+  -- to the Version1 format first — with a 'MigratedToVersion1' warning — and the
+  -- result is parsed. If that migrated document still cannot be parsed, the parse
+  -- error surfaces as usual (so a non-Version1 document whose migration does not
+  -- yield a parseable configuration is rejected).
+  let (mainValue, migrationWarnings) =
+        if inVersion1Format rawValue
+          then (rawValue, [])
+          else (migrate rawValue, [MigratedToVersion1])
   (version, minNodeVer, configValue) <- splitEnvelope mainValue
-  -- 'checkEnvelope' inspects the raw top-level document (is it the Version1
-  -- envelope?); the rest inspect the unwrapped configuration object.
-  let warnings = checkEnvelope mainValue <> configWarnings configValue
+  let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile
   config <- case version of
     1 -> parseConfigurationVersion1 root minNodeVer configValue
