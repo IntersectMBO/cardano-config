@@ -1,0 +1,96 @@
+{
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ProtocolConfig.schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "ProtocolConfiguration",
+    "properties": {
+        "$schema": {
+            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ProtocolConfig.schema.json",
+            "description": "URL of the JSON Schema this ProtocolConfig file follows (the $schema annotation), for editors and validators.",
+            "title": "$schema",
+            "type": "string"
+        },
+        "AlonzoGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "AlonzoGenesisFile",
+            "type": "string"
+        },
+        "AlonzoGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "AlonzoGenesisHash",
+            "type": "string"
+        },
+        "ByronGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "ByronGenesisFile",
+            "type": "string"
+        },
+        "ByronGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "ByronGenesisHash",
+            "type": "string"
+        },
+        "CheckpointsFile": {
+            "description": "Path to the file",
+            "format": "path",
+            "title": "CheckpointsFile",
+            "type": "string"
+        },
+        "CheckpointsFileHash": {
+            "description": "Hash of the file\nBlake2b_256 hash",
+            "title": "CheckpointsFileHash",
+            "type": "string"
+        },
+        "ConwayGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "ConwayGenesisFile",
+            "type": "string"
+        },
+        "ConwayGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "ConwayGenesisHash",
+            "type": "string"
+        },
+        "RequiresNetworkMagic": {
+            "default": "RequiresNoMagic",
+            "description": "Whether network magic is required",
+            "enum": [
+                "RequiresNoMagic",
+                "RequiresMagic"
+            ],
+            "title": "RequiresNetworkMagic",
+            "type": "string"
+        },
+        "ShelleyGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "ShelleyGenesisFile",
+            "type": "string"
+        },
+        "ShelleyGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "ShelleyGenesisHash",
+            "type": "string"
+        },
+        "StartAsNonProducingNode": {
+            "default": false,
+            "description": "Start the node without block production even when block-forging credentials are supplied. false (the default) behaves normally — producing blocks if credentials were supplied, otherwise just running as a relay; true suppresses block production even with credentials present.",
+            "title": "StartAsNonProducingNode",
+            "type": "boolean"
+        }
+    },
+    "required": [
+        "ConwayGenesisHash",
+        "ConwayGenesisFile",
+        "AlonzoGenesisHash",
+        "AlonzoGenesisFile",
+        "ShelleyGenesisHash",
+        "ShelleyGenesisFile",
+        "ByronGenesisHash",
+        "ByronGenesisFile"
+    ],
+    "title": "ProtocolConfig",
+    "type": "object"
+}

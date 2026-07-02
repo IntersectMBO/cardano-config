@@ -1,0 +1,5 @@
+{
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/MempoolConfig.schema.json",
+    "MempoolCapacityBytesOverride": 1000000,
+    "MempoolTimeoutSoft": 7
+}

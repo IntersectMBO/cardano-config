@@ -1,0 +1,9 @@
+{
+    "StorageConfig": "storage.json",
+    "ConsensusConfig": "consensus.json",
+    "ProtocolConfig": "protocol.json",
+    "NetworkConfig": "network.json",
+    "LocalConnectionsConfig": "localconnections.json",
+    "TestingConfig": "testing.json",
+    "MempoolConfig": "mempool.json"
+}

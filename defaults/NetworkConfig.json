@@ -1,0 +1,27 @@
+{
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/NetworkConfig.schema.json",
+    "DiffusionMode": "InitiatorAndResponder",
+    "MaxConcurrencyBulkSync": 1,
+    "MaxConcurrencyDeadline": 1,
+    "EgressPollInterval": 0,
+    "ChainSyncIdleTimeout": 3373,
+    "AcceptedConnectionsLimit": {
+        "HardLimit": 512,
+        "SoftLimit": 384,
+        "Delay": 5
+    },
+    "SyncTargetNumberOfRootPeers": 0,
+    "SyncTargetNumberOfKnownPeers": 150,
+    "SyncTargetNumberOfEstablishedPeers": 10,
+    "SyncTargetNumberOfActivePeers": 5,
+    "SyncTargetNumberOfKnownBigLedgerPeers": 100,
+    "SyncTargetNumberOfEstablishedBigLedgerPeers": 40,
+    "SyncTargetNumberOfActiveBigLedgerPeers": 30,
+    "ExperimentalProtocolsEnabled": false,
+    "ProtocolIdleTimeout": 5,
+    "TimeWaitTimeout": 60,
+    "TxSubmissionInitDelay": 0,
+    "MinBigLedgerPeersForTrustedState": 5,
+    "TxSubmissionLogicVersion": "TxSubmissionLogicV1",
+    "ResponderCoreAffinityPolicy": "NoResponderCoreAffinity"
+}

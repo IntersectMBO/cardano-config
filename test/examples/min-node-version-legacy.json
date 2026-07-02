@@ -1,0 +1,5 @@
+{
+    "MinNodeVersion": "9.1.0",
+    "ProtocolConfig": "protocol.json",
+    "StorageConfig": "storage.json"
+}

@@ -1,0 +1,686 @@
+{
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.legacy-one-file.schema.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The cardano-node configuration (legacy single-file form). Every component's keys are given directly at the top level. New configurations should prefer the split-file form (config.schema.json); this form is retained for compatibility and predates the { Version, Configuration } envelope. Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile, ConwayGenesisFile.",
+    "properties": {
+        "$schema": {
+            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/TestingConfig.schema.json"
+        },
+        "AcceptedConnectionsLimit": {
+            "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
+            "properties": {
+                "Delay": {
+                    "default": 5,
+                    "description": "Delay, in seconds, applied once the soft limit is reached",
+                    "title": "Delay",
+                    "type": "number"
+                },
+                "HardLimit": {
+                    "default": 512,
+                    "description": "Hard limit on the number of connections",
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "title": "HardLimit",
+                    "type": "integer"
+                },
+                "SoftLimit": {
+                    "default": 384,
+                    "description": "Soft limit on the number of connections",
+                    "maximum": 4294967295,
+                    "minimum": 0,
+                    "title": "SoftLimit",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "Delay",
+                "SoftLimit",
+                "HardLimit"
+            ],
+            "title": "AcceptedConnectionsLimit",
+            "type": "object"
+        },
+        "AlonzoGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "AlonzoGenesisFile",
+            "type": "string"
+        },
+        "AlonzoGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "AlonzoGenesisHash",
+            "type": "string"
+        },
+        "ByronGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "ByronGenesisFile",
+            "type": "string"
+        },
+        "ByronGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "ByronGenesisHash",
+            "type": "string"
+        },
+        "ChainSyncIdleTimeout": {
+            "default": 3373,
+            "description": "ChainSync idle timeout, in seconds",
+            "title": "ChainSyncIdleTimeout",
+            "type": "number"
+        },
+        "CheckpointsFile": {
+            "description": "Path to the file",
+            "format": "path",
+            "title": "CheckpointsFile",
+            "type": "string"
+        },
+        "CheckpointsFileHash": {
+            "description": "Hash of the file\nBlake2b_256 hash",
+            "title": "CheckpointsFileHash",
+            "type": "string"
+        },
+        "ConsensusMode": {
+            "default": "PraosMode",
+            "description": "Which consensus mode to run (PraosMode or GenesisMode)",
+            "enum": [
+                "PraosMode",
+                "GenesisMode"
+            ],
+            "title": "ConsensusMode",
+            "type": "string"
+        },
+        "ConwayGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "ConwayGenesisFile",
+            "type": "string"
+        },
+        "ConwayGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "ConwayGenesisHash",
+            "type": "string"
+        },
+        "DatabasePath": {
+            "anyOf": [
+                {
+                    "format": "path",
+                    "title": "String",
+                    "type": "string"
+                },
+                {
+                    "description": "SplitDB",
+                    "properties": {
+                        "ImmutablePath": {
+                            "description": "Directory for the immutable database",
+                            "format": "path",
+                            "title": "ImmutablePath",
+                            "type": "string"
+                        },
+                        "VolatilePath": {
+                            "description": "Directory for the volatile database",
+                            "format": "path",
+                            "title": "VolatilePath",
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "VolatilePath",
+                        "ImmutablePath"
+                    ],
+                    "title": "Object",
+                    "type": "object"
+                }
+            ],
+            "default": "db",
+            "description": "Directory (or split directories) where the state is stored",
+            "title": "DatabasePath"
+        },
+        "DeadlineTargetNumberOfActiveBigLedgerPeers": {
+            "description": "Deadline target of active big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfActiveBigLedgerPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfActivePeers": {
+            "description": "Deadline target of active peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfActivePeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfEstablishedBigLedgerPeers": {
+            "description": "Deadline target of established big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfEstablishedBigLedgerPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfEstablishedPeers": {
+            "description": "Deadline target of established peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfEstablishedPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfKnownBigLedgerPeers": {
+            "description": "Deadline target of known big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfKnownBigLedgerPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfKnownPeers": {
+            "description": "Deadline target of known peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfKnownPeers",
+            "type": "integer"
+        },
+        "DeadlineTargetNumberOfRootPeers": {
+            "description": "Deadline target of root peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "DeadlineTargetNumberOfRootPeers",
+            "type": "integer"
+        },
+        "DiffusionMode": {
+            "default": "InitiatorAndResponder",
+            "description": "Initiator-only or initiator-and-responder",
+            "enum": [
+                "InitiatorOnly",
+                "InitiatorAndResponder"
+            ],
+            "title": "DiffusionMode",
+            "type": "string"
+        },
+        "DijkstraGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "DijkstraGenesisFile",
+            "type": "string"
+        },
+        "DijkstraGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "DijkstraGenesisHash",
+            "type": "string"
+        },
+        "EgressPollInterval": {
+            "default": 0,
+            "description": "Egress poll interval, in seconds",
+            "title": "EgressPollInterval",
+            "type": "number"
+        },
+        "EnableGrpc": {
+            "default": false,
+            "description": "Whether to enable the gRPC server",
+            "title": "EnableGrpc",
+            "type": "boolean"
+        },
+        "ExperimentalHardForksEnabled": {
+            "default": false,
+            "description": "Enable the experimental eras",
+            "title": "ExperimentalHardForksEnabled",
+            "type": "boolean"
+        },
+        "ExperimentalProtocolsEnabled": {
+            "default": false,
+            "description": "Enable experimental network protocols",
+            "title": "ExperimentalProtocolsEnabled",
+            "type": "boolean"
+        },
+        "GrpcSocketPath": {
+            "description": "Path of the gRPC server socket",
+            "format": "path",
+            "title": "GrpcSocketPath",
+            "type": "string"
+        },
+        "HermodTracing": {
+            "description": "Tracing configuration as a path to a separate file holding it. Consumed by the node tracing system (trace-dispatcher), not parsed or validated by cardano-config.",
+            "format": "path",
+            "title": "HermodTracing",
+            "type": "string"
+        },
+        "LedgerDB": {
+            "description": "The LedgerDB configuration\nLedgerDB",
+            "properties": {
+                "Backend": {
+                    "default": "V2InMemory",
+                    "description": "Which LedgerDB backend to use (V2InMemory or V2LSM)",
+                    "enum": [
+                        "V2InMemory",
+                        "V2LSM"
+                    ],
+                    "title": "Backend",
+                    "type": "string"
+                },
+                "LSMDatabasePath": {
+                    "description": "Custom path to the LSM database (V2LSM only)",
+                    "format": "path",
+                    "title": "LSMDatabasePath",
+                    "type": "string"
+                },
+                "LSMExportPath": {
+                    "description": "Directory into which the LSM backend exports snapshots (V2LSM only)",
+                    "format": "path",
+                    "title": "LSMExportPath",
+                    "type": "string"
+                },
+                "QueryBatchSize": {
+                    "default": 100000,
+                    "description": "Chunk size for large backend reads",
+                    "maximum": 1.8446744073709551615e19,
+                    "minimum": 0,
+                    "title": "QueryBatchSize",
+                    "type": "integer"
+                },
+                "Snapshots": {
+                    "anyOf": [
+                        {
+                            "const": "Mithril",
+                            "title": "Mithril",
+                            "type": "string"
+                        },
+                        {
+                            "description": "SnapshotOptions",
+                            "properties": {
+                                "MaxDelay": {
+                                    "description": "Upper bound (seconds) of the random snapshot delay",
+                                    "maximum": 1.8446744073709551615e19,
+                                    "minimum": 0,
+                                    "title": "MaxDelay",
+                                    "type": "integer"
+                                },
+                                "MinDelay": {
+                                    "description": "Lower bound (seconds) of the random snapshot delay",
+                                    "maximum": 1.8446744073709551615e19,
+                                    "minimum": 0,
+                                    "title": "MinDelay",
+                                    "type": "integer"
+                                },
+                                "NumOfDiskSnapshots": {
+                                    "description": "How many snapshots to keep on disk",
+                                    "maximum": 1.8446744073709551615e19,
+                                    "minimum": 0,
+                                    "title": "NumOfDiskSnapshots",
+                                    "type": "integer"
+                                },
+                                "RateLimit": {
+                                    "description": "Minimum seconds between snapshots",
+                                    "maximum": 1.8446744073709551615e19,
+                                    "minimum": 0,
+                                    "title": "RateLimit",
+                                    "type": "integer"
+                                },
+                                "SlotOffset": {
+                                    "description": "Slot at which the snapshot schedule is anchored",
+                                    "maximum": 1.8446744073709551615e19,
+                                    "minimum": 0,
+                                    "title": "SlotOffset",
+                                    "type": "integer"
+                                },
+                                "SnapshotInterval": {
+                                    "description": "Slots between snapshots (non-zero)",
+                                    "maximum": 1.8446744073709551615e19,
+                                    "minimum": 0,
+                                    "title": "SnapshotInterval",
+                                    "type": "integer"
+                                }
+                            },
+                            "title": "Object",
+                            "type": "object"
+                        }
+                    ],
+                    "default": "Mithril",
+                    "description": "Snapshot policy: \"Mithril\" or an object of snapshot options",
+                    "title": "Snapshots"
+                }
+            },
+            "title": "LedgerDB",
+            "type": "object"
+        },
+        "LowLevelGenesisOptions": {
+            "description": "Low-level Genesis tuning (GenesisMode only)\nGenesisConfigFlags",
+            "properties": {
+                "BlockFetchGracePeriod": {
+                    "description": "Grace period, in seconds, for BlockFetch",
+                    "title": "BlockFetchGracePeriod",
+                    "type": "number"
+                },
+                "BucketCapacity": {
+                    "description": "Token bucket capacity for the LoP",
+                    "title": "BucketCapacity",
+                    "type": "integer"
+                },
+                "BucketRate": {
+                    "description": "Token bucket refill rate for the LoP",
+                    "title": "BucketRate",
+                    "type": "integer"
+                },
+                "CSJJumpSize": {
+                    "description": "Size, in slots, of ChainSync jumps",
+                    "maximum": 1.8446744073709551615e19,
+                    "minimum": 0,
+                    "title": "CSJJumpSize",
+                    "type": "integer"
+                },
+                "EnableCSJ": {
+                    "description": "Enable ChainSync Jumping",
+                    "title": "EnableCSJ",
+                    "type": "boolean"
+                },
+                "EnableLoEAndGDD": {
+                    "description": "Enable the Limit on Eagerness and the Genesis Density Disconnection",
+                    "title": "EnableLoEAndGDD",
+                    "type": "boolean"
+                },
+                "EnableLoP": {
+                    "description": "Enable the Limit on Patience",
+                    "title": "EnableLoP",
+                    "type": "boolean"
+                },
+                "GDDRateLimit": {
+                    "description": "Rate limit, in seconds, for the GDD",
+                    "title": "GDDRateLimit",
+                    "type": "number"
+                }
+            },
+            "title": "LowLevelGenesisOptions",
+            "type": "object"
+        },
+        "MaxConcurrencyBulkSync": {
+            "default": 1,
+            "description": "Bulk-sync block-fetch concurrency",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "MaxConcurrencyBulkSync",
+            "type": "integer"
+        },
+        "MaxConcurrencyDeadline": {
+            "default": 1,
+            "description": "Deadline block-fetch concurrency",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "MaxConcurrencyDeadline",
+            "type": "integer"
+        },
+        "MempoolCapacityBytesOverride": {
+            "anyOf": [
+                {
+                    "maximum": 1.8446744073709551615e19,
+                    "minimum": 0,
+                    "title": "Integer",
+                    "type": "integer"
+                },
+                {
+                    "const": "NoOverride",
+                    "title": "NoOverride",
+                    "type": "string"
+                }
+            ],
+            "default": "NoOverride",
+            "description": "Override for the maximum mempool size in bytes, or the string \"NoOverride\"",
+            "title": "MempoolCapacityBytesOverride"
+        },
+        "MempoolTimeoutCapacity": {
+            "description": "Capacity mempool timeout, in seconds",
+            "title": "MempoolTimeoutCapacity",
+            "type": "number"
+        },
+        "MempoolTimeoutHard": {
+            "description": "Hard mempool timeout, in seconds",
+            "title": "MempoolTimeoutHard",
+            "type": "number"
+        },
+        "MempoolTimeoutSoft": {
+            "description": "Soft mempool timeout, in seconds",
+            "title": "MempoolTimeoutSoft",
+            "type": "number"
+        },
+        "MinBigLedgerPeersForTrustedState": {
+            "default": 5,
+            "description": "Minimum big ledger peers for trusted state",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "MinBigLedgerPeersForTrustedState",
+            "type": "integer"
+        },
+        "MinNodeVersion": {
+            "description": "The minimum cardano-node version expected to run this configuration. A top-level annotation (a sibling of Version), recorded for a consumer to check.",
+            "title": "MinNodeVersion",
+            "type": "string"
+        },
+        "PeerSharing": {
+            "description": "Whether to enable peer sharing",
+            "title": "PeerSharing",
+            "type": "boolean"
+        },
+        "ProtocolIdleTimeout": {
+            "default": 5,
+            "description": "Protocol idle timeout, in seconds",
+            "title": "ProtocolIdleTimeout",
+            "type": "number"
+        },
+        "RequiresNetworkMagic": {
+            "default": "RequiresNoMagic",
+            "description": "Whether network magic is required",
+            "enum": [
+                "RequiresNoMagic",
+                "RequiresMagic"
+            ],
+            "title": "RequiresNetworkMagic",
+            "type": "string"
+        },
+        "ResponderCoreAffinityPolicy": {
+            "default": "NoResponderCoreAffinity",
+            "description": "Whether responders are pinned to a core",
+            "enum": [
+                "NoResponderCoreAffinity",
+                "ResponderCoreAffinity"
+            ],
+            "title": "ResponderCoreAffinityPolicy",
+            "type": "string"
+        },
+        "ShelleyGenesisFile": {
+            "description": "Path to the genesis file",
+            "format": "path",
+            "title": "ShelleyGenesisFile",
+            "type": "string"
+        },
+        "ShelleyGenesisHash": {
+            "description": "Hash of the genesis file\nBlake2b_256 hash",
+            "title": "ShelleyGenesisHash",
+            "type": "string"
+        },
+        "SocketPath": {
+            "description": "Path of the socket for local clients",
+            "format": "path",
+            "title": "SocketPath",
+            "type": "string"
+        },
+        "StartAsNonProducingNode": {
+            "default": false,
+            "description": "Start the node without block production even when block-forging credentials are supplied. false (the default) behaves normally — producing blocks if credentials were supplied, otherwise just running as a relay; true suppresses block production even with credentials present.",
+            "title": "StartAsNonProducingNode",
+            "type": "boolean"
+        },
+        "SyncTargetNumberOfActiveBigLedgerPeers": {
+            "default": 30,
+            "description": "Sync target of active big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfActiveBigLedgerPeers",
+            "type": "integer"
+        },
+        "SyncTargetNumberOfActivePeers": {
+            "default": 5,
+            "description": "Sync target of active peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfActivePeers",
+            "type": "integer"
+        },
+        "SyncTargetNumberOfEstablishedBigLedgerPeers": {
+            "default": 40,
+            "description": "Sync target of established big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfEstablishedBigLedgerPeers",
+            "type": "integer"
+        },
+        "SyncTargetNumberOfEstablishedPeers": {
+            "default": 10,
+            "description": "Sync target of established peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfEstablishedPeers",
+            "type": "integer"
+        },
+        "SyncTargetNumberOfKnownBigLedgerPeers": {
+            "default": 100,
+            "description": "Sync target of known big ledger peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfKnownBigLedgerPeers",
+            "type": "integer"
+        },
+        "SyncTargetNumberOfKnownPeers": {
+            "default": 150,
+            "description": "Sync target of known peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfKnownPeers",
+            "type": "integer"
+        },
+        "SyncTargetNumberOfRootPeers": {
+            "default": 0,
+            "description": "Sync target of root peers",
+            "maximum": 9223372036854775807,
+            "minimum": -9223372036854775808,
+            "title": "SyncTargetNumberOfRootPeers",
+            "type": "integer"
+        },
+        "TestAllegraHardForkAtEpoch": {
+            "description": "Force the Allegra hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestAllegraHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestAllegraHardForkAtVersion": {
+            "description": "Force the Allegra hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestAllegraHardForkAtVersion",
+            "type": "integer"
+        },
+        "TestAlonzoHardForkAtEpoch": {
+            "description": "Force the Alonzo hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestAlonzoHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestAlonzoHardForkAtVersion": {
+            "description": "Force the Alonzo hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestAlonzoHardForkAtVersion",
+            "type": "integer"
+        },
+        "TestBabbageHardForkAtEpoch": {
+            "description": "Force the Babbage hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestBabbageHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestBabbageHardForkAtVersion": {
+            "description": "Force the Babbage hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestBabbageHardForkAtVersion",
+            "type": "integer"
+        },
+        "TestConwayHardForkAtEpoch": {
+            "description": "Force the Conway hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestConwayHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestConwayHardForkAtVersion": {
+            "description": "Force the Conway hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestConwayHardForkAtVersion",
+            "type": "integer"
+        },
+        "TestDijkstraHardForkAtEpoch": {
+            "description": "Force the Dijkstra hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestDijkstraHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestDijkstraHardForkAtVersion": {
+            "description": "Force the Dijkstra hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestDijkstraHardForkAtVersion",
+            "type": "integer"
+        },
+        "TestMaryHardForkAtEpoch": {
+            "description": "Force the Mary hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestMaryHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestMaryHardForkAtVersion": {
+            "description": "Force the Mary hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestMaryHardForkAtVersion",
+            "type": "integer"
+        },
+        "TestShelleyHardForkAtEpoch": {
+            "description": "Force the Shelley hard fork at this epoch",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestShelleyHardForkAtEpoch",
+            "type": "integer"
+        },
+        "TestShelleyHardForkAtVersion": {
+            "description": "Force the Shelley hard fork at this protocol version",
+            "maximum": 1.8446744073709551615e19,
+            "minimum": 0,
+            "title": "TestShelleyHardForkAtVersion",
+            "type": "integer"
+        },
+        "TimeWaitTimeout": {
+            "default": 60,
+            "description": "TIME-WAIT timeout, in seconds",
+            "title": "TimeWaitTimeout",
+            "type": "number"
+        },
+        "TxSubmissionInitDelay": {
+            "default": 0,
+            "description": "Tx-submission initial delay, in seconds",
+            "title": "TxSubmissionInitDelay",
+            "type": "number"
+        },
+        "TxSubmissionLogicVersion": {
+            "default": "TxSubmissionLogicV1",
+            "description": "Which tx-submission inbound logic to run",
+            "enum": [
+                "TxSubmissionLogicV1",
+                "TxSubmissionLogicV2"
+            ],
+            "title": "TxSubmissionLogicVersion",
+            "type": "string"
+        }
+    },
+    "title": "Cardano node configuration (legacy single-file form)",
+    "type": "object"
+}

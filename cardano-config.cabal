@@ -1,0 +1,175 @@
+cabal-version: 3.0
+name: cardano-config
+version: 0.1.0.0
+synopsis: Cardano-node configuration parsing
+description:
+  Datatypes and parsers for optparse-applicative and from YAML/JSON for the @cardano-node@ configuration.
+
+license: Apache-2.0
+license-file: LICENSE
+author: Javier Sagredo
+maintainer: javier.sagredo@iohk.io
+copyright:
+  INTERSECT 2026
+
+category: Data
+build-type: Simple
+tested-with:
+  ghc ==9.6 || ==9.8 || ==9.10 || ==9.12 || ==9.14
+
+extra-doc-files:
+  CHANGELOG.md
+
+data-files:
+  defaults/*.json
+  schemas/*.json
+  test/examples/*.json
+  variants/**/*.json
+
+common warnings
+  ghc-options:
+    -Wall
+    -Wunused-packages
+
+-- Deliberately small.
+library
+  reexported-modules:
+    Cardano.Configuration
+
+  build-depends:
+    cardano-config:internal
+
+  default-language: Haskell2010
+
+library internal
+  import: warnings
+  visibility: private
+  exposed-modules:
+    Cardano.Configuration
+    Cardano.Configuration.CliArgs
+    Cardano.Configuration.File
+    Cardano.Configuration.File.Consensus
+    Cardano.Configuration.File.Error
+    Cardano.Configuration.File.Lint
+    Cardano.Configuration.File.Mempool
+    Cardano.Configuration.File.Merge
+    Cardano.Configuration.File.Network
+    Cardano.Configuration.File.Protocol
+    Cardano.Configuration.File.Storage
+    Cardano.Configuration.File.Testing
+    Cardano.Configuration.File.Tracing
+    Cardano.Configuration.Genesis
+    Cardano.Configuration.Genesis.Byron
+    Cardano.Configuration.Render
+    Cardano.Configuration.Schema
+
+  autogen-modules:
+    Paths_cardano_config
+
+  other-modules:
+    Cardano.Configuration.Basic
+    Cardano.Configuration.Common
+    Paths_cardano_config
+
+  build-depends:
+    aeson,
+    autodocodec,
+    autodocodec-schema,
+    base,
+    bytestring,
+    canonical-json,
+    cardano-crypto-class,
+    cardano-crypto-wrapper,
+    cardano-ledger-alonzo,
+    cardano-ledger-byron,
+    cardano-ledger-conway,
+    cardano-ledger-core,
+    cardano-ledger-dijkstra,
+    cardano-ledger-shelley,
+    containers,
+    data-default,
+    directory,
+    filepath,
+    iproute,
+    network,
+    network-uri,
+    optparse-applicative,
+    scientific,
+    text,
+    time,
+    transformers,
+    yaml,
+
+  hs-source-dirs: src
+  default-language: Haskell2010
+  default-extensions:
+    DataKinds
+    DeriveGeneric
+    DerivingStrategies
+    DerivingVia
+    FlexibleContexts
+    FlexibleInstances
+    GeneralizedNewtypeDeriving
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    OverloadedStrings
+    PolyKinds
+    ScopedTypeVariables
+    StandaloneDeriving
+    StrictData
+    TupleSections
+    TypeApplications
+
+executable cardano-config
+  import: warnings
+  main-is: Main.hs
+  hs-source-dirs: app
+  build-depends:
+    aeson,
+    aeson-pretty,
+    base,
+    bytestring,
+    cardano-config:internal,
+    optparse-applicative,
+    safe-exceptions,
+    text,
+    yaml,
+
+  default-language: Haskell2010
+  default-extensions:
+    LambdaCase
+    OverloadedStrings
+
+test-suite cardano-config-test
+  import: warnings
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: test
+  autogen-modules:
+    Paths_cardano_config
+
+  other-modules:
+    Paths_cardano_config
+
+  build-depends:
+    aeson,
+    base,
+    cardano-config:internal,
+    cardano-crypto-class,
+    cardano-crypto-wrapper,
+    cardano-ledger-alonzo,
+    cardano-ledger-conway,
+    cardano-ledger-core,
+    cardano-ledger-dijkstra,
+    cardano-ledger-shelley,
+    optparse-applicative,
+    tasty,
+    tasty-hunit,
+    text,
+
+  default-language: Haskell2010
+  default-extensions:
+    LambdaCase
+    ScopedTypeVariables

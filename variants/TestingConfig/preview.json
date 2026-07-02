@@ -1,0 +1,7 @@
+{
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/TestingConfig.schema.json",
+    "TestShelleyHardForkAtEpoch": 0,
+    "TestAllegraHardForkAtEpoch": 0,
+    "TestMaryHardForkAtEpoch": 0,
+    "TestAlonzoHardForkAtEpoch": 0
+}
