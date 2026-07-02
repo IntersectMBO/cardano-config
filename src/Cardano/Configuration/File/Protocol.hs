@@ -14,7 +14,7 @@ module Cardano.Configuration.File.Protocol
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (optionalFieldStrict, optionalFieldWithStrict)
+import Cardano.Configuration.Basic (optionalFieldStrict)
 import Cardano.Configuration.Common (filePathCodec)
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex, hashToTextAsHex)
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe)
@@ -23,7 +23,6 @@ import Data.ByteString (ByteString)
 import Data.Functor.Identity (Identity)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Word
 import GHC.Generics
 
 -- | A hashed entity, possibly a file.
@@ -39,11 +38,6 @@ data MaybeHashed a = MaybeHashed
   , maybeHash :: StrictMaybe (Hash Blake2b_256 ByteString)
   }
   deriving (Generic, Show)
-
--- | A 'Double' codec via 'scientificCodec', so the schema declares
--- @"type": "number"@ (autodocodec ships no 'HasCodec' instance for 'Double').
-doubleCodec :: JSONCodec Double
-doubleCodec = dimapCodec realToFrac realToFrac scientificCodec
 
 -- | A codec for a Blake2b-256 hash: a hex string. We bimap over the string codec
 -- (rather than 'codecViaAeson') so the schema declares @"type": "string"@.
@@ -113,10 +107,6 @@ instance HasCodec RequiresNetworkMagic where
 data ByronGenesisConfiguration = ByronGenesisConfiguration
   { byronGenesisFile :: !(Hashed FilePath)
   , byronReqNetworkMagic :: !(StrictMaybe RequiresNetworkMagic)
-  , byronPbftSignatureThresh :: !(StrictMaybe Double)
-  , byronSupportedProtocolVersionMajor :: !Word16
-  , byronSupportedProtocolVersionMinor :: !Word16
-  , byronSupportedProtocolVersionAlt :: !(StrictMaybe Word8)
   }
   deriving (Generic, Show)
 
@@ -126,14 +116,6 @@ byronGenesisObjectCodec =
     <$> hashedGenesisObjectCodec "ByronGenesisFile" "ByronGenesisHash" .= byronGenesisFile
     <*> optionalFieldStrict "RequiresNetworkMagic" "Whether network magic is required"
       .= byronReqNetworkMagic
-    <*> optionalFieldWithStrict "PBftSignatureThreshold" doubleCodec "Byron PBFT signature threshold"
-      .= byronPbftSignatureThresh
-    <*> requiredField "LastKnownBlockVersion-Major" "Last known block version, major"
-      .= byronSupportedProtocolVersionMajor
-    <*> requiredField "LastKnownBlockVersion-Minor" "Last known block version, minor"
-      .= byronSupportedProtocolVersionMinor
-    <*> optionalFieldStrict "LastKnownBlockVersion-Alt" "Last known block version, alt"
-      .= byronSupportedProtocolVersionAlt
 
 -- | The genesis file (and optional hash) for the checkpoints.
 checkpointsObjectCodec :: JSONObjectCodec (StrictMaybe (MaybeHashed FilePath))

@@ -1,7 +1,7 @@
 {
     "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.legacy-one-file.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The cardano-node configuration (legacy single-file form). Every component's keys are given directly at the top level. New configurations should prefer the split-file form (config.schema.json); this form is retained for compatibility and predates the { Version, Configuration } envelope. Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile, ConwayGenesisFile, LastKnownBlockVersion-Major and LastKnownBlockVersion-Minor.",
+    "description": "The cardano-node configuration (legacy single-file form). Every component's keys are given directly at the top level. New configurations should prefer the split-file form (config.schema.json); this form is retained for compatibility and predates the { Version, Configuration } envelope. Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile, ConwayGenesisFile.",
     "properties": {
         "$schema": {
             "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/TestingConfig.schema.json"
@@ -241,28 +241,6 @@
             "title": "HermodTracing",
             "type": "string"
         },
-        "LastKnownBlockVersion-Alt": {
-            "default": 0,
-            "description": "Last known block version, alt",
-            "maximum": 255,
-            "minimum": 0,
-            "title": "LastKnownBlockVersion-Alt",
-            "type": "integer"
-        },
-        "LastKnownBlockVersion-Major": {
-            "description": "Last known block version, major",
-            "maximum": 65535,
-            "minimum": 0,
-            "title": "LastKnownBlockVersion-Major",
-            "type": "integer"
-        },
-        "LastKnownBlockVersion-Minor": {
-            "description": "Last known block version, minor",
-            "maximum": 65535,
-            "minimum": 0,
-            "title": "LastKnownBlockVersion-Minor",
-            "type": "integer"
-        },
         "LedgerDB": {
             "description": "The LedgerDB configuration\nLedgerDB",
             "properties": {
@@ -471,11 +449,6 @@
             "description": "The minimum cardano-node version expected to run this configuration. A top-level annotation (a sibling of Version), recorded for a consumer to check.",
             "title": "MinNodeVersion",
             "type": "string"
-        },
-        "PBftSignatureThreshold": {
-            "description": "Byron PBFT signature threshold",
-            "title": "PBftSignatureThreshold",
-            "type": "number"
         },
         "PeerSharing": {
             "description": "Whether to enable peer sharing",

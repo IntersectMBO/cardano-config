@@ -161,13 +161,11 @@ authoritative schema lives in
 
 ## Mandatory keys
 
-Only **ten** keys are mandatory (no default; parsing fails if absent):
+Only **eight** keys are mandatory (no default; parsing fails if absent):
 - `ByronGenesisFile` + `ByronGenesisHash`
 - `ShelleyGenesisFile` + `ShelleyGenesisHash`
 - `AlonzoGenesisFile` + `AlonzoGenesisHash`
 - `ConwayGenesisFile` + `ConwayGenesisHash`
-- `LastKnownBlockVersion-Major`
-- `LastKnownBlockVersion-Minor`.
 
 These are network-specific, so they are deliberately not in the base defaults;
 supply them directly or by referencing a `variants/ProtocolConfig/<network>.json`

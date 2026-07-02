@@ -200,8 +200,7 @@ splitDescription =
     , "Each component is given under its section key (e.g. StorageConfig) as a path to a"
     , "sub-file or an inline object."
     , "The whole document may also be wrapped in a { Version, Configuration } envelope."
-    , "The mandatory genesis files and LastKnownBlockVersion-Major/-Minor are supplied"
-    , "through the ProtocolConfig section."
+    , "The mandatory genesis files are supplied through the ProtocolConfig section."
     , "For the older form with every key at the top level, see config.legacy-one-file.schema.json."
     ]
 
@@ -213,7 +212,7 @@ legacyDescription =
     , "New configurations should prefer the split-file form (config.schema.json);"
     , "this form is retained for compatibility and predates the { Version, Configuration } envelope."
     , "Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile,"
-    , "ConwayGenesisFile, LastKnownBlockVersion-Major and LastKnownBlockVersion-Minor."
+    , "ConwayGenesisFile."
     ]
 
 -- | A component's section key in the split-file form: an inline object (the
