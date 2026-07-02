@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeApplications #-}
+
 -- | Golden-ish tests: every example configuration must parse through the
 -- autodocodec-derived parsers (and the full file pipeline). This is the most
 -- reliable validation we have, since the parser shares its codec with the
@@ -23,7 +25,7 @@ import Cardano.Configuration.File.Storage
   , SnapshotPolicy (..)
   , resolveSnapshotPolicy
   )
-import Cardano.Configuration.Genesis (GenesisReadError (..), readDijkstraGenesisFile)
+import Cardano.Configuration.Genesis (GenesisReadError (..), readGenesisFile)
 import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
@@ -35,6 +37,7 @@ import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
+import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
 import Data.Aeson (FromJSON, Value (..), eitherDecodeFileStrict', toJSON)
@@ -565,7 +568,7 @@ dijkstraGenesisDecodeCase =
   testCase "test/examples/dijkstra-genesis.json (decodes via the ledger instance)" $ do
     path <- getDataFileName "test/examples/dijkstra-genesis.json"
     res <-
-      readDijkstraGenesisFile
+      readGenesisFile @DijkstraGenesis
         ( fromJust $
             hashFromTextAsHex (T.pack "56c06ff0f668c584fc54fa3cee92dd5e121b67696924ac3b01b5aec9ecf95b78")
         )
@@ -581,7 +584,7 @@ dijkstraGenesisHashMismatchCase =
     path <- getDataFileName "test/examples/dijkstra-genesis.json"
     let wrongHash :: Hash Blake2b_256 a
         wrongHash = fromJust $ hashFromTextAsHex (T.pack (replicate 64 '0'))
-    res <- readDijkstraGenesisFile wrongHash path
+    res <- readGenesisFile @DijkstraGenesis wrongHash path
     expectOk $ case res of
       Left (GenesisHashMismatch{}) -> Nothing
       Left err -> Just ("expected a hash mismatch, got: " <> show err)

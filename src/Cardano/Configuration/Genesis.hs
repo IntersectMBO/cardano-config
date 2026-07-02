@@ -10,7 +10,6 @@ module Cardano.Configuration.Genesis
 
     -- * Reading genesis files
   , readGenesisFile
-  , readDijkstraGenesisFile
 
     -- * Resolving the configuration's genesis references
   , resolveExperimentalGenesis
@@ -18,6 +17,7 @@ module Cardano.Configuration.Genesis
 
 import Cardano.Configuration.File.Protocol (Hashed (..))
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashWith)
+import Cardano.Ledger.BaseTypes (Mismatch (Mismatch), Relation (RelEQ))
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Control.Exception (IOException, try)
 import Data.Aeson (FromJSON)
@@ -34,8 +34,7 @@ data GenesisReadError
     -- configuration (expected, then actual).
     GenesisHashMismatch
       FilePath
-      (Hash Blake2b_256 ByteString)
-      (Hash Blake2b_256 ByteString)
+      (Mismatch RelEQ (Hash Blake2b_256 ByteString))
   | -- | The file's contents could not be decoded into the era genesis.
     GenesisDecodeError FilePath String
   deriving Show
@@ -44,7 +43,7 @@ data GenesisReadError
 genesisErrorFile :: GenesisReadError -> Maybe FilePath
 genesisErrorFile = \case
   GenesisFileReadError fp _ -> Just fp
-  GenesisHashMismatch fp _ _ -> Just fp
+  GenesisHashMismatch fp _ -> Just fp
   GenesisDecodeError fp _ -> Just fp
 
 -- | Read a genesis file, check its hash and decode it with the ledger's @aeson@
@@ -66,17 +65,10 @@ readGenesisFile expected fp = do
     Right bytes ->
       let actual = hashWith id bytes
        in if expected /= actual
-            then Left (GenesisHashMismatch fp expected actual)
+            then Left (GenesisHashMismatch fp (Mismatch actual expected))
             else case Aeson.eitherDecodeStrict' bytes of
               Left err -> Left (GenesisDecodeError fp err)
               Right a -> Right a
-
--- | Read and decode a Dijkstra-era genesis file.
-readDijkstraGenesisFile ::
-  Hash Blake2b_256 ByteString ->
-  FilePath ->
-  IO (Either GenesisReadError DijkstraGenesis)
-readDijkstraGenesisFile = readGenesisFile
 
 -- | Resolve the experimental (Dijkstra) genesis referenced by the testing
 -- configuration: read and decode it if present, resolving its path relative to
@@ -89,4 +81,4 @@ resolveExperimentalGenesis ::
   IO (Either GenesisReadError (Maybe DijkstraGenesis))
 resolveExperimentalGenesis _ Nothing = pure (Right Nothing)
 resolveExperimentalGenesis root (Just (Hashed file mHash)) =
-  fmap (fmap Just) (readDijkstraGenesisFile mHash (root </> file))
+  fmap (fmap Just) (readGenesisFile mHash (root </> file))
