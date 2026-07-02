@@ -17,10 +17,6 @@ variants/ @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintaine
 # Ledger
 src/Cardano/Configuration/Genesis.hs  @IntersectMBO/cardano-ledger
 src/Cardano/Configuration/Genesis/*   @IntersectMBO/cardano-ledger
-schemas/AlonzoGenesis.schema.json     @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-ledger
-schemas/ConwayGenesis.schema.json     @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-ledger
-schemas/DijkstraGenesis.schema.json   @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-ledger
-schemas/ShelleyGenesis.schema.json    @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-ledger
 
 # Consensus
 src/Cardano/Configuration/File/Consensus.hs @IntersectMBO/ouroboros-consensus-maintainers
