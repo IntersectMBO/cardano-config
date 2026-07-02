@@ -58,15 +58,16 @@ renamed (`hardLimit`/`softLimit`/`delay` → `HardLimit`/`SoftLimit`/`Delay`,
 `EnableRpc`/`RpcSocketPath` → `EnableGrpc`/`GrpcSocketPath`, `TargetNumberOf*` →
 `DeadlineTargetNumberOf*`) and drops the ones that were removed
 (`PBftSignatureThreshold`, `LastKnownBlockVersion-Major`/`-Minor`/`-Alt`, now
-supplied by consensus defaults). Apart from that it preserves the values as
-written and does not fill in defaults, inline referenced sub-files, or read
-genesis files; follow it with `resolve` to check the result.
+supplied by consensus defaults; the vestigial `Protocol`; and
+`MaxKnownMajorProtocolVersion`, a dead key the node never read). Apart from that
+it preserves the values as written and does not fill in defaults, inline
+referenced sub-files, or read genesis files; follow it with `resolve` to check
+the result.
 
-Unrecognised keys (the vestigial `MaxKnownMajorProtocolVersion`, a stray
-`Protocol`, or a typo) are **kept** rather than silently dropped, so nothing is
-lost - but they remain unrecognised and so still surface as an
-`UnrecognisedKeys` warning on the next parse. Remove them by hand if you want a
-warning-free config.
+A genuinely unrecognised key (a typo, say) is **kept** rather than silently
+dropped, so nothing is lost - but it remains unrecognised and so still surfaces
+as an `UnrecognisedKeys` warning on the next parse. Remove it by hand if you want
+a warning-free config.
 
 (To port by hand instead: group the component keys under their sections inside
 `Configuration` and add the `Version` / `MinNodeVersion` envelope. `cardano-config

@@ -271,8 +271,8 @@ splitSubfileSchemaCase =
 
 -- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
 -- envelope keys appear at the top, each component's flat keys are grouped under
--- its section (e.g. ConsensusMode under ConsensusConfig), an unrecognised key
--- (MaxKnownMajorProtocolVersion) is kept, and the result is idempotent.
+-- its section (e.g. ConsensusMode under ConsensusConfig), a removed key
+-- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
 migrateCase :: TestTree
 migrateCase =
   testCase "migrate test/examples/fullconfig.json (legacy flat -> Version1 envelope)" $ do
@@ -291,8 +291,8 @@ migrateCase =
                     Just "ConsensusConfig.ConsensusMode not grouped"
                 | not (nested cfg "StorageConfig" "LedgerDB") ->
                     Just "StorageConfig.LedgerDB not grouped"
-                | not (KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg) ->
-                    Just "unrecognised key was dropped (should be kept)"
+                | KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg ->
+                    Just "removed key MaxKnownMajorProtocolVersion survived (should be dropped)"
                 | migrate m /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
@@ -308,7 +308,9 @@ migrateCase =
 -- the /new/ name (a peer target under NetworkConfig, EnableGrpc under
 -- LocalConnectionsConfig); AcceptedConnectionsLimit's sub-keys are renamed in
 -- place, but that rename is scoped — a stray @delay@ elsewhere is left alone;
--- no removed key survives anywhere; and the result is still idempotent.
+-- no removed key survives anywhere (including @Protocol@ and
+-- @MaxKnownMajorProtocolVersion@); a genuinely-unrecognised key is kept; and the
+-- result is still idempotent.
 migrateRenameCase :: TestTree
 migrateRenameCase =
   testCase "migrate rewrites renamed fields and drops removed ones" $ do
@@ -334,6 +336,9 @@ migrateRenameCase =
                 -- The rename is scoped: a stray top-level "delay" is not touched.
                 | not (KM.member (K.fromString "delay") cfg) ->
                     Just "a stray 'delay' outside AcceptedConnectionsLimit was renamed (should be scoped)"
+                -- A genuinely-unrecognised key (a typo) is kept, not dropped.
+                | not (KM.member (K.fromString "SomeUnrecognisedKey") cfg) ->
+                    Just "a genuinely-unrecognised key was dropped (should be kept)"
                 | migrate m /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
@@ -344,6 +349,8 @@ migrateRenameCase =
     , "LastKnownBlockVersion-Major"
     , "LastKnownBlockVersion-Minor"
     , "LastKnownBlockVersion-Alt"
+    , "Protocol"
+    , "MaxKnownMajorProtocolVersion"
     ]
   -- Globally-unique old names that must never survive (the generic
   -- AcceptedConnectionsLimit sub-keys are checked in place above, since a stray

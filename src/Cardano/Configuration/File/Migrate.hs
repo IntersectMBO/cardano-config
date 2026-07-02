@@ -84,13 +84,19 @@ acceptedConnectionsLimitFields =
 
 -- | The fields removed in the current series. @migrate@ drops them (they are no
 -- longer parsed): the Byron @LastKnownBlockVersion-*@ trio and
--- @PBftSignatureThreshold@ now come from consensus defaults rather than config.
+-- @PBftSignatureThreshold@ now come from consensus defaults rather than config;
+-- @Protocol@ is the vestigial protocol selector; and @MaxKnownMajorProtocolVersion@
+-- is a dead key the node never read at all. Unlike a genuine typo (which is kept,
+-- so nothing is lost) these are known-obsolete keys, so @migrate@ removes them
+-- rather than carry them forward as perpetual unrecognised-key warnings.
 removedFields :: [Text]
 removedFields =
   [ "PBftSignatureThreshold"
   , "LastKnownBlockVersion-Major"
   , "LastKnownBlockVersion-Minor"
   , "LastKnownBlockVersion-Alt"
+  , "Protocol"
+  , "MaxKnownMajorProtocolVersion"
   ]
 
 -- | Rewrite renamed keys and drop removed keys, everywhere in the document.
