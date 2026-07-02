@@ -21,7 +21,10 @@
         export LANG="en_US.UTF-8"
       '';
 
-      withHoogle = true;
+      # Building the in-shell Hoogle index forces haddock generation for every
+      # transitive dependency (see haskell.nix builder/shell-for.nix), which was
+      # failing on Hydra. Disable it so dependency haddocks are not built.
+      withHoogle = false;
     };
   };
 }
