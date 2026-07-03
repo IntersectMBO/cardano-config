@@ -31,6 +31,9 @@ module Cardano.Configuration.File
   , TestingConfiguration (..)
   , MempoolConfiguration (..)
   , TracingConfiguration (..)
+  , TracingConfigSource (..)
+  , TraceConfig
+  , defaultCardanoTracingConfig
 
     -- * Resolving components
   , finalizeNetwork
@@ -69,6 +72,11 @@ import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
 import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
+  ( TracingConfigSource (..)
+  , TracingConfiguration (..)
+  , defaultCardanoTracingConfig
+  , resolveTracingConfiguration
+  )
 import Cardano.Configuration.Genesis
   ( GenesisReadError
   , genesisErrorFile
@@ -83,6 +91,7 @@ import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMay
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
+import Cardano.Logging.Types (TraceConfig)
 import Control.Exception (throwIO)
 import Data.Aeson (FromJSON, Value)
 import qualified Data.Aeson.Key as K
@@ -126,10 +135,14 @@ data NodeConfigurationFromFileF f
   , localConnectionsConfig :: f (LocalConnectionsConfig StrictMaybe)
   , testingConfiguration :: f (TestingConfiguration StrictMaybe)
   , mempoolConfiguration :: f (MempoolConfiguration StrictMaybe)
-  , tracingConfiguration :: TracingConfiguration
-  -- ^ Tracing keys, captured opaquely; see 'TracingConfiguration'. Unlike the
-  -- other components this is never read from a sub-file: the node's tracing
-  -- system resolves its own @HermodTracing@ file indirection.
+  , tracingConfiguration :: TraceConfig
+  -- ^ The tracing configuration referenced by the top-level @HermodTracing@ key,
+  -- resolved by @trace-dispatcher@'s own parser ('resolveTracingConfiguration'):
+  -- a @HermodTracing@ file path is read from that file, an inline object is read
+  -- directly. When no @HermodTracing@ key is present it falls back to
+  -- 'defaultCardanoTracingConfig', so a tracing configuration is always present.
+  -- Its schema is owned by @trace-dispatcher@, not described here (see
+  -- 'TracingConfiguration').
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
   , shelleyGenesisConfig :: ShelleyGenesis
@@ -210,7 +223,11 @@ parseConfigurationVersion1 root minNodeVer configValue = do
   localConnections <- parseSection root configValue "LocalConnectionsConfig"
   testing <- parseSection root configValue "TestingConfig"
   mempool <- parseSection root configValue "MempoolConfig"
+  -- The @HermodTracing@ value is captured (as a file path or an inline object)
+  -- and then handed to trace-dispatcher's own parser, which resolves it to a
+  -- 'TraceConfig' — reading the referenced file, or the inline object directly.
   tracing <- runCodec Nothing "Tracing" configValue
+  traceConfig <- resolveTracingConfiguration root tracing
   -- The genesis files referenced by the configuration are read and decoded
   -- here, so that JSON resolution happens entirely within this library.
   let byronCfg = byronGenesis protocol
@@ -238,7 +255,7 @@ parseConfigurationVersion1 root minNodeVer configValue = do
       , localConnectionsConfig = Identity localConnections
       , testingConfiguration = Identity testing
       , mempoolConfiguration = Identity mempool
-      , tracingConfiguration = tracing
+      , tracingConfiguration = traceConfig
       , byronGenesisConfig = byronGenesisData
       , shelleyGenesisConfig = shelleyGenesisData
       , alonzoGenesisConfig = alonzoGenesisData

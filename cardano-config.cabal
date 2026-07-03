@@ -97,6 +97,7 @@ library internal
     scientific,
     text,
     time,
+    trace-dispatcher,
     transformers,
     yaml,
 

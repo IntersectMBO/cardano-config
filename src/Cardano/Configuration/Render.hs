@@ -24,6 +24,7 @@ import qualified Cardano.Configuration.CliArgs as CLI
 import qualified Cardano.Configuration.File as File
 import Cardano.Configuration.Genesis.Byron (byronGenesisToJSON)
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
+import Cardano.Logging.ConfigurationParser ()
 import Data.Aeson (Value, object, toJSON, (.=))
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Maybe (mapMaybe)
@@ -53,8 +54,15 @@ nodeConfigurationToJSON geneses nc =
     , "TestingConfig" .= toJSON (weakenTesting (testingConfiguration nc))
     , "Runtime" .= runtimeValue nc
     ]
+      <> tracingFields
       <> genesisFields
  where
+  -- The tracing configuration resolved by trace-dispatcher, rendered under the
+  -- same @HermodTracing@ key it is read from (as an inline object, via
+  -- trace-dispatcher's own 'ToJSON'). Always present: absent a @HermodTracing@
+  -- key it holds 'File.defaultCardanoTracingConfig'.
+  tracingFields =
+    ["HermodTracing" .= tracingConfiguration nc]
   -- The resolved (parsed) era geneses, rendered through the ledger's @aeson@
   -- 'toJSON' instances (and, for Byron, its canonical-JSON form), so the dump
   -- shows the decoded genesis content rather than just the file reference and

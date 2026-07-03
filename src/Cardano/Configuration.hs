@@ -86,6 +86,8 @@ module Cardano.Configuration
     -- * Configuration file
   , File.NodeConfigurationFromFile
   , File.TracingConfiguration (..)
+  , File.TracingConfigSource (..)
+  , File.TraceConfig
   , File.parseConfigurationFiles
   , File.ConfigWarning (..)
   , File.renderConfigWarning
@@ -123,6 +125,12 @@ data NodeConfiguration = NodeConfiguration
   , localConnectionsConfig :: File.LocalConnectionsConfig Identity
   , testingConfiguration :: File.TestingConfiguration Identity
   , mempoolConfiguration :: File.MempoolConfiguration Identity
+  , tracingConfiguration :: File.TraceConfig
+  -- ^ The tracing configuration resolved from the top-level @HermodTracing@ key
+  -- by @trace-dispatcher@'s parser (see 'File.resolveTracingConfiguration'), or
+  -- 'File.defaultCardanoTracingConfig' when no @HermodTracing@ key is present.
+  -- Carried through unchanged from the file-parse result so consumers get the
+  -- parsed 'File.TraceConfig'.
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis.
   , shelleyGenesisConfig :: ShelleyGenesis
@@ -302,6 +310,7 @@ resolveConfigurationWith checks cli file = do
         , localConnectionsConfig = localConnections
         , testingConfiguration = testing
         , mempoolConfiguration = mempool
+        , tracingConfiguration = File.tracingConfiguration file
         , byronGenesisConfig = File.byronGenesisConfig file
         , shelleyGenesisConfig = File.shelleyGenesisConfig file
         , alonzoGenesisConfig = File.alonzoGenesisConfig file

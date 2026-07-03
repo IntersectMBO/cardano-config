@@ -150,14 +150,27 @@ The flag names, metavars and help text match those historically accepted by
 `cardano-node`, so existing operator scripts keep working. You can inspect the
 parsed options with `cabal run cardano-config -- resolve --help`.
 
-## Tracing options are **not** parsed by this library
+## Tracing options are owned by `trace-dispatcher`
 
-Tracing is **not** parsed: it is owned by the node's tracing system (hermod /
-`trace-dispatcher`) and given under a single top-level `HermodTracing` key whose
-value is a path to a separate file. The key is recognised and captured opaquely
-(it appears in the schema), but its contents are not interpreted here. The
-authoritative schema lives in
-[`hermod-tracing`](https://github.com/IntersectMBO/hermod-tracing).
+Tracing is owned by the node's tracing system (hermod / `trace-dispatcher`),
+given under a single top-level `HermodTracing` key whose value is **either** a
+path to a separate file holding the tracing configuration **or** that
+configuration object inline. This library does not define or validate the shape
+of that object — the authoritative schema lives in
+[`hermod-tracing`](https://github.com/IntersectMBO/hermod-tracing), so the
+configuration schema describes `HermodTracing` only as "a path or a JSON
+object".
+
+Instead, the parser hands the `HermodTracing` value to `trace-dispatcher`'s own
+parser (`readConfiguration`), which resolves it into a `TraceConfig`: a file
+reference is read via `FromFile` (after resolving the path to its canonical
+location), an inline object via `FromJSONObject`.
+
+The resolved `TraceConfig` is carried through to the final `NodeConfiguration`
+(as `tracingConfiguration :: Maybe TraceConfig`), so a consumer of the library
+gets the tracing configuration already parsed, and `cardano-config resolve`
+emits it back under the `HermodTracing` key (as an inline object). It is
+`Nothing`/absent when the configuration has no `HermodTracing` key.
 
 ## Mandatory keys
 
