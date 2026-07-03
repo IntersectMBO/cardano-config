@@ -91,6 +91,7 @@ cases =
   , splitSubfileSchemaCase
   , migrateCase
   , migrateRenameCase
+  , migrateTracingCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -363,6 +364,61 @@ migrateRenameCase =
     Just (Object s) -> nested s sub key
     _ -> False
   -- Every object key appearing anywhere in the document.
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
+
+-- | 'migrate' handles the two tracing key families of a legacy flat config: the
+-- keys that @trace-dispatcher@'s own parser reads (@TraceOptions@ and friends)
+-- are gathered into an inline @HermodTracing@ object under @Configuration@, and
+-- the obsolete iohk-monitoring keys (@UseTraceDispatcher@, @minSeverity@,
+-- @defaultScribes@, @options@, …) are dropped entirely. The result is idempotent.
+migrateTracingCase :: TestTree
+migrateTracingCase =
+  testCase "migrate groups trace-dispatcher keys under HermodTracing and drops obsolete logging keys" $
+    expectOk $ case migrate legacyTracing of
+      m@(Object top)
+        | any (`elem` obsolete) (allKeys m) ->
+            Just ("an obsolete logging key survived; keys: " <> show (allKeys m))
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg) -> case KM.lookup (K.fromString "HermodTracing") cfg of
+              Just (Object h)
+                | not (all (\k -> KM.member (K.fromString k) h) tracingKeys) ->
+                    Just ("HermodTracing is missing a trace-dispatcher key; has: " <> show (KM.keys h))
+                -- The trace-dispatcher keys moved into HermodTracing, not left flat.
+                | any (\k -> KM.member (K.fromString k) cfg) tracingKeys ->
+                    Just "a trace-dispatcher key was left flat under Configuration"
+                | migrate m /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "HermodTracing was not created as an object"
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  -- The trace-dispatcher legacy keys that must end up inside HermodTracing.
+  tracingKeys = ["TraceOptions", "TraceOptionForwarder", "TraceOptionMetricsPrefix"]
+  -- The obsolete iohk-monitoring keys that must not survive anywhere.
+  obsolete =
+    [ "UseTraceDispatcher"
+    , "TurnOnLogging"
+    , "TurnOnLogMetrics"
+    , "minSeverity"
+    , "defaultScribes"
+    , "options"
+    ]
+  -- A minimal legacy flat config carrying both tracing families.
+  legacyTracing =
+    Object $
+      KM.fromList
+        [ (K.fromString "TraceOptions", Object (KM.fromList [(K.fromString "", Object KM.empty)]))
+        , (K.fromString "TraceOptionForwarder", Object KM.empty)
+        , (K.fromString "TraceOptionMetricsPrefix", String (T.pack "cardano.node.metrics."))
+        , (K.fromString "UseTraceDispatcher", Bool True)
+        , (K.fromString "TurnOnLogging", Bool True)
+        , (K.fromString "TurnOnLogMetrics", Bool True)
+        , (K.fromString "minSeverity", String (T.pack "Critical"))
+        , (K.fromString "defaultScribes", Array mempty)
+        , (K.fromString "options", Object KM.empty)
+        ]
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []

@@ -24,8 +24,13 @@
 --   * a flat top-level property key is nested under the component section that
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
---   * a section key (whether an inline object or a path to a sub-file), the
---     @HermodTracing@ key, and any unrecognised key are kept at the
+--   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
+--     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered into
+--     an inline @HermodTracing@ object, and the obsolete keys of the old
+--     iohk-monitoring logging system (@setupScribes@, @minSeverity@, … — no longer
+--     read by anything) are dropped (see 'tracingLegacyKeys'\/'tracingObsoleteKeys');
+--   * a section key (whether an inline object or a path to a sub-file), an
+--     existing @HermodTracing@ key, and any unrecognised key are kept at the
 --     @Configuration@ level as-is (so nothing is silently dropped);
 --   * a document already in the envelope is reshaped idempotently.
 module Cardano.Configuration.File.Migrate
@@ -131,6 +136,42 @@ renameTopKeys _ v = v
 rename :: [(Text, Text)] -> K.Key -> K.Key
 rename table k = maybe k K.fromText (lookup (K.toText k) table)
 
+-- | The flat top-level tracing keys that @trace-dispatcher@'s own parser reads
+-- directly (its \"legacy\" configuration format — see @parseAsLegacy@ in
+-- @Cardano.Logging.ConfigurationParser@). These belong inside @HermodTracing@:
+-- @migrate@ gathers them into an inline @HermodTracing@ object, which @resolve@
+-- then hands to @trace-dispatcher@ verbatim. @TraceOptions@ is the only one the
+-- parser requires; the rest are optional, but all are grouped when present.
+tracingLegacyKeys :: [Text]
+tracingLegacyKeys =
+  [ "TraceOptions"
+  , "TraceOptionForwarder"
+  , "TraceOptionNodeName"
+  , "TraceOptionMetricsPrefix"
+  , "TraceOptionResourceFrequency"
+  , "TraceOptionLedgerMetricsFrequency"
+  , "TracePrometheusSimpleRun"
+  ]
+
+-- | The obsolete keys of the old iohk-monitoring\/katip logging system, fully
+-- superseded by @trace-dispatcher@. Nothing reads them any more (not even the
+-- @UseTraceDispatcher@ switch that once selected between the two systems), so
+-- @migrate@ drops them. Unlike 'removedFields' these are dropped only at the top
+-- level: their names (@options@, @minSeverity@) are too generic to remove
+-- wherever they might appear at depth.
+tracingObsoleteKeys :: [Text]
+tracingObsoleteKeys =
+  [ "UseTraceDispatcher"
+  , "TurnOnLogging"
+  , "TurnOnLogMetrics"
+  , "defaultBackends"
+  , "defaultScribes"
+  , "setupBackends"
+  , "setupScribes"
+  , "minSeverity"
+  , "options"
+  ]
+
 -- | The structural reshape into the Version1 envelope. A value that is not a
 -- JSON\/YAML object is returned unchanged.
 reshape :: Value -> Value
@@ -155,14 +196,20 @@ reshape (Object top) =
     _ -> KM.filterWithKey (\k _ -> K.toText k `notElem` envelopeAnnotations) top
 
   -- Group each body key under its component section. A flat property key nests
-  -- under the section that owns it; a section key, HermodTracing or any
-  -- unrecognised key stays at the Configuration level as-is. A mixed input (a
-  -- section object plus some of its flat keys) is deep-merged.
+  -- under the section that owns it; a flat trace-dispatcher key nests under
+  -- HermodTracing; an obsolete iohk-monitoring key is dropped; a section key,
+  -- an existing HermodTracing or any unrecognised key stays at the Configuration
+  -- level as-is. A mixed input (a section object plus some of its flat keys, or
+  -- HermodTracing alongside flat tracing keys) is deep-merged.
   configuration = KM.foldrWithKey place KM.empty body
-  place k v =
-    case lookup (K.toText k) propertyToSection of
-      Just section -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton k v))
-      Nothing -> KM.insertWith mergeValues k v
+  place k v
+    | key `elem` tracingObsoleteKeys = id
+    | key `elem` tracingLegacyKeys = nestUnder "HermodTracing"
+    | Just section <- lookup key propertyToSection = nestUnder section
+    | otherwise = KM.insertWith mergeValues k v
+   where
+    key = K.toText k
+    nestUnder section = KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton k v))
 reshape v = v
 
 -- | Top-level keys that belong to the envelope, not to the configuration body.
