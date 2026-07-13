@@ -54,7 +54,6 @@ import Cardano.Configuration.File.Consensus
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Configuration.File.Lint
   ( ConfigWarning (..)
-  , checkEnvelope
   , configWarnings
   , renderConfigWarning
   )
@@ -67,6 +66,7 @@ import Cardano.Configuration.File.Merge
   , sectionUserLayer
   , splitEnvelope
   )
+import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.File.Network
 import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
@@ -184,11 +184,21 @@ componentDefaults =
 parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
-  mainValue <- decodeValueFile Nothing cfgFile
+  rawValue <- decodeValueFile Nothing cfgFile
+  -- Every document is run through 'migrate' before parsing, so an already-enveloped
+  -- configuration that still uses a pre-rename field name (or carries a stray
+  -- top-level sibling) is brought up to the current shape too — not only a
+  -- non-enveloped one. Migration is idempotent, so a configuration already in the
+  -- canonical form is left untouched; a 'MigratedToCurrentFormat' warning is raised
+  -- only when migration actually changed the document (@migrated /= rawValue@, an
+  -- order-independent comparison). 'migrate' also returns its own warnings for the
+  -- fields it had to reconcile. If the migrated document still cannot be parsed, the
+  -- parse error surfaces as usual.
+  let (mainValue, migrateWarnings) = migrate rawValue
+      migrationWarnings =
+        [MigratedToCurrentFormat | mainValue /= rawValue] <> migrateWarnings
   (version, minNodeVer, configValue) <- splitEnvelope mainValue
-  -- 'checkEnvelope' inspects the raw top-level document (is it the Version1
-  -- envelope?); the rest inspect the unwrapped configuration object.
-  let warnings = checkEnvelope mainValue <> configWarnings configValue
+  let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile
   config <- case version of
     1 -> parseConfigurationVersion1 root minNodeVer configValue
