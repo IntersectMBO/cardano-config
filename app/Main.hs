@@ -181,7 +181,9 @@ runMigrate path = handleAny (die . displayException) $ do
   raw <- case path of
     "-" -> BS.getContents >>= decodeThrow
     _ -> decodeValueFile Nothing path
-  dump (migrate raw)
+  let (migrated, warnings) = migrate raw
+  for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
+  dump migrated
 
 -- | Resolve a configuration and print it as YAML.
 runResolve :: CliArgs -> GenesisRendering -> IO ()

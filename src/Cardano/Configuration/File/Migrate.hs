@@ -20,7 +20,8 @@
 --     dropped, at every depth (so the grouping below, which keys off the current
 --     names, places them correctly);
 --   * @$schema@ (the published schema URL) and @Version@ (1) are added when
---     absent; an existing @Version@\/@MinNodeVersion@ is carried through.
+--     absent; an existing @$schema@\/@Version@\/@MinNodeVersion@ is carried through
+--     (so a pinned @$schema@ URL is not clobbered);
 --   * a flat top-level property key is nested under the component section that
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
@@ -32,11 +33,18 @@
 --   * a section key (whether an inline object or a path to a sub-file), an
 --     existing @HermodTracing@ key, and any unrecognised key are kept at the
 --     @Configuration@ level as-is (so nothing is silently dropped);
+--   * a top-level sibling of an existing @Configuration@ envelope (e.g. a stray
+--     @ByronGenesisFile@) is merged into the body and regrouped, not dropped; if it
+--     collides with a key already inside @Configuration@ the enveloped value wins
+--     and an 'EnvelopeKeyCollision' warning is raised;
+--   * where both the old and the current name of a renamed field are present the
+--     current name wins, with a 'RenamedKeyCollision' warning;
 --   * a document already in the envelope is reshaped idempotently.
 module Cardano.Configuration.File.Migrate
   ( migrate
   ) where
 
+import Cardano.Configuration.File.Lint (ConfigWarning (..))
 import Cardano.Configuration.File.Merge (mergeValues)
 import Cardano.Configuration.Schema (componentPropertyNames, schemaId)
 import Data.Aeson (Value (..))
@@ -45,13 +53,19 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 
--- | Migrate a raw configuration value to the Version1 envelope. A value that is
--- not a JSON\/YAML object is returned unchanged.
+-- | Migrate a raw configuration value to the Version1 envelope, together with the
+-- non-fatal 'ConfigWarning's raised while doing so (a renamed field colliding with
+-- its current name, or a top-level sibling colliding with a key inside the
+-- envelope). A value that is not a JSON\/YAML object is returned unchanged, with no
+-- warnings.
 --
 -- Renames and removals are applied first (recursively, over the whole document)
 -- so that the subsequent structural grouping sees only current names.
-migrate :: Value -> Value
-migrate = reshape . renameLegacy
+migrate :: Value -> (Value, [ConfigWarning])
+migrate value =
+  let (renamed, renameWarnings) = renameLegacy value
+      (reshaped, reshapeWarnings) = reshape renamed
+   in (reshaped, renameWarnings <> reshapeWarnings)
 
 -- | The field renames introduced in the current key-naming series, as
 -- @(old, new)@. The parser only accepts the new names; @migrate@ rewrites the
@@ -104,26 +118,43 @@ removedFields =
   , "MaxKnownMajorProtocolVersion"
   ]
 
--- | Rewrite renamed keys and drop removed keys, everywhere in the document.
--- Recurses through objects and arrays; leaves scalars unchanged. The generic
+-- | Rewrite renamed keys and drop removed keys, everywhere in the document,
+-- accumulating a 'RenamedKeyCollision' warning wherever both the old and the
+-- current name of a renamed field sit in the same object. Recurses through objects
+-- and arrays; leaves scalars unchanged. The generic
 -- 'acceptedConnectionsLimitFields' are rewritten only within an
 -- @AcceptedConnectionsLimit@ object, not wherever those names happen to appear.
-renameLegacy :: Value -> Value
+renameLegacy :: Value -> (Value, [ConfigWarning])
 renameLegacy (Object o) =
-  Object
-    . KM.fromList
-    . map rekey
-    . filter (\(k, _) -> K.toText k `notElem` removedFields)
-    $ KM.toList o
+  (Object (KM.fromList pairs), collisionWarnings <> concatMap snd rekeyed)
  where
-  rekey (k, v) = (rename renamedFields k, scoped k (renameLegacy v))
+  present = [K.toText k | (k, _) <- KM.toList o]
+  -- A rename whose target already exists here: keep the (current-name) value that
+  -- is already present, drop the old-name one, and warn. Without this, KM.fromList
+  -- below would keep whichever the list order happened to put last.
+  collisions = [(old, new) | (old, new) <- renamedFields, old `elem` present, new `elem` present]
+  collidingOld = map fst collisions
+  collisionWarnings = [RenamedKeyCollision old new | (old, new) <- collisions]
+
+  -- The surviving entries (old names that collide are dropped, removed keys too),
+  -- each recursed into and rekeyed.
+  rekeyed =
+    [ rekey (k, v)
+    | (k, v) <- KM.toList o
+    , K.toText k `notElem` removedFields
+    , K.toText k `notElem` collidingOld
+    ]
+  pairs = map fst rekeyed
+  rekey (k, v) = let (v', w) = renameLegacy v in ((rename renamedFields k, scoped k v'), w)
   -- Inside an AcceptedConnectionsLimit object, also rewrite its (generic) direct
   -- sub-keys; the recursion above has already handled any deeper nesting.
   scoped k v
     | K.toText k == "AcceptedConnectionsLimit" = renameTopKeys acceptedConnectionsLimitFields v
     | otherwise = v
-renameLegacy (Array a) = Array (fmap renameLegacy a)
-renameLegacy v = v
+renameLegacy (Array a) =
+  let results = fmap renameLegacy a
+   in (Array (fmap fst results), foldMap snd results)
+renameLegacy v = (v, [])
 
 -- | Apply a rename table to the direct keys of an object (only), leaving
 -- non-objects and unlisted keys unchanged.
@@ -173,27 +204,41 @@ tracingObsoleteKeys =
   ]
 
 -- | The structural reshape into the Version1 envelope. A value that is not a
--- JSON\/YAML object is returned unchanged.
-reshape :: Value -> Value
+-- JSON\/YAML object is returned unchanged (with no warnings).
+reshape :: Value -> (Value, [ConfigWarning])
 reshape (Object top) =
-  Object $
-    KM.insert "$schema" (String (schemaId "config.schema.json")) $
-      KM.insert "Version" version $
-        withMinNodeVersion $
-          KM.singleton "Configuration" (Object configuration)
+  ( Object $
+      KM.insert "$schema" schemaValue $
+        KM.insert "Version" version $
+          withMinNodeVersion $
+            KM.singleton "Configuration" (Object configuration)
+  , collisionWarnings
+  )
  where
+  -- Carry an existing $schema through (so a user's pinned schema URL survives),
+  -- otherwise default to the published one on the main branch.
+  schemaValue = fromMaybe (String (schemaId "config.schema.json")) (KM.lookup "$schema" top)
   -- Carry an existing Version, otherwise default to the current format (1).
   version = fromMaybe (Number 1) (KM.lookup "Version" top)
   -- Carry MinNodeVersion through if present; never invent one (it has no
   -- default, and its absence is itself a useful warning on the next parse).
   withMinNodeVersion = maybe id (KM.insert "MinNodeVersion") (KM.lookup "MinNodeVersion" top)
 
-  -- The configuration body: an already-enveloped document's Configuration
-  -- object, or (for a legacy\/non-enveloped document) the top-level object
-  -- minus the envelope annotations.
-  body = case KM.lookup "Configuration" top of
+  -- The configuration body is the union of an already-enveloped document's
+  -- Configuration object with the top-level keys that are not envelope
+  -- annotations (a legacy\/non-enveloped document has no Configuration object, so
+  -- the body is just those top-level keys). Nothing at the top level is dropped:
+  -- a stray sibling such as @ByronGenesisFile@ is folded into the body and then
+  -- regrouped under its section, rather than discarded.
+  envelopeBody = case KM.lookup "Configuration" top of
     Just (Object c) -> c
-    _ -> KM.filterWithKey (\k _ -> K.toText k `notElem` envelopeAnnotations) top
+    _ -> KM.empty
+  siblings = KM.filterWithKey (\k _ -> K.toText k `notElem` envelopeAnnotations) top
+  -- On a key present both as a sibling and inside Configuration, the value inside
+  -- Configuration (the right\/\"later\" argument) wins; warn about the drop.
+  body = KM.unionWith mergeValues siblings envelopeBody
+  collisionWarnings =
+    [EnvelopeKeyCollision (K.toText k) | k <- KM.keys siblings, k `KM.member` envelopeBody]
 
   -- Group each body key under its component section. A flat property key nests
   -- under the section that owns it; a flat trace-dispatcher key nests under
@@ -206,11 +251,24 @@ reshape (Object top) =
     | key `elem` tracingObsoleteKeys = id
     | key `elem` tracingLegacyKeys = nestUnder "HermodTracing"
     | Just section <- lookup key propertyToSection = nestUnder section
-    | otherwise = KM.insertWith mergeValues k v
+    | otherwise = keepFlat
    where
     key = K.toText k
-    nestUnder section = KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton k v))
-reshape v = v
+    keepFlat = KM.insertWith mergeValues k v
+    -- Nest a flat property under its target section, unless that section is
+    -- already present as a non-object — a path to a sub-file. Merging an inline
+    -- key into a file reference would silently drop the key (a file path is not an
+    -- object, so 'mergeValues' would keep the path and lose the value), so in that
+    -- case the property is kept at the Configuration level instead, where it
+    -- surfaces as an unrecognised-key warning on the next parse rather than being
+    -- lost. When the section is absent (a purely flat document) or an inline
+    -- object, the property nests as normal.
+    nestUnder section = case KM.lookup (K.fromText section) body of
+      Just v' | not (isObject v') -> keepFlat
+      _ -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton k v))
+    isObject Object{} = True
+    isObject _ = False
+reshape v = (v, [])
 
 -- | Top-level keys that belong to the envelope, not to the configuration body.
 envelopeAnnotations :: [Text]

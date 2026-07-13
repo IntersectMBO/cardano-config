@@ -55,7 +55,6 @@ import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Configuration.File.Lint
   ( ConfigWarning (..)
   , configWarnings
-  , inVersion1Format
   , renderConfigWarning
   )
 import Cardano.Configuration.File.Mempool
@@ -186,16 +185,18 @@ parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
   rawValue <- decodeValueFile Nothing cfgFile
-  -- The parser accepts only the Version1 format (a top-level @Configuration@
-  -- envelope). A document that is not in it is not parsed as-is: it is migrated
-  -- to the Version1 format first — with a 'MigratedToVersion1' warning — and the
-  -- result is parsed. If that migrated document still cannot be parsed, the parse
-  -- error surfaces as usual (so a non-Version1 document whose migration does not
-  -- yield a parseable configuration is rejected).
-  let (mainValue, migrationWarnings) =
-        if inVersion1Format rawValue
-          then (rawValue, [])
-          else (migrate rawValue, [MigratedToVersion1])
+  -- Every document is run through 'migrate' before parsing, so an already-enveloped
+  -- configuration that still uses a pre-rename field name (or carries a stray
+  -- top-level sibling) is brought up to the current shape too — not only a
+  -- non-enveloped one. Migration is idempotent, so a configuration already in the
+  -- canonical form is left untouched; a 'MigratedToCurrentFormat' warning is raised
+  -- only when migration actually changed the document (@migrated /= rawValue@, an
+  -- order-independent comparison). 'migrate' also returns its own warnings for the
+  -- fields it had to reconcile. If the migrated document still cannot be parsed, the
+  -- parse error surfaces as usual.
+  let (mainValue, migrateWarnings) = migrate rawValue
+      migrationWarnings =
+        [MigratedToCurrentFormat | mainValue /= rawValue] <> migrateWarnings
   (version, minNodeVer, configValue) <- splitEnvelope mainValue
   let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile

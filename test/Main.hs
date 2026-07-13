@@ -92,6 +92,10 @@ cases =
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
+  , migrateSiblingCase
+  , migrateEnvelopeCollisionCase
+  , migrateEnvelopedRenameCase
+  , migrateRenameCollisionCase
   , subfilePathConfinementCase
   , minNodeVersionCase
   , resolveCase
@@ -132,6 +136,11 @@ expectOk = maybe (pure ()) assertFailure
 -- 'FromJSON' instance.
 decodeData :: FromJSON a => FilePath -> IO (Either String a)
 decodeData p = getDataFileName p >>= eitherDecodeFileStrict'
+
+-- | Build a JSON object from string-keyed pairs (test convenience, mirroring the
+-- @KM.fromList . map (first K.fromString)@ used by the inline fixtures).
+obj :: [(String, Value)] -> Value
+obj = Object . KM.fromList . map (\(k, v) -> (K.fromString k, v))
 
 -- | Decode a single example via its 'FromJSON' instance, forcing the result.
 decodeCase :: Show a => String -> IO (Either String a) -> TestTree
@@ -198,23 +207,23 @@ misplacedKeyCase =
   mentionsDijkstra (UnrecognisedKeys ks) = "DijkstraGenesisFile" `elem` ks
   mentionsDijkstra _ = False
 
--- | The parser accepts only the Version1 format. A document that is not in it
--- (no top-level @Configuration@ envelope) is migrated to it before parsing and a
--- 'MigratedToVersion1' warning is returned; a document already in the envelope is
--- parsed as-is, with no such warning.
+-- | Every document is migrated before parsing. One that migration changes (here a
+-- legacy flat config, reshaped into the envelope) yields a 'MigratedToCurrentFormat'
+-- warning; one already in the canonical form (an enveloped config with current
+-- field names) migrates to itself and so does not warn.
 migrationWarningCase :: TestTree
 migrationWarningCase =
-  testCase "non-Version1 config is migrated (warns MigratedToVersion1) and parses; Version1 is not" $ do
+  testCase "a config that migration changes warns MigratedToCurrentFormat; a canonical one does not" $ do
     legacyPath <- getDataFileName "test/examples/fullconfig.json"
     envPath <- getDataFileName "test/examples/min-node-version.json"
     (_, legacyWarnings) <- parseConfigurationFiles legacyPath
     (_, envWarnings) <- parseConfigurationFiles envPath
     expectOk $
-      if MigratedToVersion1 `elem` legacyWarnings && MigratedToVersion1 `notElem` envWarnings
+      if MigratedToCurrentFormat `elem` legacyWarnings && MigratedToCurrentFormat `notElem` envWarnings
         then Nothing
         else
           Just $
-            "expected MigratedToVersion1 only for the non-Version1 config: legacy="
+            "expected MigratedToCurrentFormat only for the non-canonical config: legacy="
               <> show legacyWarnings
               <> " enveloped="
               <> show envWarnings
@@ -280,7 +289,7 @@ migrateCase =
     res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
-      Right raw -> case migrate raw of
+      Right raw -> case fst (migrate raw) of
         m@(Object top)
           | not (all (`KM.member` top) (map K.fromString envelopeKeys)) ->
               Just ("missing envelope keys; got " <> show (KM.keys top))
@@ -294,7 +303,7 @@ migrateCase =
                     Just "StorageConfig.LedgerDB not grouped"
                 | KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg ->
                     Just "removed key MaxKnownMajorProtocolVersion survived (should be dropped)"
-                | migrate m /= m -> Just "migrate is not idempotent"
+                | fst (migrate m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
         _ -> Just "migrate did not produce an object"
@@ -318,7 +327,7 @@ migrateRenameCase =
     res <- decodeData "test/examples/legacy-renamed-fields.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
-      Right raw -> case migrate raw of
+      Right raw -> case fst (migrate raw) of
         m@(Object top)
           | any (`elem` removed) (allKeys m) ->
               Just ("a removed key survived; keys: " <> show (allKeys m))
@@ -340,7 +349,7 @@ migrateRenameCase =
                 -- A genuinely-unrecognised key (a typo) is kept, not dropped.
                 | not (KM.member (K.fromString "SomeUnrecognisedKey") cfg) ->
                     Just "a genuinely-unrecognised key was dropped (should be kept)"
-                | migrate m /= m -> Just "migrate is not idempotent"
+                | fst (migrate m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
         _ -> Just "migrate did not produce an object"
@@ -376,7 +385,7 @@ migrateRenameCase =
 migrateTracingCase :: TestTree
 migrateTracingCase =
   testCase "migrate groups trace-dispatcher keys under HermodTracing and drops obsolete logging keys" $
-    expectOk $ case migrate legacyTracing of
+    expectOk $ case fst (migrate legacyTracing) of
       m@(Object top)
         | any (`elem` obsolete) (allKeys m) ->
             Just ("an obsolete logging key survived; keys: " <> show (allKeys m))
@@ -388,7 +397,7 @@ migrateTracingCase =
                 -- The trace-dispatcher keys moved into HermodTracing, not left flat.
                 | any (\k -> KM.member (K.fromString k) cfg) tracingKeys ->
                     Just "a trace-dispatcher key was left flat under Configuration"
-                | migrate m /= m -> Just "migrate is not idempotent"
+                | fst (migrate m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "HermodTracing was not created as an object"
             _ -> Just "Configuration is not an object"
@@ -422,6 +431,151 @@ migrateTracingCase =
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
+
+-- | 'migrate' does not drop a top-level sibling of an existing @Configuration@
+-- envelope: a stray @ByronGenesisFile@ next to the envelope is folded into the
+-- body and regrouped under its owning section (@ProtocolConfig@), and the pre-existing
+-- @StorageConfig@ section is preserved. (Regression test for the reviewer's
+-- "enveloped file drops its siblings" concern.)
+migrateSiblingCase :: TestTree
+migrateSiblingCase =
+  testCase "migrate keeps a top-level sibling of the Configuration envelope (regroups, not drops)" $
+    expectOk $ case migrate input of
+      (Object top, warnings)
+        | not (null warnings) -> Just ("expected no warnings, got " <> show warnings)
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg)
+              | not (nested cfg "ProtocolConfig" "ByronGenesisFile") ->
+                  Just "the sibling ByronGenesisFile was dropped, not regrouped under ProtocolConfig"
+              | not (KM.member (K.fromString "StorageConfig") cfg) ->
+                  Just "the pre-existing StorageConfig section was lost"
+              | otherwise -> Nothing
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  input =
+    obj
+      [ ("Version", Number 1)
+      , ("Configuration", obj [("StorageConfig", String (T.pack "storage.json"))])
+      , ("ByronGenesisFile", String (T.pack "byron.json"))
+      ]
+  nested cfg section key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+
+-- | When a key appears both as a top-level sibling and inside the @Configuration@
+-- envelope, 'migrate' keeps the value inside @Configuration@ (the canonical
+-- location) and raises an 'EnvelopeKeyCollision' warning naming the key.
+migrateEnvelopeCollisionCase :: TestTree
+migrateEnvelopeCollisionCase =
+  testCase
+    "migrate resolves a sibling/Configuration collision in favour of Configuration (with a warning)"
+    $ expectOk
+    $ case migrate input of
+      (Object top, warnings)
+        | EnvelopeKeyCollision (T.pack "MempoolConfig") `notElem` warnings ->
+            Just ("expected an EnvelopeKeyCollision for MempoolConfig, got " <> show warnings)
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg) -> case KM.lookup (K.fromString "MempoolConfig") cfg of
+              Just (Object m)
+                | KM.lookup (K.fromString "MempoolCapacityOverride") m /= Just (Number 100) ->
+                    Just
+                      ( "the Configuration value (100) should win, got "
+                          <> show (KM.lookup (K.fromString "MempoolCapacityOverride") m)
+                      )
+                | otherwise -> Nothing
+              _ -> Just "MempoolConfig is not an object"
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  input =
+    obj
+      [ ("Configuration", obj [("MempoolConfig", obj [("MempoolCapacityOverride", Number 100)])])
+      , ("MempoolConfig", obj [("MempoolCapacityOverride", Number 999)])
+      ]
+
+-- | 'migrate' rewrites a pre-rename field name even when the document is /already/
+-- enveloped (the parser used to skip migration for enveloped documents, so an
+-- enveloped @EnableRpc@ silently reverted to its default). It also carries an
+-- existing @$schema@ through unchanged, rather than clobbering a user's pinned URL.
+-- (Regression test for the reviewer's "enveloped legacy fields skipped" and
+-- "unconditional schema replacement" concerns.)
+migrateEnvelopedRenameCase :: TestTree
+migrateEnvelopedRenameCase =
+  testCase "migrate renames fields inside an existing envelope and carries $schema through" $
+    expectOk $ case migrate input of
+      (m@(Object top), _)
+        | KM.lookup (K.fromString "$schema") top /= Just pinnedSchema ->
+            Just
+              ("the pinned $schema was not carried through, got " <> show (KM.lookup (K.fromString "$schema") top))
+        | "EnableRpc" `elem` allKeys m ->
+            Just "the old name EnableRpc survived the rename"
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg)
+              | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
+                  Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
+              | otherwise -> Nothing
+            _ -> Just "Configuration is not an object"
+      (m, _) -> Just ("migrate did not produce an object: " <> show m)
+ where
+  pinnedSchema = String (T.pack "https://example.com/pinned/config.schema.json")
+  input =
+    obj
+      [ ("$schema", pinnedSchema)
+      , ("Version", Number 1)
+      , ("Configuration", obj [("LocalConnectionsConfig", obj [("EnableRpc", Bool True)])])
+      ]
+  nested cfg section key = case KM.lookup (K.fromString section) cfg of
+    Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
+
+-- | When both the old and the current name of a renamed field sit in the same
+-- object, 'migrate' keeps the current-name value (deterministically, not by
+-- iteration order), drops the old-name one, and raises a 'RenamedKeyCollision'
+-- warning. (Regression test for the reviewer's "key collision during renames"
+-- concern.)
+migrateRenameCollisionCase :: TestTree
+migrateRenameCollisionCase =
+  testCase "migrate keeps the current name on an old/new rename collision (with a warning)" $
+    expectOk $ case migrate input of
+      (Object top, warnings)
+        | expectedWarning `notElem` warnings ->
+            Just ("expected a RenamedKeyCollision warning, got " <> show warnings)
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg) -> case KM.lookup (K.fromString "NetworkConfig") cfg of
+              Just (Object n)
+                | KM.member (K.fromString "TargetNumberOfRootPeers") n ->
+                    Just "the old name TargetNumberOfRootPeers survived (should be dropped)"
+                | KM.lookup (K.fromString "DeadlineTargetNumberOfRootPeers") n /= Just (Number 2) ->
+                    Just
+                      ( "the current-name value (2) should win, got "
+                          <> show (KM.lookup (K.fromString "DeadlineTargetNumberOfRootPeers") n)
+                      )
+                | otherwise -> Nothing
+              _ -> Just "NetworkConfig is not an object"
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  expectedWarning =
+    RenamedKeyCollision (T.pack "TargetNumberOfRootPeers") (T.pack "DeadlineTargetNumberOfRootPeers")
+  input =
+    obj
+      [
+        ( "Configuration"
+        , obj
+            [
+              ( "NetworkConfig"
+              , obj
+                  [ ("TargetNumberOfRootPeers", Number 1)
+                  , ("DeadlineTargetNumberOfRootPeers", Number 2)
+                  ]
+              )
+            ]
+        )
+      ]
 
 -- | The optional top-level @MinNodeVersion@ annotation is read from the same
 -- level as @Version@: from inside the @{ Version, Configuration }@ envelope, and
