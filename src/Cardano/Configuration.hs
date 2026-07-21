@@ -8,6 +8,7 @@ module Cardano.Configuration
     NodeConfiguration (..)
   , resolveConfiguration
   , resolveConfigurationWith
+  , resolveConfigurationFromFile
 
     -- ** Consistency checks
   , ConfigCheck (..)
@@ -36,6 +37,7 @@ module Cardano.Configuration
   , File.RequiresNetworkMagic (..)
   , File.Hashed (..)
   , CLI.Credentials (..)
+  , CLI.emptyCredentials
   , CLI.KESSource (..)
 
     -- ** Network
@@ -62,8 +64,15 @@ module Cardano.Configuration
   , CLI.ShutdownOn (..)
 
     -- * CLI
+
+    -- | The 'CLI.CliArgs' type is exported here, but its constructor and field
+    -- selectors are not (they would clash with the same-named 'NodeConfiguration'
+    -- fields). Consumers that build or override a 'CLI.CliArgs' directly should
+    -- import "Cardano.Configuration.CliArgs", which the public library also
+    -- re-exposes; 'CLI.defaultCliArgs' is a convenient starting point.
   , CLI.CliArgs
   , CLI.parseCliArgs
+  , CLI.defaultCliArgs
 
     -- ** Reusable option parsers
   , CLI.parseConfigFile
@@ -112,6 +121,7 @@ import Control.Exception (Exception)
 import Data.Functor.Identity
 import Data.IP
 import Data.List.NonEmpty (NonEmpty (..))
+import GHC.Stack (HasCallStack)
 import Network.Socket
 import System.Posix.Types
 
@@ -248,6 +258,29 @@ resolveConfiguration ::
   File.NodeConfigurationFromFile ->
   Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning])
 resolveConfiguration = resolveConfigurationWith defaultConfigChecks
+
+-- | Resolve a full 'NodeConfiguration' from a configuration file alone, with no
+-- command-line overrides. This is the common case for tools that consume a node
+-- configuration file but have no node command line of their own (eg db-analyser,
+-- db-immutaliser): the file is parsed with 'File.parseConfigurationFiles' and
+-- resolved against 'CLI.defaultCliArgs', so every value comes from the file (and
+-- the always-applied defaults layer). The returned warnings combine those raised
+-- while parsing the files with those from the consistency checks.
+--
+-- File-level parse failures are thrown as a 'File.ConfigurationParsingError' (as
+-- in 'File.parseConfigurationFiles'); a well-formed file that fails a consistency
+-- check is returned as a 'Left'. Consumers that need to supply command-line
+-- overrides should instead build a 'CLI.CliArgs' (starting, if convenient, from
+-- 'CLI.defaultCliArgs') and call 'resolveConfiguration' directly.
+resolveConfigurationFromFile ::
+  HasCallStack =>
+  FilePath ->
+  IO (Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning]))
+resolveConfigurationFromFile configFile = do
+  (fileCfg, fileWarnings) <- File.parseConfigurationFiles configFile
+  pure $ case resolveConfiguration (CLI.defaultCliArgs configFile) fileCfg of
+    Left err -> Left err
+    Right (nc, checkWarnings) -> Right (nc, fileWarnings <> checkWarnings)
 
 -- | As 'resolveConfiguration', but with an explicit set of consistency checks,
 -- so consumers can add their own (typically @'defaultConfigChecks' <> myChecks@).
