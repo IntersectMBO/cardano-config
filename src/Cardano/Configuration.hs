@@ -45,6 +45,8 @@ module Cardano.Configuration
   , File.DiffusionMode (..)
   , File.AcceptedConnectionsLimit (..)
   , File.LocalConnectionsConfig (..)
+  , File.ResponderCoreAffinityPolicy (..)
+  , File.TxSubmissionLogicVersion (..)
 
     -- ** Testing
   , File.TestingConfiguration (..)
@@ -108,6 +110,7 @@ import qualified Cardano.Configuration.Common as File
 import qualified Cardano.Configuration.File as File
 import Cardano.Configuration.File.Consensus
 import qualified Cardano.Configuration.File.Consensus as File
+import qualified Cardano.Configuration.File.Network as File
 import qualified Cardano.Configuration.File.Protocol as File
 import qualified Cardano.Configuration.File.Storage as File
 import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig)
