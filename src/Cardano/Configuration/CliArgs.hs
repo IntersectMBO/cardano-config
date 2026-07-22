@@ -2,6 +2,7 @@ module Cardano.Configuration.CliArgs
   ( -- * CLI Arguments
     CliArgs (..)
   , parseCliArgs
+  , defaultCliArgs
   , ShutdownOn (..)
 
     -- * Tracing
@@ -10,6 +11,7 @@ module Cardano.Configuration.CliArgs
 
     -- * Credentials
   , Credentials (..)
+  , emptyCredentials
   , KESSource (..)
 
     -- * Individual option parsers
@@ -39,7 +41,7 @@ module Cardano.Configuration.CliArgs
   ) where
 
 import Cardano.Configuration.Common
-import Cardano.Ledger.BaseTypes (StrictMaybe, maybeToStrictMaybe)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe)
 import Control.Monad (when)
 import Data.Bifunctor (second)
 import Data.IP (IPv4, IPv6)
@@ -98,6 +100,20 @@ data Credentials = Credentials
   }
   deriving Show
 
+-- | The block-forging credentials with nothing supplied: the value
+-- 'parseCredentials' yields when no credential flag is given. A node with these
+-- credentials is not a block producer.
+emptyCredentials :: Credentials
+emptyCredentials =
+  Credentials
+    { byronDelegationCertificate = SNothing
+    , byronSigningKey = SNothing
+    , shelleyKES = SNothing
+    , shelleyVRFKey = SNothing
+    , shelleyOperationalCertificate = SNothing
+    , bulkCredentialsFile = SNothing
+    }
+
 -- | The CLI arguments, parsed with 'parseCliArgs'
 data CliArgs = CliArgs
   { configFilePath :: FilePath
@@ -152,6 +168,38 @@ parseCliArgs =
     <*> optionalStrict parseEnableGrpc
     <*> optionalStrict parseGrpcSocketPath
 
+-- | The 'CliArgs' for resolving a configuration from its file alone, with no
+-- command-line overrides: every field takes the value 'parseCliArgs' would
+-- produce were the command line to carry nothing but @--config CONFIGFILE@.
+-- Intended for tools that consume a node configuration file but expose no node
+-- command line of their own (see
+-- 'Cardano.Configuration.resolveConfigurationFromFile'). Consumers that do need
+-- to override some fields can start from this value and update the ones they
+-- care about, rather than spelling out every default.
+defaultCliArgs :: FilePath -> CliArgs
+defaultCliArgs configFile =
+  CliArgs
+    { configFilePath = configFile
+    , topologyFile = defaultTopologyFile
+    , databasePathCLI = SNothing
+    , validateDatabase = False
+    , socketPath = SNothing
+    , credentials = emptyCredentials
+    , startAsNonProducingNode = SNothing
+    , hostAddr = SNothing
+    , hostIPv6Addr = SNothing
+    , port = SNothing
+    , tracerSocket = SNothing
+    , shutdownIPC = SNothing
+    , shutdownOnTarget = SNothing
+    , enableGrpcCLI = SNothing
+    , grpcSocketPathCLI = SNothing
+    }
+
+-- | The topology file path used when @--topology@ is not given.
+defaultTopologyFile :: FilePath
+defaultTopologyFile = "configuration/cardano/mainnet-topology.json"
+
 parseTopologyFile :: Parser FilePath
 parseTopologyFile =
   strOption $
@@ -160,7 +208,7 @@ parseTopologyFile =
       , metavar "FILEPATH"
       , help "The path to a file describing the topology"
       , completer (bashCompleter "file")
-      , value "configuration/cardano/mainnet-topology.json"
+      , value defaultTopologyFile
       , showDefault
       ]
 

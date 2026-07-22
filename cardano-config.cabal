@@ -31,10 +31,10 @@ common warnings
     -Wall
     -Wunused-packages
 
--- Deliberately small.
 library
   reexported-modules:
-    Cardano.Configuration
+    Cardano.Configuration,
+    Cardano.Configuration.CliArgs,
 
   build-depends:
     cardano-config:internal
