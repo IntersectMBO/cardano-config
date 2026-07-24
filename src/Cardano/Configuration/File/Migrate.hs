@@ -27,6 +27,9 @@
 --   * a flat top-level property key is nested under the component section that
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
+--   * the flat snapshot-option keys directly under @LedgerDB@ (@SnapshotInterval@,
+--     @NumOfDiskSnapshots@, …) are gathered into a nested @LedgerDB.Snapshots@
+--     object, the form the @LedgerDB@ codec reads (see 'nestSnapshotOptions');
 --   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
 --     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered
 --     verbatim into an inline @HermodTracing@ object, a top-level @ApplicationName@
@@ -137,7 +140,9 @@ removedFields =
 -- current name of a renamed field sit in the same object. Recurses through objects
 -- and arrays; leaves scalars unchanged. The generic
 -- 'acceptedConnectionsLimitFields' are rewritten only within an
--- @AcceptedConnectionsLimit@ object, not wherever those names happen to appear.
+-- @AcceptedConnectionsLimit@ object, and the flat snapshot options only within a
+-- @LedgerDB@ object (see 'nestSnapshotOptions'), not wherever those names happen
+-- to appear.
 renameLegacy :: Value -> (Value, [ConfigWarning])
 renameLegacy (Object o) =
   (Object (KM.fromList pairs), collisionWarnings <> concatMap snd rekeyed)
@@ -161,9 +166,12 @@ renameLegacy (Object o) =
   pairs = map fst rekeyed
   rekey (k, v) = let (v', w) = renameLegacy v in ((rename renamedFields k, scoped k v'), w)
   -- Inside an AcceptedConnectionsLimit object, also rewrite its (generic) direct
-  -- sub-keys; the recursion above has already handled any deeper nesting.
+  -- sub-keys; the recursion above has already handled any deeper nesting. Inside a
+  -- LedgerDB object, gather the flat snapshot-option keys into a nested Snapshots
+  -- object (see 'nestSnapshotOptions').
   scoped k v
     | K.toText k == "AcceptedConnectionsLimit" = renameTopKeys acceptedConnectionsLimitFields v
+    | K.toText k == "LedgerDB" = nestSnapshotOptions v
     | otherwise = v
 renameLegacy (Array a) =
   let results = fmap renameLegacy a
@@ -176,6 +184,35 @@ renameTopKeys :: [(Text, Text)] -> Value -> Value
 renameTopKeys table (Object o) =
   Object (KM.fromList [(rename table k, v) | (k, v) <- KM.toList o])
 renameTopKeys _ v = v
+
+-- | The snapshot-option keys that legacy configs (and the node's own parser)
+-- accept /flat/ directly under @LedgerDB@, but which cardano-config only reads
+-- from a nested @LedgerDB.Snapshots@ object.
+snapshotOptionKeys :: [Text]
+snapshotOptionKeys =
+  [ "SnapshotInterval"
+  , "SlotOffset"
+  , "RateLimit"
+  , "MinDelay"
+  , "MaxDelay"
+  , "NumOfDiskSnapshots"
+  ]
+
+-- | Within a @LedgerDB@ object, move the flat snapshot-option keys
+-- ('snapshotOptionKeys') into a nested @Snapshots@ object — the form
+-- cardano-config's @LedgerDB@ codec reads. The other @LedgerDB@ keys (@Backend@,
+-- @QueryBatchSize@, @LSMDatabasePath@, …) stay at the @LedgerDB@ level. If a
+-- @Snapshots@ key is already present it wins (it is an explicit policy, possibly
+-- the string @"Mithril"@), so the flat legacy keys are dropped rather than merged.
+nestSnapshotOptions :: Value -> Value
+nestSnapshotOptions (Object o)
+  | KM.null flat = Object o
+  | KM.member (K.fromText "Snapshots") rest = Object rest
+  | otherwise = Object (KM.insert (K.fromText "Snapshots") (Object flat) rest)
+ where
+  flat = KM.filterWithKey (\k _ -> K.toText k `elem` snapshotOptionKeys) o
+  rest = KM.filterWithKey (\k _ -> K.toText k `notElem` snapshotOptionKeys) o
+nestSnapshotOptions v = v
 
 -- | Look a key up in a rename table, returning it unchanged if absent.
 rename :: [(Text, Text)] -> K.Key -> K.Key

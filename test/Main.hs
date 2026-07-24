@@ -97,6 +97,7 @@ cases =
   , migrateRenameCase
   , migrateTracingCase
   , migrateApplicationNameCase
+  , migrateLedgerDbSnapshotsCase
   , migrateSiblingCase
   , migrateEnvelopeCollisionCase
   , migrateEnvelopedRenameCase
@@ -500,6 +501,48 @@ migrateApplicationNameCase =
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
+
+-- | 'migrate' gathers the flat snapshot-option keys directly under @LedgerDB@
+-- (which legacy configs and the node parser accept there) into a nested
+-- @LedgerDB.Snapshots@ object — the form cardano-config's @LedgerDB@ codec reads.
+-- @Backend@/@QueryBatchSize@ stay at the @LedgerDB@ level. Idempotent.
+migrateLedgerDbSnapshotsCase :: TestTree
+migrateLedgerDbSnapshotsCase =
+  testCase "migrate gathers flat LedgerDB snapshot options into LedgerDB.Snapshots" $
+    expectOk $ case fst (migrate legacyLedgerDB) of
+      m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
+        Just (Object ldb)
+          | any (\k -> KM.member (K.fromString k) ldb) snapOpts ->
+              Just ("a flat snapshot key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
+          | not (KM.member (K.fromString "Backend") ldb && KM.member (K.fromString "QueryBatchSize") ldb) ->
+              Just "Backend/QueryBatchSize were not kept at the LedgerDB level"
+          | otherwise -> case KM.lookup (K.fromString "Snapshots") ldb of
+              Just (Object snaps)
+                | not (all (\k -> KM.member (K.fromString k) snaps) snapOpts) ->
+                    Just ("LedgerDB.Snapshots is missing a moved key; has: " <> show (KM.keys snaps))
+                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "LedgerDB.Snapshots was not created as an object"
+        _ -> Just "Configuration.StorageConfig.LedgerDB not found"
+      _ -> Just "migrate did not produce an object"
+ where
+  snapOpts = ["SnapshotInterval", "NumOfDiskSnapshots"]
+  legacyLedgerDB =
+    Object $
+      KM.fromList
+        [ ( K.fromString "LedgerDB"
+          , Object $
+              KM.fromList
+                [ (K.fromString "Backend", String (T.pack "V2InMemory"))
+                , (K.fromString "QueryBatchSize", Number 100000)
+                , (K.fromString "SnapshotInterval", Number 864)
+                , (K.fromString "NumOfDiskSnapshots", Number 2)
+                ]
+          )
+        ]
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
 
 -- | 'migrate' does not drop a top-level sibling of an existing @Configuration@
 -- envelope: a stray @ByronGenesisFile@ next to the envelope is folded into the
