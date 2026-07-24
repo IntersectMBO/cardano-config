@@ -36,6 +36,7 @@ module Cardano.Configuration
   , File.ByronGenesisConfiguration (..)
   , File.RequiresNetworkMagic (..)
   , File.Hashed (..)
+  , File.MaybeHashed (..)
   , CLI.Credentials (..)
   , CLI.emptyCredentials
   , CLI.KESSource (..)
