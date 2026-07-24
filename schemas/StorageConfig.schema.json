@@ -48,26 +48,45 @@
             "description": "The LedgerDB configuration\nLedgerDB",
             "properties": {
                 "Backend": {
-                    "default": "V2InMemory",
-                    "description": "Which LedgerDB backend to use (V2InMemory or V2LSM)",
-                    "enum": [
-                        "V2InMemory",
-                        "V2LSM"
+                    "anyOf": [
+                        {
+                            "const": "V2InMemory",
+                            "title": "V2InMemory",
+                            "type": "string"
+                        },
+                        {
+                            "description": "V2LSM",
+                            "properties": {
+                                "LSM": {
+                                    "description": "LSM-tree backend options\nLSMOptions",
+                                    "properties": {
+                                        "DatabasePath": {
+                                            "description": "Custom path to the LSM database",
+                                            "format": "path",
+                                            "title": "DatabasePath",
+                                            "type": "string"
+                                        },
+                                        "ExportPath": {
+                                            "description": "Directory into which the LSM backend exports snapshots",
+                                            "format": "path",
+                                            "title": "ExportPath",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "title": "LSM",
+                                    "type": "object"
+                                }
+                            },
+                            "required": [
+                                "LSM"
+                            ],
+                            "title": "Object",
+                            "type": "object"
+                        }
                     ],
-                    "title": "Backend",
-                    "type": "string"
-                },
-                "LSMDatabasePath": {
-                    "description": "Custom path to the LSM database (V2LSM only)",
-                    "format": "path",
-                    "title": "LSMDatabasePath",
-                    "type": "string"
-                },
-                "LSMExportPath": {
-                    "description": "Directory into which the LSM backend exports snapshots (V2LSM only)",
-                    "format": "path",
-                    "title": "LSMExportPath",
-                    "type": "string"
+                    "default": "V2InMemory",
+                    "description": "LedgerDB backend: \"V2InMemory\" or an LSM object",
+                    "title": "Backend"
                 },
                 "QueryBatchSize": {
                     "default": 100000,

@@ -45,7 +45,7 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Data.Aeson (FromJSON, Value (..), eitherDecodeFileStrict', toJSON)
+import Data.Aeson (FromJSON, Result (..), Value (..), eitherDecodeFileStrict', fromJSON, toJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Functor.Identity (runIdentity)
@@ -98,6 +98,8 @@ cases =
   , migrateTracingCase
   , migrateApplicationNameCase
   , migrateLedgerDbSnapshotsCase
+  , migrateLedgerDbBackendCase
+  , backendRoundTripCase
   , migrateSiblingCase
   , migrateEnvelopeCollisionCase
   , migrateEnvelopedRenameCase
@@ -543,6 +545,61 @@ migrateLedgerDbSnapshotsCase =
   navigate v [] = Just v
   navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
   navigate _ _ = Nothing
+
+-- | 'migrate' folds the legacy flat @V2LSM@ backend keys under @LedgerDB@ into the
+-- tagged @Backend: { "LSM": { "DatabasePath": …, "ExportPath": … } }@ form.
+migrateLedgerDbBackendCase :: TestTree
+migrateLedgerDbBackendCase =
+  testCase "migrate folds the flat V2LSM backend into Backend.LSM" $
+    expectOk $ case fst (migrate legacyLedgerDB) of
+      m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
+        Just (Object ldb)
+          | any (\k -> KM.member (K.fromString k) ldb) ["LSMDatabasePath", "LSMExportPath"] ->
+              Just ("a flat LSM key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
+          | otherwise -> case KM.lookup (K.fromString "Backend") ldb of
+              Just (Object be) -> case KM.lookup (K.fromString "LSM") be of
+                Just (Object lsm)
+                  | KM.lookup (K.fromString "DatabasePath") lsm == Just (String (T.pack "lsm"))
+                      && KM.lookup (K.fromString "ExportPath") lsm == Just (String (T.pack "lsm-export")) ->
+                      if fst (migrate m) == m then Nothing else Just "migrate is not idempotent"
+                  | otherwise -> Just ("Backend.LSM has wrong contents: " <> show (KM.toList lsm))
+                _ -> Just "Backend.LSM was not created as an object"
+              other -> Just ("Backend was not folded into an object: " <> show other)
+        _ -> Just "Configuration.StorageConfig.LedgerDB not found"
+      _ -> Just "migrate did not produce an object"
+ where
+  legacyLedgerDB =
+    Object $
+      KM.fromList
+        [ ( K.fromString "LedgerDB"
+          , Object $
+              KM.fromList
+                [ (K.fromString "Backend", String (T.pack "V2LSM"))
+                , (K.fromString "LSMDatabasePath", String (T.pack "lsm"))
+                , (K.fromString "LSMExportPath", String (T.pack "lsm-export"))
+                ]
+          )
+        ]
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+
+-- | The @Backend@ codec round-trips both forms: the @"V2InMemory"@ string and the
+-- tagged @{ "LSM": { … } }@ object.
+backendRoundTripCase :: TestTree
+backendRoundTripCase =
+  testCase "LedgerDB Backend round-trips (V2InMemory string, tagged LSM object)" $ do
+    check V2InMemory
+    check (V2LSM (SJust "db") (SJust "exp"))
+    check (V2LSM SNothing SNothing)
+ where
+  check sel =
+    let ldb = LedgerDbConfiguration SNothing SNothing (SJust sel)
+     in case fromJSON (toJSON ldb) of
+          Success ldb' ->
+            assertBool ("round-trip changed the backend: " <> show (backendSelector ldb'))
+              (backendSelector ldb' == SJust sel)
+          Error e -> assertFailure ("round-trip failed to decode: " <> e)
 
 -- | 'migrate' does not drop a top-level sibling of an existing @Configuration@
 -- envelope: a stray @ByronGenesisFile@ next to the envelope is folded into the

@@ -29,7 +29,9 @@
 --     @StorageConfig@);
 --   * the flat snapshot-option keys directly under @LedgerDB@ (@SnapshotInterval@,
 --     @NumOfDiskSnapshots@, …) are gathered into a nested @LedgerDB.Snapshots@
---     object, the form the @LedgerDB@ codec reads (see 'nestSnapshotOptions');
+--     object, and the flat @V2LSM@ backend keys are folded into the tagged
+--     @Backend: { "LSM": … }@ form the @LedgerDB@ codec reads (see
+--     'nestSnapshotOptions'\/'nestBackend');
 --   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
 --     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered
 --     verbatim into an inline @HermodTracing@ object, a top-level @ApplicationName@
@@ -168,10 +170,11 @@ renameLegacy (Object o) =
   -- Inside an AcceptedConnectionsLimit object, also rewrite its (generic) direct
   -- sub-keys; the recursion above has already handled any deeper nesting. Inside a
   -- LedgerDB object, gather the flat snapshot-option keys into a nested Snapshots
-  -- object (see 'nestSnapshotOptions').
+  -- object and fold the flat V2LSM backend keys into the tagged Backend form (see
+  -- 'nestSnapshotOptions'\/'nestBackend').
   scoped k v
     | K.toText k == "AcceptedConnectionsLimit" = renameTopKeys acceptedConnectionsLimitFields v
-    | K.toText k == "LedgerDB" = nestSnapshotOptions v
+    | K.toText k == "LedgerDB" = nestBackend (nestSnapshotOptions v)
     | otherwise = v
 renameLegacy (Array a) =
   let results = fmap renameLegacy a
@@ -213,6 +216,26 @@ nestSnapshotOptions (Object o)
   flat = KM.filterWithKey (\k _ -> K.toText k `elem` snapshotOptionKeys) o
   rest = KM.filterWithKey (\k _ -> K.toText k `notElem` snapshotOptionKeys) o
 nestSnapshotOptions v = v
+
+-- | Within a @LedgerDB@ object, fold the legacy flat @V2LSM@ backend into the
+-- tagged form: @Backend: "V2LSM"@ (+ optional @LSMDatabasePath@\/@LSMExportPath@)
+-- becomes @Backend: { "LSM": { "DatabasePath": …, "ExportPath": … } }@. The
+-- @V2InMemory@ string is left unchanged.
+nestBackend :: Value -> Value
+nestBackend (Object o)
+  | KM.lookup "Backend" o == Just (String "V2LSM") =
+      Object
+        . KM.insert "Backend" (Object (KM.singleton "LSM" (Object lsm)))
+        . KM.delete "LSMDatabasePath"
+        . KM.delete "LSMExportPath"
+        $ o
+  | otherwise = Object o
+ where
+  lsm =
+    KM.fromList $
+      [ ("DatabasePath", v) | Just v <- [KM.lookup "LSMDatabasePath" o] ]
+        <> [ ("ExportPath", v) | Just v <- [KM.lookup "LSMExportPath" o] ]
+nestBackend v = v
 
 -- | Look a key up in a rename table, returning it unchanged if absent.
 rename :: [(Text, Text)] -> K.Key -> K.Key
