@@ -384,6 +384,8 @@ migrateRenameCase =
     , "LastKnownBlockVersion-Major"
     , "LastKnownBlockVersion-Minor"
     , "LastKnownBlockVersion-Alt"
+    , "ApplicationVersion"
+    , "EnableP2P"
     , "Protocol"
     , "MaxKnownMajorProtocolVersion"
     ]

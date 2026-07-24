@@ -109,6 +109,7 @@ acceptedConnectionsLimitFields =
 -- longer parsed): the Byron @LastKnownBlockVersion-*@ trio and
 -- @PBftSignatureThreshold@ now come from consensus defaults rather than config;
 -- @ApplicationVersion@ is the (now hard-coded) Byron software-version number;
+-- @EnableP2P@ is the vestigial P2P switch (P2P is now the only mode);
 -- @Protocol@ is the vestigial protocol selector; and @MaxKnownMajorProtocolVersion@
 -- is a dead key the node never read at all. Unlike a genuine typo (which is kept,
 -- so nothing is lost) these are known-obsolete keys, so @migrate@ removes them
@@ -126,6 +127,7 @@ removedFields =
   , "LastKnownBlockVersion-Minor"
   , "LastKnownBlockVersion-Alt"
   , "ApplicationVersion"
+  , "EnableP2P"
   , "Protocol"
   , "MaxKnownMajorProtocolVersion"
   ]
