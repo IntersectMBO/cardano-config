@@ -96,6 +96,7 @@ cases =
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
+  , migrateApplicationNameCase
   , migrateSiblingCase
   , migrateEnvelopeCollisionCase
   , migrateEnvelopedRenameCase
@@ -401,14 +402,13 @@ migrateRenameCase =
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
 
--- | 'migrate' handles the two tracing key families of a legacy flat config: the
--- keys that @trace-dispatcher@'s own parser reads (@TraceOptions@ and friends)
--- are gathered into an inline @HermodTracing@ object under @Configuration@, and
--- the obsolete iohk-monitoring keys (@UseTraceDispatcher@, @minSeverity@,
--- @defaultScribes@, @options@, …) are dropped entirely. The result is idempotent.
+-- | 'migrate' gathers the flat trace-dispatcher keys /verbatim/ into an inline
+-- @HermodTracing@ object under @Configuration@ (keeping the flat names — including
+-- @TraceOptionResourceFrequency@, which has no inner form), and drops the obsolete
+-- iohk-monitoring keys (@UseTraceDispatcher@, @minSeverity@, …). Idempotent.
 migrateTracingCase :: TestTree
 migrateTracingCase =
-  testCase "migrate groups trace-dispatcher keys under HermodTracing and drops obsolete logging keys" $
+  testCase "migrate gathers trace-dispatcher keys verbatim under HermodTracing and drops obsolete logging keys" $
     expectOk $ case fst (migrate legacyTracing) of
       m@(Object top)
         | any (`elem` obsolete) (allKeys m) ->
@@ -427,8 +427,14 @@ migrateTracingCase =
             _ -> Just "Configuration is not an object"
       _ -> Just "migrate did not produce an object"
  where
-  -- The trace-dispatcher legacy keys that must end up inside HermodTracing.
-  tracingKeys = ["TraceOptions", "TraceOptionForwarder", "TraceOptionMetricsPrefix"]
+  -- The flat trace-dispatcher keys that must end up (verbatim) inside HermodTracing,
+  -- including the no-inner frequency key which must be kept, not dropped.
+  tracingKeys =
+    [ "TraceOptions"
+    , "TraceOptionForwarder"
+    , "TraceOptionMetricsPrefix"
+    , "TraceOptionResourceFrequency"
+    ]
   -- The obsolete iohk-monitoring keys that must not survive anywhere.
   obsolete =
     [ "UseTraceDispatcher"
@@ -445,12 +451,49 @@ migrateTracingCase =
         [ (K.fromString "TraceOptions", Object (KM.fromList [(K.fromString "", Object KM.empty)]))
         , (K.fromString "TraceOptionForwarder", Object KM.empty)
         , (K.fromString "TraceOptionMetricsPrefix", String (T.pack "cardano.node.metrics."))
+        , (K.fromString "TraceOptionResourceFrequency", Number 1000)
         , (K.fromString "UseTraceDispatcher", Bool True)
         , (K.fromString "TurnOnLogging", Bool True)
         , (K.fromString "TurnOnLogMetrics", Bool True)
         , (K.fromString "minSeverity", String (T.pack "Critical"))
         , (K.fromString "defaultScribes", Array mempty)
         , (K.fromString "options", Object KM.empty)
+        ]
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
+
+-- | 'migrate' collapses a top-level @ApplicationName@ (the obsolete Byron
+-- software-version name, now repurposed as the tracing node name) into
+-- @HermodTracing.TraceOptionNodeName@, and drops the Byron @ApplicationVersion@.
+-- The result is idempotent.
+migrateApplicationNameCase :: TestTree
+migrateApplicationNameCase =
+  testCase "migrate collapses top-level ApplicationName to HermodTracing.TraceOptionNodeName, drops ApplicationVersion" $
+    expectOk $ case fst (migrate legacyByron) of
+      m@(Object top)
+        | "ApplicationVersion" `elem` allKeys m -> Just "ApplicationVersion survived"
+        | "ApplicationName" `elem` allKeys m -> Just "top-level ApplicationName was not collapsed"
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg) -> case KM.lookup (K.fromString "HermodTracing") cfg of
+              Just (Object h) -> case KM.lookup (K.fromString "TraceOptionNodeName") h of
+                Just (String n)
+                  | n /= T.pack "cardano-sl" -> Just ("TraceOptionNodeName has wrong value: " <> show n)
+                  | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                  | otherwise -> Nothing
+                _ -> Just "HermodTracing.TraceOptionNodeName is missing"
+              _ -> Just "HermodTracing was not created as an object"
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  -- A legacy flat config with the Byron software version at the top level, plus
+  -- TraceOptions so the resulting HermodTracing is a valid tracing object.
+  legacyByron =
+    Object $
+      KM.fromList
+        [ (K.fromString "ApplicationName", String (T.pack "cardano-sl"))
+        , (K.fromString "ApplicationVersion", Number 0)
+        , (K.fromString "TraceOptions", Object (KM.fromList [(K.fromString "", Object KM.empty)]))
         ]
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a

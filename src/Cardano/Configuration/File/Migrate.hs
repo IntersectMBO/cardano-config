@@ -28,10 +28,12 @@
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
 --   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
---     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered into
---     an inline @HermodTracing@ object, and the obsolete keys of the old
---     iohk-monitoring logging system (@setupScribes@, @minSeverity@, … — no longer
---     read by anything) are dropped (see 'tracingLegacyKeys'\/'tracingObsoleteKeys');
+--     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered
+--     verbatim into an inline @HermodTracing@ object, a top-level @ApplicationName@
+--     is collapsed into @HermodTracing.TraceOptionNodeName@ (the tracing node
+--     name), and the obsolete keys of the old iohk-monitoring logging system
+--     (@setupScribes@, @minSeverity@, … — no longer read by anything) are dropped
+--     (see 'tracingLegacyKeys'\/'tracingObsoleteKeys');
 --   * a section key (whether an inline object or a path to a sub-file), an
 --     existing @HermodTracing@ key, and any unrecognised key are kept at the
 --     @Configuration@ level as-is (so nothing is silently dropped);
@@ -106,16 +108,24 @@ acceptedConnectionsLimitFields =
 -- | The fields removed in the current series. @migrate@ drops them (they are no
 -- longer parsed): the Byron @LastKnownBlockVersion-*@ trio and
 -- @PBftSignatureThreshold@ now come from consensus defaults rather than config;
+-- @ApplicationVersion@ is the (now hard-coded) Byron software-version number;
 -- @Protocol@ is the vestigial protocol selector; and @MaxKnownMajorProtocolVersion@
 -- is a dead key the node never read at all. Unlike a genuine typo (which is kept,
 -- so nothing is lost) these are known-obsolete keys, so @migrate@ removes them
 -- rather than carry them forward as perpetual unrecognised-key warnings.
+--
+-- The software-version /name/ (@ApplicationName@) is handled separately (see
+-- 'reshape'): a top-level @ApplicationName@ is collapsed into
+-- @HermodTracing.TraceOptionNodeName@ rather than dropped here, since it must be
+-- treated top-level only (the same name is a live trace-dispatcher field inside a
+-- @HermodTracing@ object, which must survive at depth).
 removedFields :: [Text]
 removedFields =
   [ "PBftSignatureThreshold"
   , "LastKnownBlockVersion-Major"
   , "LastKnownBlockVersion-Minor"
   , "LastKnownBlockVersion-Alt"
+  , "ApplicationVersion"
   , "Protocol"
   , "MaxKnownMajorProtocolVersion"
   ]
@@ -172,9 +182,13 @@ rename table k = maybe k K.fromText (lookup (K.toText k) table)
 -- | The flat top-level tracing keys that @trace-dispatcher@'s own parser reads
 -- directly (its \"legacy\" configuration format — see @parseAsLegacy@ in
 -- @Cardano.Logging.ConfigurationParser@). These belong inside @HermodTracing@:
--- @migrate@ gathers them into an inline @HermodTracing@ object, which @resolve@
--- then hands to @trace-dispatcher@ verbatim. @TraceOptions@ is the only one the
--- parser requires; the rest are optional, but all are grouped when present.
+-- @migrate@ gathers them into an inline @HermodTracing@ object /verbatim/, which
+-- @resolve@ then hands to @trace-dispatcher@. We keep the flat names rather than
+-- rewrite them to the inner (@Options@, @Forwarder@, …) spelling because two of
+-- them — @TraceOptionResourceFrequency@ and @TraceOptionLedgerMetricsFrequency@ —
+-- have no inner counterpart, so a full rename would silently drop them.
+-- @TraceOptions@ is the only one the parser requires; the rest are optional, but
+-- all are grouped when present.
 tracingLegacyKeys :: [Text]
 tracingLegacyKeys =
   [ "TraceOptions"
@@ -244,31 +258,36 @@ reshape (Object top) =
     [EnvelopeKeyCollision (K.toText k) | k <- KM.keys siblings, k `KM.member` envelopeBody]
 
   -- Group each body key under its component section. A flat property key nests
-  -- under the section that owns it; a flat trace-dispatcher key nests under
-  -- HermodTracing; an obsolete iohk-monitoring key is dropped; a section key,
-  -- an existing HermodTracing or any unrecognised key stays at the Configuration
-  -- level as-is. A mixed input (a section object plus some of its flat keys, or
-  -- HermodTracing alongside flat tracing keys) is deep-merged.
+  -- under the section that owns it; a flat trace-dispatcher key nests (verbatim)
+  -- under HermodTracing; a top-level @ApplicationName@ is collapsed into
+  -- @HermodTracing.TraceOptionNodeName@ (the tracing node name — the obsolete
+  -- Byron software-version name is repurposed as it, since nothing else reads it);
+  -- an obsolete iohk-monitoring key is dropped; a section key, an existing
+  -- HermodTracing or any unrecognised key stays at the Configuration level as-is.
+  -- A mixed input (a section object plus some of its flat keys, or HermodTracing
+  -- alongside flat tracing keys) is deep-merged.
   configuration = KM.foldrWithKey place KM.empty body
   place k v
     | key `elem` tracingObsoleteKeys = id
-    | key `elem` tracingLegacyKeys = nestUnder "HermodTracing"
-    | Just section <- lookup key propertyToSection = nestUnder section
+    | key `elem` tracingLegacyKeys = nestUnderAs "HermodTracing" k
+    | key == "ApplicationName" = nestUnderAs "HermodTracing" (K.fromText "TraceOptionNodeName")
+    | Just section <- lookup key propertyToSection = nestUnderAs section k
     | otherwise = keepFlat
    where
     key = K.toText k
     keepFlat = KM.insertWith mergeValues k v
-    -- Nest a flat property under its target section, unless that section is
-    -- already present as a non-object — a path to a sub-file. Merging an inline
-    -- key into a file reference would silently drop the key (a file path is not an
-    -- object, so 'mergeValues' would keep the path and lose the value), so in that
-    -- case the property is kept at the Configuration level instead, where it
-    -- surfaces as an unrecognised-key warning on the next parse rather than being
-    -- lost. When the section is absent (a purely flat document) or an inline
-    -- object, the property nests as normal.
-    nestUnder section = case KM.lookup (K.fromText section) body of
+    -- Nest @v@ under @section@ using @targetKey@ (the original key, except a
+    -- top-level @ApplicationName@ is nested as @TraceOptionNodeName@), unless the
+    -- section is already present as a non-object — a path to a sub-file. Merging an
+    -- inline key into a file reference would silently drop the key (a file path is
+    -- not an object, so 'mergeValues' would keep the path and lose the value), so
+    -- in that case the key is kept flat at the Configuration level instead, where
+    -- it surfaces as an unrecognised-key warning on the next parse rather than
+    -- being lost. When the section is absent (a purely flat document) or an inline
+    -- object, the key nests as normal.
+    nestUnderAs section targetKey = case KM.lookup (K.fromText section) body of
       Just v' | not (isObject v') -> keepFlat
-      _ -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton k v))
+      _ -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton targetKey v))
     isObject Object{} = True
     isObject _ = False
 reshape v = (v, [])
