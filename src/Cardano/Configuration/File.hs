@@ -200,6 +200,11 @@ parseConfigurationFiles cfgFile = do
   (version, minNodeVer, configValue) <- splitEnvelope mainValue
   let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile
+  -- Versions 1 to 'currentFormatVersion' are all accepted — that is what the
+  -- package version's first component states (@cardano-config-X.y.z.v@ parses up
+  -- to and including @X@). They are enumerated literally rather than derived from
+  -- that constant, because each one needs its own parse path, so this list only
+  -- ever grows.
   config <- case version of
     1 -> parseConfigurationVersion1 root minNodeVer configValue
     n ->

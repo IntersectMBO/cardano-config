@@ -1,4 +1,4 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/MempoolConfig.schema.json",
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/MempoolConfig.schema.json",
     "MempoolCapacityBytesOverride": "NoOverride"
 }

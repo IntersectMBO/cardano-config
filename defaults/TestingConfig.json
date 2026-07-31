@@ -1,4 +1,4 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/TestingConfig.schema.json",
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/TestingConfig.schema.json",
     "ExperimentalHardForksEnabled": false
 }

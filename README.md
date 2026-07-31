@@ -22,7 +22,7 @@ under `Configuration`, each given inline or as a path to a split sub-file:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
   "Version": 1,
   "MinNodeVersion": "11.2",
   "Configuration": {
@@ -41,6 +41,24 @@ A component split out into its own sub-file may declare its own `$schema`
 pointing to that component's schema (e.g. a `StorageConfig` sub-file uses `schemas/StorageConfig.schema.json`),
 so editors and validators pick up the right schema for the sub-file. The key is
 an annotation: the parser accepts and ignores it.
+
+### Schema versioning
+
+`Version` is the configuration format version, and it is the **first component of
+the package version**, which states how far the parser goes: `cardano-config-X.y.z.v`
+parses every format version up to and including `X`, and writes `X`. The other
+three components carry changes to the Haskell code alone, so the schemas are not
+changed without bumping the first.
+
+Each format version is published under its own `vX` git tag — `v1`, `v2`, … — cut
+alongside the major release that introduces it:
+
+```
+https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json
+```
+
+`migrate` fills in `$schema` when it is absent but never overwrites one that is
+already there, so a URL pinned to an earlier `vX` survives.
 
 To port an old config to the new format, run `cardano-config migrate` (it reads
 `-` as stdin, so you can fetch and convert in one step):
@@ -104,7 +122,7 @@ be passed straight to `--config` (a few show just the relevant fragment).
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
   "Version": 1,
   "MinNodeVersion": "11.2",
   "Configuration": {
@@ -121,7 +139,7 @@ Give it the keys you want set, and the component's base default (and, for
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
   "Version": 1,
   "MinNodeVersion": "11.2",
   "Configuration": {

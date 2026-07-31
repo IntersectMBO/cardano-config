@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/StorageConfig.schema.json",
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/StorageConfig.schema.json",
     "DatabasePath": "db",
     "LedgerDB": {
         "Backend": "V2InMemory",
