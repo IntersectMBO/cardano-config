@@ -31,7 +31,10 @@ import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configurationSchemasWithDefaults
+  , currentFormatVersion
   , legacyOneFileConfigSchemaWithDefaults
+  , packageFormatVersion
+  , schemaId
   , splitConfigSchemaWithDefaults
   )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
@@ -89,6 +92,7 @@ cases =
   , migrationWarningCase
   , migrationErrorCase
   , splitSubfileSchemaCase
+  , formatVersionCase
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
@@ -251,7 +255,6 @@ splitSubfileSchemaCase =
     results <- mapM check pairs
     expectOk (case [m | Just m <- results] of [] -> Nothing; (m : _) -> Just m)
  where
-  base = "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/"
   pairs =
     [ ("storage.json", "StorageConfig")
     , ("consensus.json", "ConsensusConfig")
@@ -265,7 +268,7 @@ splitSubfileSchemaCase =
   check (file, comp) = do
     sub <- decodeData ("test/examples/" <> file) :: IO (Either String Value)
     sch <- decodeData ("schemas/" <> comp <> ".schema.json") :: IO (Either String Value)
-    let url = String (T.pack (base <> comp <> ".schema.json"))
+    let url = String (schemaId (comp <> ".schema.json"))
     pure $ case (sub, sch) of
       (Left e, _) -> Just (file <> ": " <> e)
       (_, Left e) -> Just (comp <> ".schema.json: " <> e)
@@ -278,6 +281,27 @@ splitSubfileSchemaCase =
       _ -> Just (file <> ": not a JSON object")
   properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
   properties _ = KM.empty
+
+-- | The configuration format version is the first component of the package
+-- version, and that component is reserved for it: the schemas are not changed
+-- without bumping it. Bumping it therefore has to be deliberate — a new parse
+-- path in 'parseConfigurationFiles', a new @schemas\/@ generation and a new
+-- release tag for the @$schema@ URLs — so this guards against the package's first
+-- component moving on its own (or against the format version moving without it).
+-- Pre-1.0 the package is @0.x.x.x@ while the format is already 1, which
+-- 'packageFormatVersion' accounts for.
+formatVersionCase :: TestTree
+formatVersionCase =
+  testCase "the format version matches the package version's first component" $
+    expectOk $
+      if currentFormatVersion == packageFormatVersion
+        then Nothing
+        else
+          Just $
+            "currentFormatVersion is "
+              <> show currentFormatVersion
+              <> " but the package version implies "
+              <> show packageFormatVersion
 
 -- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
 -- envelope keys appear at the top, each component's flat keys are grouped under
