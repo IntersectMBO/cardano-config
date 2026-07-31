@@ -19,8 +19,8 @@
 --   * renamed keys are rewritten to their current names and removed keys are
 --     dropped, at every depth (so the grouping below, which keys off the current
 --     names, places them correctly);
---   * @$schema@ (the published schema URL for this release, see
---     'Cardano.Configuration.Schema.releaseTag') and @Version@
+--   * @$schema@ (the published schema URL for this format version, see
+--     'Cardano.Configuration.Schema.schemaTag') and @Version@
 --     ('Cardano.Configuration.Schema.currentFormatVersion') are added when absent;
 --     an existing @$schema@\/@Version@\/@MinNodeVersion@ is carried through (so a
 --     @$schema@ URL pinned to an earlier release is not clobbered);

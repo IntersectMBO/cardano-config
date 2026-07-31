@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/cardano-config-1.0.0.0/schemas/ProtocolConfig.schema.json",
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/ProtocolConfig.schema.json",
     "RequiresNetworkMagic": "RequiresMagic",
     "ByronGenesisFile": "byron-genesis.json",
     "ByronGenesisHash": "d4b8de7a11d929a323373cbab6c1a9bdc931beffff11db111cf9d57356ee1937",

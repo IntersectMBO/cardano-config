@@ -282,14 +282,14 @@ splitSubfileSchemaCase =
   properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
   properties _ = KM.empty
 
--- | The configuration format version is the first component of the package
--- version, and that component is reserved for it: the schemas are not changed
--- without bumping it. Bumping it therefore has to be deliberate — a new parse
--- path in 'parseConfigurationFiles', a new @schemas\/@ generation and a new
--- release tag for the @$schema@ URLs — so this guards against the package's first
--- component moving on its own (or against the format version moving without it).
--- Pre-1.0 the package is @0.x.x.x@ while the format is already 1, which
--- 'packageFormatVersion' accounts for.
+-- | The newest configuration format version is the first component of the package
+-- version: @cardano-config-X.y.z.v@ parses every version up to and including @X@,
+-- so the schemas are not changed without bumping it. Bumping it therefore has to
+-- be deliberate — a new parse path in 'parseConfigurationFiles', a new @schemas\/@
+-- generation and a new @vX@ tag for the @$schema@ URLs — so this guards against
+-- the package's first component moving on its own (or against the format version
+-- moving without it). Pre-1.0 the package is @0.x.x.x@ while the format is already
+-- 1, which 'packageFormatVersion' accounts for.
 formatVersionCase :: TestTree
 formatVersionCase =
   testCase "the format version matches the package version's first component" $
