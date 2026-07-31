@@ -197,9 +197,11 @@ splitEnvelope value =
       throwIO $
         ConfigurationParsingError SNothing SNothing [] "expected the configuration to be a JSON/YAML object"
  where
-  -- A missing @Version@ is the legacy version 1. A present one must be an
-  -- integer in range (not e.g. 1.4 or a huge scientific literal): the schema
-  -- declares it as an integer, so anything else is a hard error.
+  -- A missing @Version@ is the legacy version 1 — a fixed historical fact about
+  -- unversioned documents, not @currentFormatVersion@: should the format ever
+  -- reach 2, a document with no @Version@ is still a version-1 document. A present
+  -- one must be an integer in range (not e.g. 1.4 or a huge scientific literal):
+  -- the schema declares it as an integer, so anything else is a hard error.
   lookupVersion o = case KM.lookup "Version" o of
     Nothing -> pure 1
     Just (Number n) ->

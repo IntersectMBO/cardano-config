@@ -19,9 +19,11 @@
 --   * renamed keys are rewritten to their current names and removed keys are
 --     dropped, at every depth (so the grouping below, which keys off the current
 --     names, places them correctly);
---   * @$schema@ (the published schema URL) and @Version@ (1) are added when
---     absent; an existing @$schema@\/@Version@\/@MinNodeVersion@ is carried through
---     (so a pinned @$schema@ URL is not clobbered);
+--   * @$schema@ (the published schema URL for this release, see
+--     'Cardano.Configuration.Schema.releaseTag') and @Version@
+--     ('Cardano.Configuration.Schema.currentFormatVersion') are added when absent;
+--     an existing @$schema@\/@Version@\/@MinNodeVersion@ is carried through (so a
+--     @$schema@ URL pinned to an earlier release is not clobbered);
 --   * a flat top-level property key is nested under the component section that
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
@@ -46,7 +48,7 @@ module Cardano.Configuration.File.Migrate
 
 import Cardano.Configuration.File.Lint (ConfigWarning (..))
 import Cardano.Configuration.File.Merge (mergeValues)
-import Cardano.Configuration.Schema (componentPropertyNames, schemaId)
+import Cardano.Configuration.Schema (componentPropertyNames, currentFormatVersion, schemaId)
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
@@ -215,11 +217,12 @@ reshape (Object top) =
   , collisionWarnings
   )
  where
-  -- Carry an existing $schema through (so a user's pinned schema URL survives),
-  -- otherwise default to the published one on the main branch.
+  -- Carry an existing $schema through (so a user's pinned schema URL survives —
+  -- including one pinned to an earlier release, which is the schema that document
+  -- was written against), otherwise default to this release's published URL.
   schemaValue = fromMaybe (String (schemaId "config.schema.json")) (KM.lookup "$schema" top)
-  -- Carry an existing Version, otherwise default to the current format (1).
-  version = fromMaybe (Number 1) (KM.lookup "Version" top)
+  -- Carry an existing Version, otherwise default to the format this library writes.
+  version = fromMaybe (Number (fromIntegral currentFormatVersion)) (KM.lookup "Version" top)
   -- Carry MinNodeVersion through if present; never invent one (it has no
   -- default, and its absence is itself a useful warning on the next parse).
   withMinNodeVersion = maybe id (KM.insert "MinNodeVersion") (KM.lookup "MinNodeVersion" top)

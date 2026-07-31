@@ -45,6 +45,11 @@ module Cardano.Configuration.Schema
   , localConnectionsSchema
   , mempoolSchema
   , testingSchema
+
+    -- * Versioning
+  , currentFormatVersion
+  , packageFormatVersion
+  , releaseTag
   , schemaId
   ) where
 
@@ -66,6 +71,8 @@ import Data.List (nub)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Version (versionBranch)
+import Paths_cardano_config (version)
 
 storageSchema :: Value
 storageSchema = component "StorageConfig" rawStorageSchema
@@ -251,7 +258,15 @@ versionRef =
   object
     [ "type" .= ("integer" :: Text)
     , "minimum" .= (1 :: Int)
-    , "$comment" .= ("The configuration format version (currently 1)." :: Text)
+    , "$comment"
+        .= ( "The configuration format version (currently "
+               <> T.pack (show currentFormatVersion)
+               <> "). It tracks the major version of cardano-config, so the"
+               <> " cardano-config-"
+               <> T.pack (show currentFormatVersion)
+               <> ".x.x.x line writes this version." ::
+               Text
+           )
     ]
 
 minNodeVersionRef :: Value
@@ -279,7 +294,7 @@ configurationRef =
 -- | The @$schema@ annotation: the URL of the schema this configuration follows,
 -- a sibling of @Version@. Lets editors and validators pick up the schema, and
 -- lets a file declare which schema it conforms to. Defaults to this schema's own
--- published URL.
+-- published URL, pinned to the release tag that generated it (see 'releaseTag').
 schemaRef :: Value
 schemaRef =
   object
@@ -287,7 +302,9 @@ schemaRef =
     , "default" .= schemaId "config.schema.json"
     , "$comment"
         .= ( "URL of the JSON Schema this configuration follows (the standard $schema annotation),"
-               <> " a sibling of Version, for editors and validators." ::
+               <> " a sibling of Version, for editors and validators."
+               <> " Pinned to a cardano-config release tag, so it identifies one exact schema;"
+               <> " point it at a later release to validate against that release's schema." ::
                Text
            )
     ]
@@ -325,10 +342,56 @@ componentPropertyNames =
 draftURI :: Text
 draftURI = "http://json-schema.org/draft-07/schema#"
 
--- | The @$id@ for a committed schema file, where it is published in the repo.
+-- | The configuration format version: the @Version@ that
+-- 'Cardano.Configuration.File.Migrate.migrate' stamps on a document, and the
+-- version of the schemas under @schemas\/@.
+--
+-- It is the /first component/ of the package version, and that component is
+-- reserved for it: the schemas are not changed without bumping it, and the other
+-- three components carry changes to the Haskell code alone. So
+-- @cardano-config-1.x.x.x@ all publish format version 1, and one schema document
+-- serves the whole line. 'packageFormatVersion' and the test suite keep the two
+-- from drifting.
+--
+-- This is the version /written/, not the set accepted. The parser must go on
+-- accepting every earlier format version indefinitely, so its dispatch
+-- (@parseConfigurationFiles@) enumerates versions literally rather than deriving
+-- them from here — which is also why bumping this constant is a deliberate act
+-- with a new parse path attached, rather than a consequence of a version bump.
+currentFormatVersion :: Int
+currentFormatVersion = 1
+
+-- | The format version implied by the package version: its first component, with
+-- the pre-1.0 series (@0.x.x.x@) counting as heading for version 1. Should equal
+-- 'currentFormatVersion'; the test suite asserts it, so bumping the package's
+-- first component fails the build until the format version and its parse path
+-- follow.
+packageFormatVersion :: Int
+packageFormatVersion = case versionBranch version of
+  major : _ -> max 1 major
+  [] -> 1
+
+-- | The git tag the published schema URLs point at: the tag of the major release
+-- that defined this format version, @cardano-config-\<n\>.0.0.0@.
+--
+-- Only the major appears, because only a major bump can change the schema: every
+-- @1.x.x.x@ release serves the same schema document, so that document has one
+-- canonical URL rather than one per release. The tag makes it immutable, so a
+-- configuration's @$schema@ identifies exactly one schema, for good.
+--
+-- Assumes the major line opens at @\<n\>.0.0.0@ — the tag must exist for the URL
+-- to resolve, so while the package is still @0.x.x.x@ this points at the
+-- not-yet-created @cardano-config-1.0.0.0@ tag.
+releaseTag :: Text
+releaseTag = "cardano-config-" <> T.pack (show currentFormatVersion) <> ".0.0.0"
+
+-- | The @$id@ for a committed schema file: where it is published in the repo, at
+-- the tag of the major release that defined this format version (see 'releaseTag').
 schemaId :: FilePath -> Text
 schemaId file =
-  "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/"
+  "https://raw.githubusercontent.com/IntersectMBO/cardano-config/"
+    <> releaseTag
+    <> "/schemas/"
     <> T.pack file
 
 -- | Post-process a component's raw schema into its published form.
@@ -353,7 +416,8 @@ withSchemaProp name (Object o) =
       , "description"
           .= ( "URL of the JSON Schema this "
                  <> name
-                 <> " file follows (the $schema annotation), for editors and validators." ::
+                 <> " file follows (the $schema annotation), for editors and validators."
+                 <> " Pinned to a cardano-config release tag." ::
                  Text
              )
       ]

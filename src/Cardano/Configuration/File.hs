@@ -200,6 +200,9 @@ parseConfigurationFiles cfgFile = do
   (version, minNodeVer, configValue) <- splitEnvelope mainValue
   let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile
+  -- The accepted versions are enumerated literally, not derived from
+  -- 'currentFormatVersion': every format version this library has ever written
+  -- must go on being parseable, so this list only ever grows.
   config <- case version of
     1 -> parseConfigurationVersion1 root minNodeVer configValue
     n ->
