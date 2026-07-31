@@ -1,4 +1,4 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ConsensusConfig.schema.json",
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/cardano-config-1.0.0.0/schemas/ConsensusConfig.schema.json",
     "ConsensusMode": "GenesisMode"
 }

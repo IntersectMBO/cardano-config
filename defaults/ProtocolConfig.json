@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/main/schemas/ProtocolConfig.schema.json",
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/cardano-config-1.0.0.0/schemas/ProtocolConfig.schema.json",
     "RequiresNetworkMagic": "RequiresNoMagic",
     "StartAsNonProducingNode": false
 }
