@@ -26,6 +26,15 @@ data-files:
   test/examples/*.json
   variants/**/*.json
 
+source-repository head
+  type: git
+  location: https://github.com/IntersectMBO/cardano-config
+
+source-repository this
+  type: git
+  location: https://github.com/IntersectMBO/cardano-config
+  tag: cardano-config-1.0.0.0
+
 common warnings
   ghc-options:
     -Wall
@@ -134,12 +143,12 @@ library commands
 
   build-depends:
     aeson,
-    aeson-pretty,
+    aeson-pretty ^>=0.8.11,
     base,
     bytestring,
     cardano-config:internal,
     optparse-applicative,
-    safe-exceptions,
+    safe-exceptions ^>=0.1.7,
     text,
     yaml,
 
