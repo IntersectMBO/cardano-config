@@ -23,6 +23,10 @@ extra-doc-files:
 data-files:
   defaults/*.json
   schemas/*.json
+  test/credentials/*.cert
+  test/credentials/*.creds
+  test/credentials/*.key
+  test/credentials/*.skey
   test/examples/*.json
   variants/**/*.json
 
@@ -239,11 +243,15 @@ test-suite cardano-config-test
 
   other-modules:
     Paths_cardano_config
+    Test.Credentials
 
   build-depends:
     aeson,
     base,
+    bytestring,
+    cardano-binary,
     cardano-config:internal,
+    cardano-config:keys,
     cardano-crypto-class,
     cardano-crypto-wrapper,
     cardano-ledger-alonzo,

@@ -55,13 +55,15 @@ import qualified Data.Text as T
 import Data.Word (Word64)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
 import Paths_cardano_config (getDataFileName)
+import qualified Test.Credentials as Credentials
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase)
 
 main :: IO ()
 main = do
   schema <- schemaTests
-  defaultMain $ testGroup "cardano-config" (cases <> [schema])
+  keys <- Credentials.tests
+  defaultMain $ testGroup "cardano-config" (cases <> [schema, keys])
 
 -- | The example/parser/resolver cases, in the order they used to be checked.
 cases :: [TestTree]
