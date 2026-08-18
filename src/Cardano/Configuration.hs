@@ -379,8 +379,8 @@ roleFromCredentials :: CLI.Credentials -> File.BlockProducerOrRelay
 roleFromCredentials c
   | any
       isSJust
-      [ () <$ CLI.byronDelegationCertificate c
-      , () <$ CLI.byronSigningKey c
+      [ () <$ CLI.byronDelegationCertificateFile c
+      , () <$ CLI.byronSigningKeyFile c
       , () <$ CLI.shelleyKES c
       , () <$ CLI.shelleyVRFKey c
       , () <$ CLI.shelleyOperationalCertificate c

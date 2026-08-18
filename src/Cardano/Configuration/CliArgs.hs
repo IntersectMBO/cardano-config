@@ -91,8 +91,8 @@ data KESSource
 -- their presence is what makes the node a block producer (see
 -- @roleFromCredentials@).
 data Credentials = Credentials
-  { byronDelegationCertificate :: StrictMaybe FilePath
-  , byronSigningKey :: StrictMaybe FilePath
+  { byronDelegationCertificateFile :: StrictMaybe FilePath
+  , byronSigningKeyFile :: StrictMaybe FilePath
   , shelleyKES :: StrictMaybe KESSource
   , shelleyVRFKey :: StrictMaybe FilePath
   , shelleyOperationalCertificate :: StrictMaybe FilePath
@@ -106,8 +106,8 @@ data Credentials = Credentials
 emptyCredentials :: Credentials
 emptyCredentials =
   Credentials
-    { byronDelegationCertificate = SNothing
-    , byronSigningKey = SNothing
+    { byronDelegationCertificateFile = SNothing
+    , byronSigningKeyFile = SNothing
     , shelleyKES = SNothing
     , shelleyVRFKey = SNothing
     , shelleyOperationalCertificate = SNothing

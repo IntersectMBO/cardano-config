@@ -211,8 +211,8 @@ credentialsValue c =
   object $
     mapMaybe
       strictMaybeToMaybe
-      [ ("ByronDelegationCertificate" .=) <$> CLI.byronDelegationCertificate c
-      , ("ByronSigningKey" .=) <$> CLI.byronSigningKey c
+      [ ("ByronDelegationCertificate" .=) <$> CLI.byronDelegationCertificateFile c
+      , ("ByronSigningKey" .=) <$> CLI.byronSigningKeyFile c
       , ("ShelleyKES" .=) . kesSourceValue <$> CLI.shelleyKES c
       , ("ShelleyVRFKey" .=) <$> CLI.shelleyVRFKey c
       , ("ShelleyOperationalCertificate" .=) <$> CLI.shelleyOperationalCertificate c
