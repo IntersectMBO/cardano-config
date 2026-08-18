@@ -1,17 +1,12 @@
 -- | Reading the block-forging credentials named by 'Credentials'.
 --
--- This is the node-facing half of the key layer: 'Cardano.Key' and
--- 'Cardano.Serialise' (the @cardano-config:keys@ component) turn bytes into key
--- material and do no IO at all; this module opens the files that
--- 'Cardano.Configuration.CliArgs.Credentials' points at and decodes them.
+-- The @cardano-config:keys@ component turns bytes into key material and does no
+-- IO; this module opens the files that
+-- 'Cardano.Configuration.CliArgs.Credentials' names and decodes them.
 --
--- The logic is ported from @cardano-node@'s
--- @Cardano.Node.Protocol.Shelley.readLeaderCredentials@ and
--- @Cardano.Node.Protocol.Byron.readLeaderCredentials@. What stays in
--- @cardano-node@ (and in @ouroboros-consensus@) is only the final wrap of the
--- results below into the consensus types @ShelleyLeaderCredentials@ and
--- @ByronLeaderCredentials@, which this package cannot mention: @cardano-config@
--- sits below @ouroboros-consensus@, not above it.
+-- The result stops at key material. A block producer maps 'ShelleyCredentials'
+-- and 'ByronCredentials' onto its own leader-credential types; those live in the
+-- consensus layer, which sits above this package.
 module Cardano.Configuration.Credentials
   ( -- * Reading credentials
     readCredentials
@@ -89,9 +84,8 @@ data ShelleyCredentials = ShelleyCredentials
   -- certificate's path for command-line credentials, or @\<file\>.\<index\>@
   -- for an entry of a bulk credentials file.
   --
-  -- This is /not/ the consensus @shelleyLeaderCredentialsLabel@. @cardano-node@
-  -- sets that to the constant @\"Shelley\"@ for both paths, and a consumer
-  -- building @ShelleyLeaderCredentials@ should keep doing so.
+  -- This is /not/ the consensus leader-credentials label, which is the constant
+  -- @\"Shelley\"@; do not pass this string there.
   }
   deriving Show
 
@@ -106,10 +100,6 @@ data KESCredentials
   deriving Show
 
 -- | The errors 'readCredentials' can return.
---
--- The constructors mirror @cardano-node@'s @PraosLeaderCredentialsError@ and the
--- credential-related constructors of its @ByronProtocolInstantiationError@, so
--- that the messages a node prints do not change.
 data CredentialsError
   = -- | A credentials file could not be read.
     CredentialsReadError !FilePath !IOException
@@ -192,15 +182,10 @@ textShow = Text.pack . show
 -- When the KES key comes from a file, the operational certificate's hot key is
 -- checked against it and a mismatch is a 'MismatchedKesKey' error.
 --
--- Entries of a bulk credentials file are cross-checked the same way. This
--- diverges from @cardano-node@, whose bulk path never calls the equivalent of
--- @opCertKesKeyCheck@, so a bulk file it accepts today is rejected here.
+-- Every entry of a bulk credentials file is cross-checked the same way.
 --
--- One check is still /not/ done, matching @cardano-node@: with a KES /agent/ the
--- operational certificate is not checked against the agent's key, because the
--- key never leaves the agent for the node to derive a verification key from
--- (@cardano-node@'s @Cardano.Node.Protocol.Shelley@ carries a
--- @TODO: minor yikes@ about this).
+-- With a KES /agent/ the operational certificate is /not/ checked: the key never
+-- leaves the agent, so there is no verification key to compare it against.
 readCredentials :: Credentials -> IO (Either CredentialsError DecodedCredentials)
 readCredentials creds = runExceptT $ do
   byron <- readByronCredentials creds
@@ -260,8 +245,8 @@ readShelleyCredentialsSingleton creds =
         KESKeyFilePath kesFile -> do
           (cert, kesKey) <- opCertKesKeyCheck kesFile opCertFile
           pure (cert, KESCredentialsKey kesKey)
-        -- With an agent we only read the operational certificate; see the note
-        -- on 'readCredentials' about the check that is missing here.
+        -- With an agent only the operational certificate is read; see the note
+        -- on 'readCredentials' about the check that is not possible here.
         KESAgentSocketPath socketFile -> do
           cert <- readEnvelopeFile opCertFile
           pure (cert, KESCredentialsAgent socketFile)
@@ -337,8 +322,6 @@ readShelleyCredentialsBulk creds =
     opCert <- parseEnvelope beCert
     kesKey <- parseEnvelope beKes
     vrfSKey <- parseEnvelope beVrf
-    -- Unlike @cardano-node@, which only cross-checks the command-line
-    -- credentials, every bulk entry is checked too. See 'readCredentials'.
     except $ opCertNamesKesKey (snd beKes) (snd beCert) opCert kesKey
     pure
       ShelleyCredentials
@@ -377,9 +360,6 @@ parseEnvelope (te, loc) =
 --
 
 -- | Read a text-envelope file and decode it.
---
--- @cardano-config:keys@ is pure, so unlike @cardano-api@'s
--- @readFileTextEnvelope@ this does its own IO.
 readEnvelopeFile :: HasTextEnvelope a => FilePath -> ExceptT CredentialsError IO a
 readEnvelopeFile fp = do
   content <- readFileBytes fp
@@ -393,9 +373,8 @@ readFileLazyBytes fp = readFileWith LBS.readFile fp
 
 -- | Read a file, turning an 'IOException' into a 'CredentialsReadError'.
 --
--- @cardano-node@ catches read failures on the bulk credentials file but lets
--- them escape as exceptions on the Byron paths; here every credential file is
--- read the same way.
+-- Every credential file is read through this, so an unreadable one is always a
+-- returned error rather than an exception.
 readFileWith ::
   (FilePath -> IO a) -> FilePath -> ExceptT CredentialsError IO a
 readFileWith rd fp =

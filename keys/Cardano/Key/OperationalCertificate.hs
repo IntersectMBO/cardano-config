@@ -4,11 +4,11 @@
 
 -- | Operational certificates
 --
--- This is the decoding half of @cardano-api@'s
--- @Cardano.Api.Certificate.Internal.OperationalCertificate@. Issuing an
--- operational certificate ('issueOperationalCertificate' and
--- @OperationalCertIssueError@) needs addresses, protocol parameters and the
--- transaction signing machinery, so it stays in @cardano-api@.
+-- An operational certificate is a stake pool cold key's signed statement that
+-- one particular KES key may forge on its behalf; 'getHotKey' recovers that key.
+--
+-- Decoding only. Issuing a certificate needs addresses, protocol parameters and
+-- transaction signing, none of which this component depends on.
 module Cardano.Key.OperationalCertificate
   ( OperationalCertificate (..)
   , OperationalCertificateIssueCounter (..)

@@ -4,13 +4,11 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
--- | Orphan instances that the moved key layer needs and that no upstream
--- package provides.
+-- | Orphan instances the key layer needs and that no upstream package provides.
 --
--- These are ported from @cardano-api@'s
--- @Cardano.Api.Internal.Orphans.{Misc,Serialisation}@. They have to live below
--- both packages: once @cardano-api@ depends on this component, keeping a second
--- copy there would be a duplicate-instance error.
+-- They belong here, below every module that uses them, so that exactly one copy
+-- exists: a second definition elsewhere in the dependency graph would be a
+-- duplicate-instance error.
 module Cardano.Serialise.Orphans () where
 
 import Cardano.Binary (DecoderError (..), FromCBOR (..), ToCBOR (..))

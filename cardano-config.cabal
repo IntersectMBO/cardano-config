@@ -142,12 +142,11 @@ library internal
     TypeApplications
 
 -- The Cardano key and credential decoding layer: key roles, the raw-bytes and
--- text-envelope codecs, and operational certificates. Lifted from cardano-api
--- so that repos which cannot depend on cardano-api (ouroboros-consensus) stop
--- having to fork it.
+-- text-envelope codecs, and operational certificates.
 --
--- This component is pure: no IO, no filesystem, no presentation. Bech32,
--- CIP-129, mnemonics and the Error/Pretty instances stay in cardano-api.
+-- Pure by design: no IO, no filesystem, no presentation. It sits below the rest
+-- of the Cardano Haskell packages so that any of them can depend on it, which is
+-- why its dependency set is kept narrow.
 library keys
   import: warnings
   visibility: public

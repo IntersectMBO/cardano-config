@@ -77,7 +77,6 @@ instance SerialiseAsRawBytes a => FromJSONKey (UsingRawBytesHex a) where
     fmap UsingRawBytesHex . Aeson.FromJSONKeyTextParser $
       failRawBytesHex . deserialiseFromRawBytesHex . Text.encodeUtf8
 
--- | 'fail' in the parser monad with a rendered 'RawBytesHexError'. This stands
--- in for @cardano-api@'s @failEitherError@, which needs its @Error@ class.
+-- | 'fail' in the parser monad with a rendered 'RawBytesHexError'.
 failRawBytesHex :: MonadFail m => Either RawBytesHexError a -> m a
 failRawBytesHex = either (fail . Text.unpack . renderRawBytesHexError) pure

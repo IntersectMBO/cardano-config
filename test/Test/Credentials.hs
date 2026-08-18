@@ -4,8 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
--- | Tests for the key layer moved out of @cardano-api@ (@cardano-config:keys@)
--- and for 'readCredentials'.
+-- | Tests for @cardano-config:keys@ and 'readCredentials'.
 --
 -- The fixtures under @test\/credentials@ are real key material generated with
 -- @cardano-cli@, not hand-rolled: a fixture built by this package's own encoder
@@ -171,13 +170,10 @@ ty = textEnvelopeType (asType @a)
 -- Error rendering
 --
 
--- | The strings 'renderTextEnvelopeError' produces, pinned against
--- @cardano-api@'s golden files under
--- @test\/cardano-api-golden\/files\/errors\/Cardano.Api.Serialise.TextEnvelope.Internal.TextEnvelopeError@.
+-- | The exact text 'renderTextEnvelopeError' produces for each constructor.
 --
--- @cardano-api@ renders these through its @Error@ class; this package has no
--- @Error@ or @Pretty@ instances, so the same text has to come out of
--- 'renderTextEnvelopeError' instead.
+-- These messages reach whoever is starting a node, so they are pinned rather
+-- than left to drift.
 renderTextEnvelopeErrorTests :: TestTree
 renderTextEnvelopeErrorTests =
   testGroup
@@ -214,13 +210,10 @@ renderTextEnvelopeErrorTests =
 -- Byron keys
 --
 
--- | Ported from @cardano-api@'s @Test.Cardano.Api.KeysByron@, which round-trips
--- a Byron signing key through CBOR.
+-- | Round-trip a Byron signing key through CBOR.
 --
--- @cardano-api@ generates the seed with hedgehog; this repository's test suite
--- has no hedgehog dependency, so the seed is fixed. The comparison is on the
--- serialised bytes rather than on the key, because @SigningKey ByronKey@ has no
--- 'Eq' instance (@cardano-api@'s test gets one from a test-only orphan).
+-- The seed is fixed rather than generated, and the comparison is on the
+-- serialised bytes because @SigningKey ByronKey@ has no 'Eq' instance.
 byronKeyCborTests :: TestTree
 byronKeyCborTests =
   testGroup
@@ -316,7 +309,6 @@ credentialTests = do
                 )
             cs -> assertFailure ("expected two sets of credentials, got " <> show (length cs))
       , testCase "a bulk entry whose operational certificate does not name its KES key is rejected" $ do
-          -- @cardano-node@ accepts this file; see the note on 'readCredentials'.
           err <- expectErr emptyCredentials{bulkCredentialsFile = SJust bulkMismatched}
           case err of
             MismatchedKesKey kesLoc certLoc -> do

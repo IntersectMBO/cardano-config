@@ -38,9 +38,8 @@ two entries, the second built from an independently generated cold/KES/VRF set.
 `bulk-mismatched.creds` is the same file with entry 0's third element replaced by
 `kes-other.skey`.
 
-The Byron pair comes out of a throwaway Byron genesis, which is the only
-`cardano-cli 11` command that still emits delegation certificates
-(`byron delegation new-certificate` was removed):
+The Byron pair comes out of a throwaway Byron genesis, the one `cardano-cli`
+command that emits delegation certificates:
 
 ```sh
 cardano-cli byron genesis genesis --genesis-output-dir g \

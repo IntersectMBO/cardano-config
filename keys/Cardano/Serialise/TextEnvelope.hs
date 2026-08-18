@@ -11,10 +11,9 @@
 
 -- | TextEnvelope Serialisation
 --
--- This is the pure core of @cardano-api@'s text envelope layer: the envelope
--- type, its JSON codec, and the class-polymorphic decoders. Everything that
--- touches the filesystem (@readFileTextEnvelope@ and friends) or an era
--- (@textEnvelopeTypeInEra@, @textEnvelopeTypeToEra@) stays in @cardano-api@.
+-- The envelope type, its JSON codec and the return-type-polymorphic decoders.
+-- All of it is pure and era-independent: opening and writing envelope files is
+-- left to the caller.
 module Cardano.Serialise.TextEnvelope
   ( HasTextEnvelope (..)
   , TextEnvelope (..)
@@ -132,8 +131,8 @@ data TextEnvelopeError
 
 -- | Render a 'TextEnvelopeError' as human-readable text.
 --
--- @cardano-api@ wraps this in its @Error@ class; this package deliberately has
--- no @Error@ or @Pretty@ instances for its error types.
+-- Error types here carry a renderer rather than a class instance, following the
+-- convention of the rest of this package.
 renderTextEnvelopeError :: TextEnvelopeError -> Text
 renderTextEnvelopeError = \case
   TextEnvelopeTypeError [TextEnvelopeType expType] (TextEnvelopeType actType) ->
