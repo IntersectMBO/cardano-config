@@ -2,7 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Cardano.Key.Class
+module Cardano.Config.Key.Class
   ( Key (..)
   , generateSigningKey
   , generateInsecureSigningKey
@@ -12,12 +12,12 @@ module Cardano.Key.Class
   )
 where
 
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Key.Hash
+import Cardano.Config.Serialise.Raw
+import Cardano.Config.Serialise.TextEnvelope
 import Cardano.Crypto.DSIGN.Class qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
-import Cardano.Key.HasTypeProxy
-import Cardano.Key.Hash
-import Cardano.Serialise.Raw
-import Cardano.Serialise.TextEnvelope
 import Control.Monad.IO.Class
 import Data.Kind (Type)
 import GHC.Stack (HasCallStack)

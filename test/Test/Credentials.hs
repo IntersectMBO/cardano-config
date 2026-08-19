@@ -16,6 +16,26 @@
 module Test.Credentials (tests) where
 
 import Cardano.Binary (DecoderError (..))
+import Cardano.Config.Key.Byron (AsType (AsByronKey), ByronKey, ByronKeyLegacy)
+import Cardano.Config.Key.Class (Key (..))
+import Cardano.Config.Key.HasTypeProxy (asType)
+import Cardano.Config.Key.Leios (BlsKey, BlsPossessionProof)
+import Cardano.Config.Key.OperationalCertificate
+  ( OperationalCertificate
+  , OperationalCertificateIssueCounter
+  , getHotKey
+  )
+import Cardano.Config.Key.Praos (KesKey, VrfKey)
+import Cardano.Config.Key.Shelley
+import Cardano.Config.Serialise.Cbor (deserialiseFromCBOR, serialiseToCBOR)
+import Cardano.Config.Serialise.TextEnvelope
+  ( HasTextEnvelope
+  , TextEnvelopeDescr (..)
+  , TextEnvelopeError (..)
+  , TextEnvelopeType (..)
+  , renderTextEnvelopeError
+  , textEnvelopeType
+  )
 import Cardano.Configuration.CliArgs (KESSource (..), emptyCredentials)
 import qualified Cardano.Configuration.CliArgs as CLI
 import Cardano.Configuration.Credentials
@@ -27,27 +47,7 @@ import Cardano.Configuration.Credentials
   , renderCredentialsError
   )
 import Cardano.Crypto.Seed (mkSeedFromBytes)
-import Cardano.Key.Byron (AsType (AsByronKey), ByronKey, ByronKeyLegacy)
-import Cardano.Key.Class (Key (..))
-import Cardano.Key.HasTypeProxy (asType)
-import Cardano.Key.Leios (BlsKey, BlsPossessionProof)
-import Cardano.Key.OperationalCertificate
-  ( OperationalCertificate
-  , OperationalCertificateIssueCounter
-  , getHotKey
-  )
-import Cardano.Key.Praos (KesKey, VrfKey)
-import Cardano.Key.Shelley
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Cardano.Serialise.Cbor (deserialiseFromCBOR, serialiseToCBOR)
-import Cardano.Serialise.TextEnvelope
-  ( HasTextEnvelope
-  , TextEnvelopeDescr (..)
-  , TextEnvelopeError (..)
-  , TextEnvelopeType (..)
-  , renderTextEnvelopeError
-  , textEnvelopeType
-  )
 import qualified Data.ByteString as BS
 import Data.Text (Text)
 import qualified Data.Text as Text

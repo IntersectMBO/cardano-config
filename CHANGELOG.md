@@ -15,8 +15,8 @@ forges with), the `HasTypeProxy`/`SerialiseAsCBOR`/`SerialiseAsRawBytes`/
 `HasTextEnvelope`/`Key` classes and their instances, and operational certificate
 decoding:
 
-  * `Cardano.Key.{HasTypeProxy,Hash,Class,Shelley,Praos,Leios,Byron,OperationalCertificate}`
-  * `Cardano.Serialise.{Cbor,Raw,Using,TextEnvelope,Orphans}`
+  * `Cardano.Config.Key.{HasTypeProxy,Hash,Class,Shelley,Praos,Leios,Byron,OperationalCertificate}`
+  * `Cardano.Config.Serialise.{Cbor,Raw,Using,TextEnvelope,Orphans}`
 
 Bech32, CIP-129, mnemonics, the `File`/`FileError` IO layer and the `Error`/
 `Pretty` instances deliberately stay in `cardano-api`. Following this repository's

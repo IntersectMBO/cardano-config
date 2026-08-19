@@ -151,19 +151,19 @@ library keys
   import: warnings
   visibility: public
   exposed-modules:
-    Cardano.Key.Byron
-    Cardano.Key.Class
-    Cardano.Key.Hash
-    Cardano.Key.HasTypeProxy
-    Cardano.Key.Leios
-    Cardano.Key.OperationalCertificate
-    Cardano.Key.Praos
-    Cardano.Key.Shelley
-    Cardano.Serialise.Cbor
-    Cardano.Serialise.Orphans
-    Cardano.Serialise.Raw
-    Cardano.Serialise.TextEnvelope
-    Cardano.Serialise.Using
+    Cardano.Config.Key.Byron
+    Cardano.Config.Key.Class
+    Cardano.Config.Key.Hash
+    Cardano.Config.Key.HasTypeProxy
+    Cardano.Config.Key.Leios
+    Cardano.Config.Key.OperationalCertificate
+    Cardano.Config.Key.Praos
+    Cardano.Config.Key.Shelley
+    Cardano.Config.Serialise.Cbor
+    Cardano.Config.Serialise.Orphans
+    Cardano.Config.Serialise.Raw
+    Cardano.Config.Serialise.TextEnvelope
+    Cardano.Config.Serialise.Using
 
   build-depends:
     aeson ^>=2.2 || ^>=2.3,

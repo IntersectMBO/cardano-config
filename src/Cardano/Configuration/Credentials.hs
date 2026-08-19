@@ -23,16 +23,12 @@ module Cardano.Configuration.Credentials
   ) where
 
 import Cardano.Chain.Delegation (Certificate)
-import Cardano.Configuration.CliArgs (KESSource (..))
-import qualified Cardano.Configuration.CliArgs as CLI
-import Cardano.Key.Byron (AsType (AsByronKey), ByronKey)
-import Cardano.Key.Class (AsType (AsSigningKey), Key (..))
-import Cardano.Key.OperationalCertificate (OperationalCertificate, getHotKey)
-import Cardano.Key.Praos (KesKey, VrfKey)
-import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Cardano.Prelude (canonicalDecodePretty)
-import Cardano.Serialise.Raw (deserialiseFromRawBytes)
-import Cardano.Serialise.TextEnvelope
+import Cardano.Config.Key.Byron (AsType (AsByronKey), ByronKey)
+import Cardano.Config.Key.Class (AsType (AsSigningKey), Key (..))
+import Cardano.Config.Key.OperationalCertificate (OperationalCertificate, getHotKey)
+import Cardano.Config.Key.Praos (KesKey, VrfKey)
+import Cardano.Config.Serialise.Raw (deserialiseFromRawBytes)
+import Cardano.Config.Serialise.TextEnvelope
   ( HasTextEnvelope
   , TextEnvelope
   , TextEnvelopeError
@@ -40,6 +36,10 @@ import Cardano.Serialise.TextEnvelope
   , deserialiseFromTextEnvelopeJSON
   , renderTextEnvelopeError
   )
+import Cardano.Configuration.CliArgs (KESSource (..))
+import qualified Cardano.Configuration.CliArgs as CLI
+import Cardano.Ledger.BaseTypes (StrictMaybe (..))
+import Cardano.Prelude (canonicalDecodePretty)
 import Control.Exception (IOException, try)
 import Control.Monad.Trans.Except (ExceptT (..), except, runExceptT, throwE)
 import qualified Data.Aeson as Aeson

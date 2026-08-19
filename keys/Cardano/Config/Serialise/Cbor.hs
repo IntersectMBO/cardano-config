@@ -1,7 +1,7 @@
 {-# LANGUAGE DefaultSignatures #-}
 
 -- | CBOR serialisation
-module Cardano.Serialise.Cbor
+module Cardano.Config.Serialise.Cbor
   ( SerialiseAsCBOR (..)
   , FromCBOR (..)
   , ToCBOR (..)
@@ -11,7 +11,7 @@ where
 
 import Cardano.Binary (FromCBOR, ToCBOR)
 import Cardano.Binary qualified as CBOR
-import Cardano.Key.HasTypeProxy
+import Cardano.Config.Key.HasTypeProxy
 import Data.ByteString (ByteString)
 
 class HasTypeProxy a => SerialiseAsCBOR a where

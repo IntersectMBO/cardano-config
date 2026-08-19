@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 -- | Raw binary serialisation
-module Cardano.Serialise.Raw
+module Cardano.Config.Serialise.Raw
   ( SerialiseAsRawBytes (..)
   , serialiseToRawBytesHex
   , deserialiseFromRawBytesHex
@@ -16,7 +16,7 @@ module Cardano.Serialise.Raw
   )
 where
 
-import Cardano.Key.HasTypeProxy
+import Cardano.Config.Key.HasTypeProxy
 import Data.Bifunctor (Bifunctor (..))
 import Data.Bits (Bits (..), FiniteBits (finiteBitSize))
 import Data.ByteString qualified as BS

@@ -9,7 +9,7 @@
 -- They belong here, below every module that uses them, so that exactly one copy
 -- exists: a second definition elsewhere in the dependency graph would be a
 -- duplicate-instance error.
-module Cardano.Serialise.Orphans () where
+module Cardano.Config.Serialise.Orphans () where
 
 import Cardano.Binary (DecoderError (..), FromCBOR (..), ToCBOR (..))
 import Cardano.Binary.FixedSizeCodec qualified as Crypto

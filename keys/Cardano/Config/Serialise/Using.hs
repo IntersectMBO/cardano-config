@@ -1,15 +1,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- | @deriving via@ helpers built on top of 'SerialiseAsRawBytes'
-module Cardano.Serialise.Using
+module Cardano.Config.Serialise.Using
   ( UsingRawBytes (..)
   , UsingRawBytesHex (..)
   )
 where
 
-import Cardano.Key.HasTypeProxy
-import Cardano.Serialise.Cbor
-import Cardano.Serialise.Raw
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Serialise.Cbor
+import Cardano.Config.Serialise.Raw
 import Data.Aeson (FromJSON (..), FromJSONKey (..), ToJSON (..), ToJSONKey (..))
 import Data.Aeson.Types qualified as Aeson
 import Data.ByteString qualified as B

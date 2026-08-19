@@ -14,7 +14,7 @@
 -- The envelope type, its JSON codec and the return-type-polymorphic decoders.
 -- All of it is pure and era-independent: opening and writing envelope files is
 -- left to the caller.
-module Cardano.Serialise.TextEnvelope
+module Cardano.Config.Serialise.TextEnvelope
   ( HasTextEnvelope (..)
   , TextEnvelope (..)
   , TextEnvelopeType (..)
@@ -41,9 +41,9 @@ module Cardano.Serialise.TextEnvelope
   )
 where
 
-import Cardano.Key.HasTypeProxy
-import Cardano.Serialise.Cbor
-import Cardano.Serialise.Orphans ()
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Serialise.Cbor
+import Cardano.Config.Serialise.Orphans ()
 import Control.Monad (unless)
 import Data.Aeson (FromJSON (..), ToJSON (..), object, withObject, (.:), (.=))
 import Data.Aeson qualified as Aeson

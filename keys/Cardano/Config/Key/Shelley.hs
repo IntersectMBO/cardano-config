@@ -16,7 +16,7 @@
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 -- | Shelley key types and their 'Key' class instances
-module Cardano.Key.Shelley
+module Cardano.Config.Key.Shelley
   ( -- * Key types
     CommitteeColdKey
   , CommitteeColdExtendedKey
@@ -49,21 +49,21 @@ module Cardano.Key.Shelley
 where
 
 import Cardano.Binary.FixedSizeCodec qualified as Crypto
+import Cardano.Config.Key.Class
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Key.Hash
+import Cardano.Config.Serialise.Cbor
+import Cardano.Config.Serialise.Orphans ()
+import Cardano.Config.Serialise.Raw
+import Cardano.Config.Serialise.TextEnvelope
+import Cardano.Config.Serialise.Using
 import Cardano.Crypto.DSIGN qualified as DSIGN
 import Cardano.Crypto.DSIGN.Class qualified as Crypto
 import Cardano.Crypto.Hash.Class qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Crypto.Wallet qualified as Crypto.HD
-import Cardano.Key.Class
-import Cardano.Key.HasTypeProxy
-import Cardano.Key.Hash
 import Cardano.Ledger.Keys (DSIGN)
 import Cardano.Ledger.Keys qualified as Shelley
-import Cardano.Serialise.Cbor
-import Cardano.Serialise.Orphans ()
-import Cardano.Serialise.Raw
-import Cardano.Serialise.TextEnvelope
-import Cardano.Serialise.Using
 import Data.Aeson (FromJSON (..), ToJSON (..), ToJSONKey (..))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)

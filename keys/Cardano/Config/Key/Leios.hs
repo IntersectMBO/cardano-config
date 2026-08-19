@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Leios specific key types and their 'Key' class instances
-module Cardano.Key.Leios
+module Cardano.Config.Key.Leios
   ( -- * Key types
     BlsKey
 
@@ -26,17 +26,17 @@ module Cardano.Key.Leios
 where
 
 import Cardano.Binary.FixedSizeCodec qualified as Crypto
+import Cardano.Config.Key.Class
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Key.Hash
+import Cardano.Config.Serialise.Cbor
+import Cardano.Config.Serialise.Raw
+import Cardano.Config.Serialise.TextEnvelope
+import Cardano.Config.Serialise.Using
 import Cardano.Crypto.DSIGN.BLS12381 qualified as Crypto
 import Cardano.Crypto.DSIGN.Class qualified as Crypto
 import Cardano.Crypto.Hash.Class qualified as Crypto
-import Cardano.Key.Class
-import Cardano.Key.HasTypeProxy
-import Cardano.Key.Hash
 import Cardano.Ledger.Hashes (HASH)
-import Cardano.Serialise.Cbor
-import Cardano.Serialise.Raw
-import Cardano.Serialise.TextEnvelope
-import Cardano.Serialise.Using
 import Data.ByteString (ByteString)
 import Data.Either.Combinators (maybeToRight)
 import Data.String (IsString (..))

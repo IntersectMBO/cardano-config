@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-duplicate-exports #-}
 
-module Cardano.Key.HasTypeProxy
+module Cardano.Config.Key.HasTypeProxy
   ( HasTypeProxy (AsType, proxyToAsType)
   , asType
   , AsType (..)

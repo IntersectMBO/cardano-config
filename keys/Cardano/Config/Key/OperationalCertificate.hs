@@ -9,7 +9,7 @@
 --
 -- Decoding only. Issuing a certificate needs addresses, protocol parameters and
 -- transaction signing, none of which this component depends on.
-module Cardano.Key.OperationalCertificate
+module Cardano.Config.Key.OperationalCertificate
   ( OperationalCertificate (..)
   , OperationalCertificateIssueCounter (..)
   , Shelley.KESPeriod (..)
@@ -22,15 +22,15 @@ module Cardano.Key.OperationalCertificate
   )
 where
 
-import Cardano.Key.Class
-import Cardano.Key.HasTypeProxy
-import Cardano.Key.Praos
-import Cardano.Key.Shelley
+import Cardano.Config.Key.Class
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Key.Praos
+import Cardano.Config.Key.Shelley
+import Cardano.Config.Serialise.Cbor
+import Cardano.Config.Serialise.Orphans ()
+import Cardano.Config.Serialise.TextEnvelope
 import Cardano.Protocol.Crypto (StandardCrypto)
 import Cardano.Protocol.TPraos.OCert qualified as Shelley
-import Cardano.Serialise.Cbor
-import Cardano.Serialise.Orphans ()
-import Cardano.Serialise.TextEnvelope
 import Data.Word
 
 -- ----------------------------------------------------------------------------

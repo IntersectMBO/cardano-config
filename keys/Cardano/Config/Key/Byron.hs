@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Byron key types and their 'Key' class instances
-module Cardano.Key.Byron
+module Cardano.Config.Key.Byron
   ( -- * Key types
     ByronKey
   , ByronKeyLegacy
@@ -30,20 +30,20 @@ where
 
 import Cardano.Binary (cborError, toStrictByteString)
 import Cardano.Chain.Common qualified as Crypto
+import Cardano.Config.Key.Class
+import Cardano.Config.Key.HasTypeProxy
+import Cardano.Config.Key.Hash
+import Cardano.Config.Key.Shelley
+import Cardano.Config.Serialise.Cbor
+import Cardano.Config.Serialise.Raw
+import Cardano.Config.Serialise.TextEnvelope
+import Cardano.Config.Serialise.Using
 import Cardano.Crypto.DSIGN.Class qualified as Crypto
 import Cardano.Crypto.Hashing qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Crypto.Signing qualified as Crypto
 import Cardano.Crypto.Wallet qualified as Crypto.HD
 import Cardano.Crypto.Wallet qualified as Wallet
-import Cardano.Key.Class
-import Cardano.Key.HasTypeProxy
-import Cardano.Key.Hash
-import Cardano.Key.Shelley
-import Cardano.Serialise.Cbor
-import Cardano.Serialise.Raw
-import Cardano.Serialise.TextEnvelope
-import Cardano.Serialise.Using
 import Codec.CBOR.Decoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Control.Monad

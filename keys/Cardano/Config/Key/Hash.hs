@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Cardano.Key.Hash
+module Cardano.Config.Key.Hash
   ( -- * Hash
     Hash
   , CastHash (..)
@@ -16,8 +16,8 @@ module Cardano.Key.Hash
   )
 where
 
+import Cardano.Config.Key.HasTypeProxy
 import Cardano.Crypto.Hash qualified as Hash
-import Cardano.Key.HasTypeProxy
 import Cardano.Ledger.Hashes qualified as Ledger
 import Data.Kind (Type)
 import Data.Text qualified as Text
