@@ -26,7 +26,7 @@ instance.
 ### `Cardano.Configuration.Credentials`
 
 `readCredentials` reads the block-forging credentials named by the existing
-`Credentials` record: the Byron delegation certificate and signing key, the
+`CliArgs.Credentials` record: the Byron delegation certificate and signing key, the
 Shelley KES/VRF keys and operational certificate, and a bulk credentials file.
 Ported from `cardano-node`'s `Cardano.Node.Protocol.{Shelley,Byron}`, which keeps
 only the wrap of the results into the consensus `ShelleyLeaderCredentials` and

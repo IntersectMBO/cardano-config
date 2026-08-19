@@ -1,8 +1,8 @@
--- | Reading the block-forging credentials named by 'Credentials'.
+-- | Reading a block producer's forging credentials.
 --
--- The @cardano-config:keys@ component turns bytes into key material and does no
--- IO; this module opens the files that
--- 'Cardano.Configuration.CliArgs.Credentials' names and decodes them.
+-- 'Cardano.Configuration.CliArgs.Credentials' names the files; the 'Credentials'
+-- here are what they decode to. The @cardano-config:keys@ component turns bytes
+-- into key material and does no IO, so this module is what opens the files.
 --
 -- The result stops at key material. A block producer maps 'ShelleyCredentials'
 -- and 'ByronCredentials' onto its own leader-credential types; those live in the
@@ -12,7 +12,7 @@ module Cardano.Configuration.Credentials
     readCredentials
 
     -- * Decoded credentials
-  , DecodedCredentials (..)
+  , Credentials (..)
   , ByronCredentials (..)
   , ShelleyCredentials (..)
   , KESCredentials (..)
@@ -23,7 +23,7 @@ module Cardano.Configuration.Credentials
   ) where
 
 import Cardano.Chain.Delegation (Certificate)
-import Cardano.Configuration.CliArgs (Credentials, KESSource (..))
+import Cardano.Configuration.CliArgs (KESSource (..))
 import qualified Cardano.Configuration.CliArgs as CLI
 import Cardano.Key.Byron (AsType (AsByronKey), ByronKey)
 import Cardano.Key.Class (AsType (AsSigningKey), Key (..))
@@ -50,13 +50,13 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Text (Text)
 import qualified Data.Text as Text
 
--- | Everything 'readCredentials' could decode: at most one set of Byron
--- credentials, and any number of Shelley ones.
+-- | The decoded credentials: at most one set of Byron credentials, and any
+-- number of Shelley ones.
 --
 -- 'shelleyCredentials' is the singleton credentials given on the command line
 -- (if any) /followed by/ every entry of the bulk credentials file. The two are
 -- concatenated, not alternatives — a node may be given both.
-data DecodedCredentials = DecodedCredentials
+data Credentials = Credentials
   { byronCredentials :: Maybe ByronCredentials
   , shelleyCredentials :: [ShelleyCredentials]
   }
@@ -186,7 +186,7 @@ textShow = Text.pack . show
 --
 -- With a KES /agent/ the operational certificate is /not/ checked: the key never
 -- leaves the agent, so there is no verification key to compare it against.
-readCredentials :: Credentials -> IO (Either CredentialsError DecodedCredentials)
+readCredentials :: CLI.Credentials -> IO (Either CredentialsError Credentials)
 readCredentials creds = runExceptT $ do
   byron <- readByronCredentials creds
   -- The set of credentials is the sum total of what comes from the command line
@@ -194,7 +194,7 @@ readCredentials creds = runExceptT $ do
   singleton <- readShelleyCredentialsSingleton creds
   bulk <- readShelleyCredentialsBulk creds
   pure
-    DecodedCredentials
+    Credentials
       { byronCredentials = byron
       , shelleyCredentials = singleton <> bulk
       }
@@ -204,7 +204,7 @@ readCredentials creds = runExceptT $ do
 --
 
 readByronCredentials ::
-  Credentials -> ExceptT CredentialsError IO (Maybe ByronCredentials)
+  CLI.Credentials -> ExceptT CredentialsError IO (Maybe ByronCredentials)
 readByronCredentials creds =
   case (CLI.byronDelegationCertificateFile creds, CLI.byronSigningKeyFile creds) of
     (SNothing, SNothing) -> pure Nothing
@@ -233,7 +233,7 @@ readByronCredentials creds =
 --
 
 readShelleyCredentialsSingleton ::
-  Credentials -> ExceptT CredentialsError IO [ShelleyCredentials]
+  CLI.Credentials -> ExceptT CredentialsError IO [ShelleyCredentials]
 readShelleyCredentialsSingleton creds =
   case (CLI.shelleyOperationalCertificate creds, CLI.shelleyVRFKey creds, CLI.shelleyKES creds) of
     -- It is OK to supply none of the files on the command line.
@@ -313,7 +313,7 @@ data BulkEntry = BulkEntry
   }
 
 readShelleyCredentialsBulk ::
-  Credentials -> ExceptT CredentialsError IO [ShelleyCredentials]
+  CLI.Credentials -> ExceptT CredentialsError IO [ShelleyCredentials]
 readShelleyCredentialsBulk creds =
   traverse parseBulkEntry =<< readBulkFile (CLI.bulkCredentialsFile creds)
  where

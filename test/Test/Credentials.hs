@@ -16,10 +16,11 @@
 module Test.Credentials (tests) where
 
 import Cardano.Binary (DecoderError (..))
-import Cardano.Configuration.CliArgs (Credentials (..), KESSource (..), emptyCredentials)
+import Cardano.Configuration.CliArgs (KESSource (..), emptyCredentials)
+import qualified Cardano.Configuration.CliArgs as CLI
 import Cardano.Configuration.Credentials
-  ( CredentialsError (..)
-  , DecodedCredentials (..)
+  ( Credentials (..)
+  , CredentialsError (..)
   , KESCredentials (..)
   , ShelleyCredentials (..)
   , readCredentials
@@ -278,24 +279,24 @@ credentialTests = do
               KESCredentialsKey _ -> assertFailure "expected an agent socket, got a key"
             cs -> assertFailure ("expected exactly one set of credentials, got " <> show (length cs))
       , testCase "an operational certificate on its own is rejected" $ do
-          err <- expectErr emptyCredentials{shelleyOperationalCertificate = SJust opCert}
+          err <- expectErr emptyCredentials{CLI.shelleyOperationalCertificate = SJust opCert}
           expectConstructor "VRFKeyNotSpecified" VRFKeyNotSpecified err
       , testCase "a VRF key on its own is rejected" $ do
-          err <- expectErr emptyCredentials{shelleyVRFKey = SJust vrf}
+          err <- expectErr emptyCredentials{CLI.shelleyVRFKey = SJust vrf}
           expectConstructor "OCertNotSpecified" OCertNotSpecified err
       , testCase "a KES key on its own is rejected" $ do
-          err <- expectErr emptyCredentials{shelleyKES = SJust (KESKeyFilePath kes)}
+          err <- expectErr emptyCredentials{CLI.shelleyKES = SJust (KESKeyFilePath kes)}
           expectConstructor "OCertNotSpecified" OCertNotSpecified err
       , testCase "an operational certificate and VRF key without a KES source are rejected" $ do
           err <-
             expectErr
               emptyCredentials
-                { shelleyOperationalCertificate = SJust opCert
-                , shelleyVRFKey = SJust vrf
+                { CLI.shelleyOperationalCertificate = SJust opCert
+                , CLI.shelleyVRFKey = SJust vrf
                 }
           expectConstructor "KESKeyNotSpecified" KESKeyNotSpecified err
       , testCase "a bulk credentials file with two entries decodes" $ do
-          r <- expectOk emptyCredentials{bulkCredentialsFile = SJust bulk}
+          r <- expectOk emptyCredentials{CLI.bulkCredentialsFile = SJust bulk}
           case shelleyCredentials r of
             [c0, c1] -> do
               assertEqual "first entry label" (Text.pack (bulk <> ".0")) (credentialsLabel c0)
@@ -309,7 +310,7 @@ credentialTests = do
                 )
             cs -> assertFailure ("expected two sets of credentials, got " <> show (length cs))
       , testCase "a bulk entry whose operational certificate does not name its KES key is rejected" $ do
-          err <- expectErr emptyCredentials{bulkCredentialsFile = SJust bulkMismatched}
+          err <- expectErr emptyCredentials{CLI.bulkCredentialsFile = SJust bulkMismatched}
           case err of
             MismatchedKesKey kesLoc certLoc -> do
               assertEqual "names the KES entry" (bulkMismatched <> ".0kes") kesLoc
@@ -318,10 +319,10 @@ credentialTests = do
       , testCase "command-line and bulk credentials are concatenated, not alternatives" $ do
           r <-
             expectOk
-              (shelleyCreds opCert vrf (KESKeyFilePath kes)){bulkCredentialsFile = SJust bulk}
+              (shelleyCreds opCert vrf (KESKeyFilePath kes)){CLI.bulkCredentialsFile = SJust bulk}
           assertEqual "singleton plus both bulk entries" 3 (length (shelleyCredentials r))
       , testCase "a missing credentials file is reported, not thrown" $ do
-          err <- expectErr emptyCredentials{bulkCredentialsFile = SJust "/nonexistent/bulk.creds"}
+          err <- expectErr emptyCredentials{CLI.bulkCredentialsFile = SJust "/nonexistent/bulk.creds"}
           case err of
             CredentialsReadError fp _ -> assertEqual "names the file" "/nonexistent/bulk.creds" fp
             other -> assertFailure ("expected CredentialsReadError, got " <> show other)
@@ -329,8 +330,8 @@ credentialTests = do
           r <-
             expectOk
               emptyCredentials
-                { byronDelegationCertificateFile = SJust byronCert
-                , byronSigningKeyFile = SJust byronKey
+                { CLI.byronDelegationCertificateFile = SJust byronCert
+                , CLI.byronSigningKeyFile = SJust byronKey
                 }
           case byronCredentials r of
             Just _ -> pure ()
@@ -341,8 +342,8 @@ credentialTests = do
           err <-
             expectErr
               emptyCredentials
-                { byronDelegationCertificateFile = SJust opCert
-                , byronSigningKeyFile = SJust byronKey
+                { CLI.byronDelegationCertificateFile = SJust opCert
+                , CLI.byronSigningKeyFile = SJust byronKey
                 }
           case err of
             ByronCanonicalDecodeFailure fp _ -> assertEqual "names the file" opCert fp
@@ -351,20 +352,20 @@ credentialTests = do
           err <-
             expectErr
               emptyCredentials
-                { byronDelegationCertificateFile = SJust byronCert
-                , byronSigningKeyFile = SJust opCert
+                { CLI.byronDelegationCertificateFile = SJust byronCert
+                , CLI.byronSigningKeyFile = SJust opCert
                 }
           case err of
             ByronSigningKeyDeserialiseFailure fp -> assertEqual "names the file" opCert fp
             other -> assertFailure ("expected ByronSigningKeyDeserialiseFailure, got " <> show other)
       , testCase "a Byron signing key without its delegation certificate is rejected" $ do
-          err <- expectErr emptyCredentials{byronSigningKeyFile = SJust "irrelevant"}
+          err <- expectErr emptyCredentials{CLI.byronSigningKeyFile = SJust "irrelevant"}
           expectConstructor
             "ByronDelegationCertificateFilepathNotSpecified"
             ByronDelegationCertificateFilepathNotSpecified
             err
       , testCase "a Byron delegation certificate without its signing key is rejected" $ do
-          err <- expectErr emptyCredentials{byronDelegationCertificateFile = SJust "irrelevant"}
+          err <- expectErr emptyCredentials{CLI.byronDelegationCertificateFile = SJust "irrelevant"}
           expectConstructor
             "ByronSigningKeyFilepathNotSpecified"
             ByronSigningKeyFilepathNotSpecified
@@ -373,9 +374,9 @@ credentialTests = do
  where
   shelleyCreds opCert vrf kes =
     emptyCredentials
-      { shelleyOperationalCertificate = SJust opCert
-      , shelleyVRFKey = SJust vrf
-      , shelleyKES = SJust kes
+      { CLI.shelleyOperationalCertificate = SJust opCert
+      , CLI.shelleyVRFKey = SJust vrf
+      , CLI.shelleyKES = SJust kes
       }
 
   expectKesKey c = case kesCredentials c of
@@ -385,13 +386,13 @@ credentialTests = do
 fixture :: FilePath -> IO FilePath
 fixture name = getDataFileName ("test/credentials/" <> name)
 
-expectOk :: Credentials -> IO DecodedCredentials
+expectOk :: CLI.Credentials -> IO Credentials
 expectOk creds =
   readCredentials creds >>= \case
     Right r -> pure r
     Left err -> assertFailure ("expected success, got: " <> Text.unpack (renderCredentialsError err))
 
-expectErr :: Credentials -> IO CredentialsError
+expectErr :: CLI.Credentials -> IO CredentialsError
 expectErr creds =
   readCredentials creds >>= \case
     Left err -> pure err
