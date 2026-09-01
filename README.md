@@ -230,6 +230,40 @@ These are network-specific, so they are deliberately not in the base defaults;
 supply them directly or by referencing a `variants/ProtocolConfig/<network>.json`
 file.
 
+## Genesis initial-data injection
+
+A test network's genesis can hand the ledger its initial funds, stake pools,
+stake credentials, delegations and DReps either inline (the legacy
+`initialFunds`, `staking`, `delegs` and `initialDReps` fields) or under the
+genesis `extraConfig` key, which can point at a separate JSON file that
+`cardano-ledger` streams and hash-checks while building the initial ledger
+state, rather than decoding it into the genesis value:
+
+```json
+"extraConfig": {
+  "initialFunds": { "file": ["initial-funds.json"], "hash": "<blake2b-256 hex>" }
+}
+```
+
+The `file` is *not* a filesystem path: it is an `FsPath`, a list of path
+segments the ledger resolves against a `HasFS` **the consumer supplies**. This
+library fixes that filesystem to the directory holding the Shelley genesis file
+(matching `cardano-node`), records it on the parsed configuration as
+`genesisInjectionRoot`, and builds it with
+`nodeConfigurationInjectionFS :: NodeConfiguration -> SomeHasFS IO` — hand that
+to `protocolInfoCardano`. Note that this is the *genesis* directory, which is
+not in general the directory the configuration file lives in.
+
+Three things the ledger would otherwise report by throwing while it constructs
+the initial ledger state are checked while the configuration is read, against
+the genesis key at fault: a field may take its data from the legacy form or from
+`extraConfig`, never both; none of it is allowed on a mainnet genesis; and a
+referenced injection file must exist. The files' *hashes* are left to the
+ledger, which verifies them as it streams each file — re-hashing here would mean
+reading a potentially very large file twice.
+
+See `Cardano.Configuration.Genesis.Injection`.
+
 ## Notes on networks
 
 Due to the nature of each network, some features are enabled in ones and not in
