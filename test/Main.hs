@@ -33,6 +33,14 @@ import Cardano.Configuration.File.Storage
   )
 import Cardano.Configuration.Genesis (GenesisReadError (..), readGenesisFile)
 import Cardano.Configuration.Genesis.Byron (readByronGenesisConfig)
+import Cardano.Configuration.Genesis.Injection
+  ( InjectionSlot (..)
+  , InjectionSource (..)
+  , fileInjections
+  , injectionSlots
+  , missingInjectionFiles
+  , renderInjectionSlot
+  )
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configurationSchemasWithDefaults
@@ -61,7 +69,8 @@ import qualified Data.Text as T
 import Data.Word (Word64)
 import Language.Haskell.TH.Syntax (lift)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
-import System.FilePath ((</>))
+import System.FS.API (fsPathToList)
+import System.FilePath (takeDirectory, takeFileName, (</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase)
 
@@ -138,6 +147,11 @@ cases =
   , snapshotResolvePolicyCase
   , mithrilRequiresExportCase
   , lsmDatabasePathDefaultCase
+  , injectionRootCase
+  , injectionSlotsCase
+  , injectionConflictCase
+  , injectionMainnetCase
+  , injectionMissingFileCase
   , dijkstraGenesisDecodeCase
   , dijkstraGenesisHashMismatchCase
   , genesisHashRequiredCase
@@ -1166,6 +1180,105 @@ lsmDatabasePathDefaultCase =
 
 -- | The Dijkstra genesis example decodes through the ledger's aeson instance
 -- (the pinned hash is checked, so the read verifies the file too).
+-- | Genesis initial-data injection files are resolved against the directory
+-- holding the /Shelley genesis/, not the one holding the configuration file.
+-- The fixture keeps its geneses (and the files they inject) in a subdirectory,
+-- so the two differ and a consumer that guessed the configuration directory
+-- would look in the wrong place.
+injectionRootCase :: TestTree
+injectionRootCase =
+  testCase "the genesis injection root is the Shelley genesis directory" $ do
+    path <- getDataFileName "test/examples/injection.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let root = genesisInjectionRoot cfg
+    missing <-
+      missingInjectionFiles
+        root
+        (injectionSlots (shelleyGenesisConfig cfg) (conwayGenesisConfig cfg))
+    expectOk $
+      if takeFileName root /= "injection-genesis"
+        then Just ("unexpected injection root: " <> root)
+        else
+          if root == takeDirectory path
+            then Just "the injection root must not be the configuration directory"
+            else case missing of
+              [] -> Nothing
+              ms -> Just ("injection files not found under the root: " <> show (map snd ms))
+
+-- | Every injectable field is reported with the source it actually takes its
+-- data from: the three the fixture fills come from files (with the @FsPath@ the
+-- genesis named), the rest from nowhere. The configuration resolves cleanly.
+injectionSlotsCase :: TestTree
+injectionSlotsCase =
+  testCase "injection slots report their file sources, and the config resolves" $ do
+    path <- getDataFileName "test/examples/injection.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let slots = injectionSlots (shelleyGenesisConfig cfg) (conwayGenesisConfig cfg)
+        files =
+          [ (slotExtraField s, map T.unpack (fsPathToList fp))
+          | (s, fp) <- fileInjections slots
+          ]
+        expected =
+          [ ("extraConfig.initialFunds", ["initial-funds.json"])
+          , ("extraConfig.stakePools", ["stake-pools.json"])
+          , ("extraConfig.delegs", ["delegs.json"])
+          ]
+        inline = [renderInjectionSlot s | s <- slots, slotSource s == InjectedInline]
+    expectOk $
+      if files /= expected
+        then Just ("unexpected file injections: " <> show files)
+        else
+          if not (null inline)
+            then Just ("unexpected inline injections: " <> show inline)
+            else case cliArgs [] of
+              Nothing -> Just "could not build CLI arguments"
+              Just cli -> case resolveConfiguration cli cfg of
+                Left e -> Just ("resolve failed: " <> show e)
+                Right _ -> Nothing
+
+-- | Setting both a legacy genesis field and its @extraConfig@ counterpart is
+-- what @cardano-ledger@'s @resolveInjectionSource@ rejects; the parser catches
+-- it first, naming the field.
+injectionConflictCase :: TestTree
+injectionConflictCase =
+  testCase "a legacy genesis field and its extraConfig counterpart conflict" $
+    expectInjectionRejection
+      "test/examples/injection-conflict.json"
+      "extraConfig.initialFunds (legacy initialFunds) takes its initial data from both"
+
+-- | Injection is a test-network facility: a mainnet genesis that asks for it is
+-- rejected, as the ledger would.
+injectionMainnetCase :: TestTree
+injectionMainnetCase =
+  testCase "genesis injection is rejected on a mainnet genesis" $
+    expectInjectionRejection
+      "test/examples/injection-mainnet.json"
+      "only allowed on a test network"
+
+-- | A referenced injection file that does not exist is reported while the
+-- configuration is read, rather than as a filesystem error thrown much later,
+-- when the node builds its initial ledger state.
+injectionMissingFileCase :: TestTree
+injectionMissingFileCase =
+  testCase "a missing genesis injection file is rejected at parse time" $
+    expectInjectionRejection
+      "test/examples/injection-missing.json"
+      "no-such-initial-funds.json, which does not exist"
+
+-- | Parsing the configuration must fail, with an error mentioning the given
+-- text. Used for the genesis-injection problems the parser reports: they are all
+-- thrown as a 'ConfigurationParsingError' attributed to the genesis key at
+-- fault.
+expectInjectionRejection :: FilePath -> String -> Assertion
+expectInjectionRejection fixture expected = do
+  path <- getDataFileName fixture
+  res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
+  expectOk $ case res of
+    Left (e :: SomeException)
+      | expected `isInfixOf` show e -> Nothing
+      | otherwise -> Just ("rejected, but with an unexpected error: " <> show e)
+    Right _ -> Just ("expected rejection mentioning " <> show expected)
+
 dijkstraGenesisDecodeCase :: TestTree
 dijkstraGenesisDecodeCase =
   testCase "test/examples/dijkstra-genesis.json (decodes via the ledger instance)" $ do

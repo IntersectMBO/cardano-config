@@ -84,6 +84,13 @@ import Cardano.Configuration.Genesis
   , resolveExperimentalGenesis
   )
 import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig, readByronGenesisConfig)
+import Cardano.Configuration.Genesis.Injection
+  ( InjectionSlot (..)
+  , injectionProblems
+  , injectionSlots
+  , missingInjectionFiles
+  , renderInjectionSlot
+  )
 import Cardano.Configuration.Schema (componentPropertyNames)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
@@ -157,6 +164,16 @@ data NodeConfigurationFromFileF f
   --
   -- These are the parsed genesis values, not file paths — all genesis JSON
   -- resolution happens here.
+  , genesisInjectionRoot :: FilePath
+  -- ^ The directory the ledger resolves genesis initial-data injection files
+  -- against: the directory holding the Shelley genesis file (which is /not/ in
+  -- general the directory holding the configuration file).
+  --
+  -- A genesis @extraConfig@ names its injection files by @FsPath@ — a list of
+  -- path segments resolved against a @HasFS@ the consumer supplies — so the
+  -- mount point is the configuration's to decide. Recording it here means a
+  -- consumer building the node's @SomeHasFS@ does not have to re-derive it; see
+  -- "Cardano.Configuration.Genesis.Injection".
   }
   deriving Generic
 
@@ -253,12 +270,17 @@ parseConfigurationVersion1 root minNodeVer configValue = do
       (byronGenesisFile byronCfg)
   shelleyGenesisData <-
     readEraGenesisOrThrow root "ShelleyGenesisFile" (shelleyGenesis protocol)
+  -- The injection files a genesis @extraConfig@ references are resolved by the
+  -- ledger against the Shelley genesis directory, so that is the root recorded
+  -- (and checked) here — see "Cardano.Configuration.Genesis.Injection".
+  let injectionRoot = takeDirectory (root </> hashed (shelleyGenesis protocol))
   alonzoGenesisData <-
     readEraGenesisOrThrow root "AlonzoGenesisFile" (alonzoGenesis protocol)
   conwayGenesisData <-
     readEraGenesisOrThrow root "ConwayGenesisFile" (conwayGenesis protocol)
   experimentalGenesisData <-
     readExperimentalGenesisOrThrow root (strictMaybeToMaybe (experimentalGenesis testing))
+  checkInjectionOrThrow injectionRoot shelleyGenesisData conwayGenesisData
   pure
     NodeConfigurationFromFileV1
       { minNodeVersion = maybeToStrictMaybe minNodeVer
@@ -276,6 +298,7 @@ parseConfigurationVersion1 root minNodeVer configValue = do
       , alonzoGenesisConfig = alonzoGenesisData
       , conwayGenesisConfig = conwayGenesisData
       , experimentalGenesisConfig = maybeToStrictMaybe experimentalGenesisData
+      , genesisInjectionRoot = injectionRoot
       }
 
 -- | Convert this library's 'RequiresNetworkMagic' to the Byron ledger's, used
@@ -323,6 +346,34 @@ readExperimentalGenesisOrThrow root mRef = do
   case result of
     Left err -> throwIO (genesisReadErrorAt "TestingConfig" "DijkstraGenesisFile" err)
     Right genesis -> pure genesis
+
+-- | Check the genesis initial-data injection the geneses ask for, throwing a
+-- 'ConfigurationParsingError' attributed to the genesis key at fault: a field
+-- must name one source, not both the legacy field and its @extraConfig@
+-- counterpart; injection is for test networks only; and a referenced injection
+-- file must exist.
+--
+-- The files' hashes are /not/ checked: the ledger verifies them as it streams
+-- each file, and re-hashing here would mean reading a potentially very large
+-- file twice. Everything checked here is something @cardano-ledger@ would
+-- otherwise throw much later, while the node builds its initial ledger state.
+checkInjectionOrThrow :: FilePath -> ShelleyGenesis -> ConwayGenesis -> IO ()
+checkInjectionOrThrow injectionRoot sg cg = do
+  missing <- missingInjectionFiles injectionRoot (injectionSlots sg cg)
+  let problems =
+        injectionProblems sg cg
+          <> [ (s, "references the injection file " <> path <> ", which does not exist")
+             | (s, path) <- missing
+             ]
+  case problems of
+    [] -> pure ()
+    (slot, why) : _ ->
+      throwIO $
+        ConfigurationParsingError
+          SNothing
+          (SJust "ProtocolConfig")
+          [Key (K.fromString (slotGenesisFile slot))]
+          (renderInjectionSlot slot <> " " <> why)
 
 -- | Render a 'GenesisReadError' as a 'ConfigurationParsingError' attributed to
 -- the given section and file key.
