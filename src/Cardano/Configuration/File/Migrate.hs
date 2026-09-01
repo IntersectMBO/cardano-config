@@ -233,8 +233,8 @@ nestBackend (Object o)
  where
   lsm =
     KM.fromList $
-      [ ("DatabasePath", v) | Just v <- [KM.lookup "LSMDatabasePath" o] ]
-        <> [ ("ExportPath", v) | Just v <- [KM.lookup "LSMExportPath" o] ]
+      [("DatabasePath", v) | Just v <- [KM.lookup "LSMDatabasePath" o]]
+        <> [("ExportPath", v) | Just v <- [KM.lookup "LSMExportPath" o]]
 nestBackend v = v
 
 -- | Look a key up in a rename table, returning it unchanged if absent.

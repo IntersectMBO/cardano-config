@@ -413,8 +413,10 @@ migrateRenameCase =
 -- iohk-monitoring keys (@UseTraceDispatcher@, @minSeverity@, …). Idempotent.
 migrateTracingCase :: TestTree
 migrateTracingCase =
-  testCase "migrate gathers trace-dispatcher keys verbatim under HermodTracing and drops obsolete logging keys" $
-    expectOk $ case fst (migrate legacyTracing) of
+  testCase
+    "migrate gathers trace-dispatcher keys verbatim under HermodTracing and drops obsolete logging keys"
+    $ expectOk
+    $ case fst (migrate legacyTracing) of
       m@(Object top)
         | any (`elem` obsolete) (allKeys m) ->
             Just ("an obsolete logging key survived; keys: " <> show (allKeys m))
@@ -474,8 +476,10 @@ migrateTracingCase =
 -- The result is idempotent.
 migrateApplicationNameCase :: TestTree
 migrateApplicationNameCase =
-  testCase "migrate collapses top-level ApplicationName to HermodTracing.TraceOptionNodeName, drops ApplicationVersion" $
-    expectOk $ case fst (migrate legacyByron) of
+  testCase
+    "migrate collapses top-level ApplicationName to HermodTracing.TraceOptionNodeName, drops ApplicationVersion"
+    $ expectOk
+    $ case fst (migrate legacyByron) of
       m@(Object top)
         | "ApplicationVersion" `elem` allKeys m -> Just "ApplicationVersion survived"
         | "ApplicationName" `elem` allKeys m -> Just "top-level ApplicationName was not collapsed"
@@ -532,7 +536,8 @@ migrateLedgerDbSnapshotsCase =
   legacyLedgerDB =
     Object $
       KM.fromList
-        [ ( K.fromString "LedgerDB"
+        [
+          ( K.fromString "LedgerDB"
           , Object $
               KM.fromList
                 [ (K.fromString "Backend", String (T.pack "V2InMemory"))
@@ -571,7 +576,8 @@ migrateLedgerDbBackendCase =
   legacyLedgerDB =
     Object $
       KM.fromList
-        [ ( K.fromString "LedgerDB"
+        [
+          ( K.fromString "LedgerDB"
           , Object $
               KM.fromList
                 [ (K.fromString "Backend", String (T.pack "V2LSM"))
@@ -597,7 +603,8 @@ backendRoundTripCase =
     let ldb = LedgerDbConfiguration SNothing SNothing (SJust sel)
      in case fromJSON (toJSON ldb) of
           Success ldb' ->
-            assertBool ("round-trip changed the backend: " <> show (backendSelector ldb'))
+            assertBool
+              ("round-trip changed the backend: " <> show (backendSelector ldb'))
               (backendSelector ldb' == SJust sel)
           Error e -> assertFailure ("round-trip failed to decode: " <> e)
 

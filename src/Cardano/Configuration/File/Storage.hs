@@ -161,7 +161,7 @@ instance HasCodec LedgerDbBackendSelector where
       (dimapCodec (uncurry V2LSM) id lsmObjectCodec)
       selector
    where
-    selector V2InMemory  = Left V2InMemory
+    selector V2InMemory = Left V2InMemory
     selector (V2LSM p e) = Right (p, e)
 
     lsmObjectCodec :: JSONCodec (StrictMaybe FilePath, StrictMaybe FilePath)
@@ -173,7 +173,10 @@ instance HasCodec LedgerDbBackendSelector where
               (,)
                 <$> optionalFieldWithStrict "DatabasePath" filePathCodec "Custom path to the LSM database"
                   .= fst
-                <*> optionalFieldWithStrict "ExportPath" filePathCodec "Directory into which the LSM backend exports snapshots"
+                <*> optionalFieldWithStrict
+                  "ExportPath"
+                  filePathCodec
+                  "Directory into which the LSM backend exports snapshots"
                   .= snd
           )
           "LSM-tree backend options"
