@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Golden-ish tests: every example configuration must parse through the
@@ -5,10 +6,14 @@
 -- reliable validation we have, since the parser shares its codec with the
 -- schema.
 --
--- The @test/examples/@ and @schemas/@ fixtures are resolved through
--- 'getDataFileName' (they are packaged as @data-files@), so the tests do not
--- depend on the current working directory and work under @cabal test@, Nix and
--- a source distribution alike.
+-- The @test/examples/@ and @schemas/@ fixtures are read from the source tree,
+-- resolved against 'packageRoot' (the package directory, baked in at compile
+-- time) rather than against the current working directory, so the tests work
+-- under @cabal test@, Nix and a source distribution alike. Unlike the files the
+-- library itself needs, which are compiled into it (see
+-- "Cardano.Configuration.Embedded"), the fixtures are read as files: most of
+-- them are fed to the file pipeline, which resolves sub-file references
+-- relative to the file's own directory.
 --
 -- The cases form a tasty 'TestTree' of @tasty-hunit@ assertions; 'defaultMain'
 -- runs them and sets the process exit code.
@@ -48,15 +53,28 @@ import Control.Exception (SomeException, evaluate, try)
 import Data.Aeson (FromJSON, Result (..), Value (..), eitherDecodeFileStrict', fromJSON, toJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Data.FileEmbed (makeRelativeToProject)
 import Data.Functor.Identity (runIdentity)
 import Data.List (isInfixOf)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Word (Word64)
+import Language.Haskell.TH.Syntax (lift)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
-import Paths_cardano_config (getDataFileName)
+import System.FilePath ((</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase)
+
+-- | The package directory (the one holding the @.cabal@ file), resolved at
+-- compile time by @file-embed@. The fixtures live under it.
+packageRoot :: FilePath
+packageRoot = $(makeRelativeToProject "." >>= lift)
+
+-- | Resolve a fixture path relative to the package root. This replaces the
+-- @Paths_cardano_config@ function of the same name, which resolved the same
+-- files through the Cabal data directory the package no longer installs.
+getDataFileName :: FilePath -> IO FilePath
+getDataFileName p = pure (packageRoot </> p)
 
 main :: IO ()
 main = do
