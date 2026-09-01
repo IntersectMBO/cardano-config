@@ -45,7 +45,7 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Data.Aeson (FromJSON, Value (..), eitherDecodeFileStrict', toJSON)
+import Data.Aeson (FromJSON, Result (..), Value (..), eitherDecodeFileStrict', fromJSON, toJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Functor.Identity (runIdentity)
@@ -96,6 +96,10 @@ cases =
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
+  , migrateApplicationNameCase
+  , migrateLedgerDbSnapshotsCase
+  , migrateLedgerDbBackendCase
+  , backendRoundTripCase
   , migrateSiblingCase
   , migrateEnvelopeCollisionCase
   , migrateEnvelopedRenameCase
@@ -383,6 +387,8 @@ migrateRenameCase =
     , "LastKnownBlockVersion-Major"
     , "LastKnownBlockVersion-Minor"
     , "LastKnownBlockVersion-Alt"
+    , "ApplicationVersion"
+    , "EnableP2P"
     , "Protocol"
     , "MaxKnownMajorProtocolVersion"
     ]
@@ -401,15 +407,16 @@ migrateRenameCase =
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
 
--- | 'migrate' handles the two tracing key families of a legacy flat config: the
--- keys that @trace-dispatcher@'s own parser reads (@TraceOptions@ and friends)
--- are gathered into an inline @HermodTracing@ object under @Configuration@, and
--- the obsolete iohk-monitoring keys (@UseTraceDispatcher@, @minSeverity@,
--- @defaultScribes@, @options@, …) are dropped entirely. The result is idempotent.
+-- | 'migrate' gathers the flat trace-dispatcher keys /verbatim/ into an inline
+-- @HermodTracing@ object under @Configuration@ (keeping the flat names — including
+-- @TraceOptionResourceFrequency@, which has no inner form), and drops the obsolete
+-- iohk-monitoring keys (@UseTraceDispatcher@, @minSeverity@, …). Idempotent.
 migrateTracingCase :: TestTree
 migrateTracingCase =
-  testCase "migrate groups trace-dispatcher keys under HermodTracing and drops obsolete logging keys" $
-    expectOk $ case fst (migrate legacyTracing) of
+  testCase
+    "migrate gathers trace-dispatcher keys verbatim under HermodTracing and drops obsolete logging keys"
+    $ expectOk
+    $ case fst (migrate legacyTracing) of
       m@(Object top)
         | any (`elem` obsolete) (allKeys m) ->
             Just ("an obsolete logging key survived; keys: " <> show (allKeys m))
@@ -427,8 +434,14 @@ migrateTracingCase =
             _ -> Just "Configuration is not an object"
       _ -> Just "migrate did not produce an object"
  where
-  -- The trace-dispatcher legacy keys that must end up inside HermodTracing.
-  tracingKeys = ["TraceOptions", "TraceOptionForwarder", "TraceOptionMetricsPrefix"]
+  -- The flat trace-dispatcher keys that must end up (verbatim) inside HermodTracing,
+  -- including the no-inner frequency key which must be kept, not dropped.
+  tracingKeys =
+    [ "TraceOptions"
+    , "TraceOptionForwarder"
+    , "TraceOptionMetricsPrefix"
+    , "TraceOptionResourceFrequency"
+    ]
   -- The obsolete iohk-monitoring keys that must not survive anywhere.
   obsolete =
     [ "UseTraceDispatcher"
@@ -445,6 +458,7 @@ migrateTracingCase =
         [ (K.fromString "TraceOptions", Object (KM.fromList [(K.fromString "", Object KM.empty)]))
         , (K.fromString "TraceOptionForwarder", Object KM.empty)
         , (K.fromString "TraceOptionMetricsPrefix", String (T.pack "cardano.node.metrics."))
+        , (K.fromString "TraceOptionResourceFrequency", Number 1000)
         , (K.fromString "UseTraceDispatcher", Bool True)
         , (K.fromString "TurnOnLogging", Bool True)
         , (K.fromString "TurnOnLogMetrics", Bool True)
@@ -455,6 +469,144 @@ migrateTracingCase =
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
+
+-- | 'migrate' collapses a top-level @ApplicationName@ (the obsolete Byron
+-- software-version name, now repurposed as the tracing node name) into
+-- @HermodTracing.TraceOptionNodeName@, and drops the Byron @ApplicationVersion@.
+-- The result is idempotent.
+migrateApplicationNameCase :: TestTree
+migrateApplicationNameCase =
+  testCase
+    "migrate collapses top-level ApplicationName to HermodTracing.TraceOptionNodeName, drops ApplicationVersion"
+    $ expectOk
+    $ case fst (migrate legacyByron) of
+      m@(Object top)
+        | "ApplicationVersion" `elem` allKeys m -> Just "ApplicationVersion survived"
+        | "ApplicationName" `elem` allKeys m -> Just "top-level ApplicationName was not collapsed"
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg) -> case KM.lookup (K.fromString "HermodTracing") cfg of
+              Just (Object h) -> case KM.lookup (K.fromString "TraceOptionNodeName") h of
+                Just (String n)
+                  | n /= T.pack "cardano-sl" -> Just ("TraceOptionNodeName has wrong value: " <> show n)
+                  | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                  | otherwise -> Nothing
+                _ -> Just "HermodTracing.TraceOptionNodeName is missing"
+              _ -> Just "HermodTracing was not created as an object"
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  -- A legacy flat config with the Byron software version at the top level, plus
+  -- TraceOptions so the resulting HermodTracing is a valid tracing object.
+  legacyByron =
+    Object $
+      KM.fromList
+        [ (K.fromString "ApplicationName", String (T.pack "cardano-sl"))
+        , (K.fromString "ApplicationVersion", Number 0)
+        , (K.fromString "TraceOptions", Object (KM.fromList [(K.fromString "", Object KM.empty)]))
+        ]
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
+
+-- | 'migrate' gathers the flat snapshot-option keys directly under @LedgerDB@
+-- (which legacy configs and the node parser accept there) into a nested
+-- @LedgerDB.Snapshots@ object — the form cardano-config's @LedgerDB@ codec reads.
+-- @Backend@/@QueryBatchSize@ stay at the @LedgerDB@ level. Idempotent.
+migrateLedgerDbSnapshotsCase :: TestTree
+migrateLedgerDbSnapshotsCase =
+  testCase "migrate gathers flat LedgerDB snapshot options into LedgerDB.Snapshots" $
+    expectOk $ case fst (migrate legacyLedgerDB) of
+      m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
+        Just (Object ldb)
+          | any (\k -> KM.member (K.fromString k) ldb) snapOpts ->
+              Just ("a flat snapshot key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
+          | not (KM.member (K.fromString "Backend") ldb && KM.member (K.fromString "QueryBatchSize") ldb) ->
+              Just "Backend/QueryBatchSize were not kept at the LedgerDB level"
+          | otherwise -> case KM.lookup (K.fromString "Snapshots") ldb of
+              Just (Object snaps)
+                | not (all (\k -> KM.member (K.fromString k) snaps) snapOpts) ->
+                    Just ("LedgerDB.Snapshots is missing a moved key; has: " <> show (KM.keys snaps))
+                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | otherwise -> Nothing
+              _ -> Just "LedgerDB.Snapshots was not created as an object"
+        _ -> Just "Configuration.StorageConfig.LedgerDB not found"
+      _ -> Just "migrate did not produce an object"
+ where
+  snapOpts = ["SnapshotInterval", "NumOfDiskSnapshots"]
+  legacyLedgerDB =
+    Object $
+      KM.fromList
+        [
+          ( K.fromString "LedgerDB"
+          , Object $
+              KM.fromList
+                [ (K.fromString "Backend", String (T.pack "V2InMemory"))
+                , (K.fromString "QueryBatchSize", Number 100000)
+                , (K.fromString "SnapshotInterval", Number 864)
+                , (K.fromString "NumOfDiskSnapshots", Number 2)
+                ]
+          )
+        ]
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+
+-- | 'migrate' folds the legacy flat @V2LSM@ backend keys under @LedgerDB@ into the
+-- tagged @Backend: { "LSM": { "DatabasePath": …, "ExportPath": … } }@ form.
+migrateLedgerDbBackendCase :: TestTree
+migrateLedgerDbBackendCase =
+  testCase "migrate folds the flat V2LSM backend into Backend.LSM" $
+    expectOk $ case fst (migrate legacyLedgerDB) of
+      m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
+        Just (Object ldb)
+          | any (\k -> KM.member (K.fromString k) ldb) ["LSMDatabasePath", "LSMExportPath"] ->
+              Just ("a flat LSM key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
+          | otherwise -> case KM.lookup (K.fromString "Backend") ldb of
+              Just (Object be) -> case KM.lookup (K.fromString "LSM") be of
+                Just (Object lsm)
+                  | KM.lookup (K.fromString "DatabasePath") lsm == Just (String (T.pack "lsm"))
+                      && KM.lookup (K.fromString "ExportPath") lsm == Just (String (T.pack "lsm-export")) ->
+                      if fst (migrate m) == m then Nothing else Just "migrate is not idempotent"
+                  | otherwise -> Just ("Backend.LSM has wrong contents: " <> show (KM.toList lsm))
+                _ -> Just "Backend.LSM was not created as an object"
+              other -> Just ("Backend was not folded into an object: " <> show other)
+        _ -> Just "Configuration.StorageConfig.LedgerDB not found"
+      _ -> Just "migrate did not produce an object"
+ where
+  legacyLedgerDB =
+    Object $
+      KM.fromList
+        [
+          ( K.fromString "LedgerDB"
+          , Object $
+              KM.fromList
+                [ (K.fromString "Backend", String (T.pack "V2LSM"))
+                , (K.fromString "LSMDatabasePath", String (T.pack "lsm"))
+                , (K.fromString "LSMExportPath", String (T.pack "lsm-export"))
+                ]
+          )
+        ]
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+
+-- | The @Backend@ codec round-trips both forms: the @"V2InMemory"@ string and the
+-- tagged @{ "LSM": { … } }@ object.
+backendRoundTripCase :: TestTree
+backendRoundTripCase =
+  testCase "LedgerDB Backend round-trips (V2InMemory string, tagged LSM object)" $ do
+    check V2InMemory
+    check (V2LSM (SJust "db") (SJust "exp"))
+    check (V2LSM SNothing SNothing)
+ where
+  check sel =
+    let ldb = LedgerDbConfiguration SNothing SNothing (SJust sel)
+     in case fromJSON (toJSON ldb) of
+          Success ldb' ->
+            assertBool
+              ("round-trip changed the backend: " <> show (backendSelector ldb'))
+              (backendSelector ldb' == SJust sel)
+          Error e -> assertFailure ("round-trip failed to decode: " <> e)
 
 -- | 'migrate' does not drop a top-level sibling of an existing @Configuration@
 -- envelope: a stray @ByronGenesisFile@ next to the envelope is folded into the

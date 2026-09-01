@@ -5,6 +5,8 @@
   "LastKnownBlockVersion-Alt": 0,
   "Protocol": "Cardano",
   "MaxKnownMajorProtocolVersion": 2,
+  "ApplicationVersion": 0,
+  "EnableP2P": false,
   "SomeUnrecognisedKey": true,
   "EnableRpc": true,
   "RpcSocketPath": "/run/node.sock",
