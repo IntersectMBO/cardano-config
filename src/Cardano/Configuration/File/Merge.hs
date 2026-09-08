@@ -4,6 +4,7 @@
 -- overall orchestration (that is "Cardano.Configuration.File").
 module Cardano.Configuration.File.Merge
   ( decodeValueFile
+  , decodeValueBytes
   , runCodec
   , mergeValues
   , loadSectionSource
@@ -13,6 +14,7 @@ module Cardano.Configuration.File.Merge
   , splitEnvelope
   ) where
 
+import Cardano.Configuration.Embedded (embeddedDefaults)
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe)
 import Control.Exception (throwIO)
@@ -20,12 +22,14 @@ import Data.Aeson (FromJSON, Value (..), parseJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (JSONPathElement (..), iparseEither)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.List (isPrefixOf)
+import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger)
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
-import Paths_cardano_config (getDataFileName)
 import System.Directory (canonicalizePath, doesFileExist)
 import System.FilePath (isAbsolute, splitDirectories, (</>))
 
@@ -37,9 +41,21 @@ decodeValueFile ::
   -- | The file to read.
   FilePath ->
   IO Value
-decodeValueFile section fp = do
-  result <- Yaml.decodeFileEither fp
-  case result of
+decodeValueFile section fp = BS.readFile fp >>= decodeValueBytes section fp
+
+-- | Decode already-read YAML\/JSON bytes into a 'Value', reporting syntax errors
+-- against the given name. Used for the files embedded into the binary (see
+-- "Cardano.Configuration.Embedded"), which have no path on disk to read.
+decodeValueBytes ::
+  -- | The section being read, for error reporting.
+  Maybe String ->
+  -- | The name the bytes came from, for error reporting.
+  FilePath ->
+  -- | The bytes to decode.
+  ByteString ->
+  IO Value
+decodeValueBytes section fp bytes =
+  case Yaml.decodeEither' bytes of
     Left e ->
       throwIO $
         ConfigurationParsingError
@@ -128,15 +144,16 @@ resolveSectionPath root section path
         [Key (K.fromString section)]
         ("invalid configuration file path: it " <> why)
 
--- | The always-applied base default for a section, read from the package data
--- files (@defaults\/\<Section\>.json@), if one ships for it.
+-- | The always-applied base default for a section, read from the
+-- @defaults\/\<Section\>.json@ embedded into the binary (see
+-- "Cardano.Configuration.Embedded"), if one ships for it.
 loadBaseDefault :: String -> IO (Maybe Value)
-loadBaseDefault section = do
-  fp <- getDataFileName ("defaults/" <> section <> ".json")
-  exists <- doesFileExist fp
-  if exists
-    then Just <$> decodeValueFile (Just section) fp
-    else pure Nothing
+loadBaseDefault section =
+  case Map.lookup name embeddedDefaults of
+    Nothing -> pure Nothing
+    Just bytes -> Just <$> decodeValueBytes (Just section) ("defaults/" <> name) bytes
+ where
+  name = section <> ".json"
 
 -- | The configuration layer the user supplied for a section: an inline object,
 -- or a referenced sub-file. A component is read only from its own section key; a
