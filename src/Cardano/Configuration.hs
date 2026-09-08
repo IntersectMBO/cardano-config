@@ -63,6 +63,24 @@ module Cardano.Configuration
     --     @ConwayGenesis@, @DijkstraGenesis@); only Byron's is defined here.
   , ByronGenesisConfig
 
+    -- ** Genesis initial-data injection
+
+    -- | A test network's genesis can hand the ledger its initial funds, stake
+    --     pools, stake credentials, delegations and DReps out of separate JSON
+    --     files, named under the genesis @extraConfig@ key and streamed by the
+    --     ledger rather than decoded into the genesis value (see
+    --     "Cardano.Configuration.Genesis.Injection"). Those file references are
+    --     resolved against a filesystem the /consumer/ supplies, so
+    --     'genesisInjectionRoot' records which directory that is and
+    --     'nodeConfigurationInjectionFS' builds the @SomeHasFS@ to pass on to
+    --     @protocolInfoCardano@.
+  , nodeConfigurationInjectionFS
+  , nodeConfigurationInjections
+  , Injection.InjectionSlot (..)
+  , Injection.InjectionSource (..)
+  , Injection.injectionHasFS
+  , Injection.injectionMountPoint
+
     -- ** Operational
   , CLI.ShutdownOn (..)
 
@@ -115,6 +133,8 @@ import qualified Cardano.Configuration.File.Network as File
 import qualified Cardano.Configuration.File.Protocol as File
 import qualified Cardano.Configuration.File.Storage as File
 import Cardano.Configuration.Genesis.Byron (ByronGenesisConfig)
+import Cardano.Configuration.Genesis.Injection (injectionHasFS, injectionSlots)
+import qualified Cardano.Configuration.Genesis.Injection as Injection
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), isSJust, strictMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
@@ -127,6 +147,7 @@ import Data.IP
 import Data.List.NonEmpty (NonEmpty (..))
 import GHC.Stack (HasCallStack)
 import Network.Socket
+import System.FS.API (SomeHasFS)
 import System.Posix.Types
 
 -- | The complete configuration for a cardano-node, combining the configuration
@@ -156,6 +177,11 @@ data NodeConfiguration = NodeConfiguration
   , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
   -- ^ The parsed experimental (Dijkstra) genesis, decoded from the
   --     @DijkstraGenesisFile@ referenced by the testing configuration, if any.
+  , genesisInjectionRoot :: FilePath
+  -- ^ The directory the ledger resolves genesis initial-data injection files
+  --     against: the directory holding the Shelley genesis file. Pass it to
+  --     'Injection.injectionHasFS' to build the filesystem @protocolInfoCardano@
+  --     wants; see "Cardano.Configuration.Genesis.Injection".
   , configFilePath :: FilePath
   , topologyFile :: FilePath
   , validateDatabase :: Bool
@@ -232,6 +258,18 @@ defaultConfigChecks =
                 _ -> True
       )
   ]
+
+-- | The injectable genesis fields of a resolved configuration, with the source
+-- each one takes its data from. See "Cardano.Configuration.Genesis.Injection".
+nodeConfigurationInjections :: NodeConfiguration -> [Injection.InjectionSlot]
+nodeConfigurationInjections nc =
+  injectionSlots (shelleyGenesisConfig nc) (conwayGenesisConfig nc)
+
+-- | The filesystem @cardano-ledger@ resolves this configuration's genesis
+-- injection files against, ready to hand to @protocolInfoCardano@. Rooted at
+-- 'genesisInjectionRoot', the directory holding the Shelley genesis file.
+nodeConfigurationInjectionFS :: NodeConfiguration -> SomeHasFS IO
+nodeConfigurationInjectionFS = injectionHasFS . genesisInjectionRoot
 
 -- | Run a set of consistency checks over a resolved configuration. Any failed
 -- 'CheckError' aborts with a 'ConfigResolutionError' listing their descriptions;
@@ -353,6 +391,7 @@ resolveConfigurationWith checks cli file = do
         , alonzoGenesisConfig = File.alonzoGenesisConfig file
         , conwayGenesisConfig = File.conwayGenesisConfig file
         , experimentalGenesisConfig = File.experimentalGenesisConfig file
+        , genesisInjectionRoot = File.genesisInjectionRoot file
         , configFilePath = CLI.configFilePath cli
         , topologyFile = CLI.topologyFile cli
         , validateDatabase = CLI.validateDatabase cli
