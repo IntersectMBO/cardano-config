@@ -23,14 +23,11 @@ import Cardano.Configuration.Common
 import Cardano.Ledger.BaseTypes
   ( StrictMaybe (..)
   , fromSMaybe
-  , maybeToStrictMaybe
-  , strictMaybeToMaybe
   )
 import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default
 import Data.Functor.Identity
-import Data.List.NonEmpty (NonEmpty (..))
 import Data.Word
 import GHC.Generics
 
@@ -152,45 +149,37 @@ data LedgerDbBackendSelector
       -- | An optional directory into which the backend
       -- exports snapshots as it takes them (the @LSMExportPath@ key)
       (StrictMaybe FilePath)
-  deriving (Generic, Show)
+  deriving (Eq, Generic, Show)
 
--- | The @Backend@ discriminator. Kept separate from 'LedgerDbBackendSelector'
--- (which also carries the LSM paths) so that the codec can enumerate the
--- accepted values, surfacing them as a JSON Schema @enum@ rather than a bare
--- string (mirrors 'Cardano.Configuration.File.Consensus.ConsensusModeName').
-data LedgerDbBackendName = V2InMemoryName | V2LSMName
-  deriving Eq
+-- | The @Backend@ value: the string @"V2InMemory"@, or the LSM backend tagged as
+-- an object @{ "LSM": { "DatabasePath": …, "ExportPath": … } }@ (both keys
+-- optional). Dispatching on shape (string vs object) mirrors 'SnapshotPolicy'.
+instance HasCodec LedgerDbBackendSelector where
+  codec =
+    matchChoiceCodec
+      (literalTextValueCodec V2InMemory "V2InMemory")
+      (dimapCodec (uncurry V2LSM) id lsmObjectCodec)
+      selector
+   where
+    selector V2InMemory = Left V2InMemory
+    selector (V2LSM p e) = Right (p, e)
 
--- | Codec for the @Backend@ value, accepting only @V2InMemory@ or @V2LSM@.
-backendNameCodec :: JSONCodec LedgerDbBackendName
-backendNameCodec =
-  stringConstCodec ((V2InMemoryName, "V2InMemory") :| [(V2LSMName, "V2LSM")])
-
--- | The @Backend@, @LSMDatabasePath@ and @LSMExportPath@ keys, parsed together
--- as they describe a single choice of backend. @Backend@ is optional here (its
--- default, @V2InMemory@, comes from @defaults/Storage.json@, not the codec), so
--- the result is 'Nothing' when the key is absent.
-backendCodec :: JSONObjectCodec (Maybe LedgerDbBackendSelector)
-backendCodec =
-  bimapCodec toSelector fromSelector $
-    (,,)
-      <$> optionalFieldWith "Backend" backendNameCodec "Which LedgerDB backend to use (V2InMemory or V2LSM)"
-        .= (\(b, _, _) -> b)
-      <*> optionalFieldWith "LSMDatabasePath" filePathCodec "Custom path to the LSM database (V2LSM only)"
-        .= (\(_, p, _) -> p)
-      <*> optionalFieldWith
-        "LSMExportPath"
-        filePathCodec
-        "Directory into which the LSM backend exports snapshots (V2LSM only)"
-        .= (\(_, _, e) -> e)
- where
-  -- Total: 'backendNameCodec' rejects any other string before we get here.
-  toSelector (Nothing, _, _) = Right Nothing
-  toSelector (Just V2InMemoryName, _, _) = Right (Just V2InMemory)
-  toSelector (Just V2LSMName, p, e) = Right (Just (V2LSM (maybeToStrictMaybe p) (maybeToStrictMaybe e)))
-  fromSelector Nothing = (Nothing, Nothing, Nothing)
-  fromSelector (Just V2InMemory) = (Just V2InMemoryName, Nothing, Nothing)
-  fromSelector (Just (V2LSM p e)) = (Just V2LSMName, strictMaybeToMaybe p, strictMaybeToMaybe e)
+    lsmObjectCodec :: JSONCodec (StrictMaybe FilePath, StrictMaybe FilePath)
+    lsmObjectCodec =
+      object "V2LSM" $
+        requiredFieldWith
+          "LSM"
+          ( object "LSMOptions" $
+              (,)
+                <$> optionalFieldWithStrict "DatabasePath" filePathCodec "Custom path to the LSM database"
+                  .= fst
+                <*> optionalFieldWithStrict
+                  "ExportPath"
+                  filePathCodec
+                  "Directory into which the LSM backend exports snapshots"
+                  .= snd
+          )
+          "LSM-tree backend options"
 
 -- | The Ledger DB configuration
 data LedgerDbConfiguration = LedgerDbConfiguration
@@ -208,7 +197,7 @@ instance HasCodec LedgerDbConfiguration where
         <$> optionalFieldStrict "Snapshots" "Snapshot policy: \"Mithril\" or an object of snapshot options"
           .= snapshots
         <*> optionalFieldStrict "QueryBatchSize" "Chunk size for large backend reads" .= queryBatchSize
-        <*> dimapCodec maybeToStrictMaybe strictMaybeToMaybe backendCodec .= backendSelector
+        <*> optionalFieldStrict "Backend" "LedgerDB backend: \"V2InMemory\" or an LSM object" .= backendSelector
 
 instance Default LedgerDbConfiguration where
   def = LedgerDbConfiguration SNothing SNothing SNothing

@@ -27,11 +27,18 @@
 --   * a flat top-level property key is nested under the component section that
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
+--   * the flat snapshot-option keys directly under @LedgerDB@ (@SnapshotInterval@,
+--     @NumOfDiskSnapshots@, …) are gathered into a nested @LedgerDB.Snapshots@
+--     object, and the flat @V2LSM@ backend keys are folded into the tagged
+--     @Backend: { "LSM": … }@ form the @LedgerDB@ codec reads (see
+--     'nestSnapshotOptions'\/'nestBackend');
 --   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
---     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered into
---     an inline @HermodTracing@ object, and the obsolete keys of the old
---     iohk-monitoring logging system (@setupScribes@, @minSeverity@, … — no longer
---     read by anything) are dropped (see 'tracingLegacyKeys'\/'tracingObsoleteKeys');
+--     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered
+--     verbatim into an inline @HermodTracing@ object, a top-level @ApplicationName@
+--     is collapsed into @HermodTracing.TraceOptionNodeName@ (the tracing node
+--     name), and the obsolete keys of the old iohk-monitoring logging system
+--     (@setupScribes@, @minSeverity@, … — no longer read by anything) are dropped
+--     (see 'tracingLegacyKeys'\/'tracingObsoleteKeys');
 --   * a section key (whether an inline object or a path to a sub-file), an
 --     existing @HermodTracing@ key, and any unrecognised key are kept at the
 --     @Configuration@ level as-is (so nothing is silently dropped);
@@ -106,16 +113,26 @@ acceptedConnectionsLimitFields =
 -- | The fields removed in the current series. @migrate@ drops them (they are no
 -- longer parsed): the Byron @LastKnownBlockVersion-*@ trio and
 -- @PBftSignatureThreshold@ now come from consensus defaults rather than config;
+-- @ApplicationVersion@ is the (now hard-coded) Byron software-version number;
+-- @EnableP2P@ is the vestigial P2P switch (P2P is now the only mode);
 -- @Protocol@ is the vestigial protocol selector; and @MaxKnownMajorProtocolVersion@
 -- is a dead key the node never read at all. Unlike a genuine typo (which is kept,
 -- so nothing is lost) these are known-obsolete keys, so @migrate@ removes them
 -- rather than carry them forward as perpetual unrecognised-key warnings.
+--
+-- The software-version /name/ (@ApplicationName@) is handled separately (see
+-- 'reshape'): a top-level @ApplicationName@ is collapsed into
+-- @HermodTracing.TraceOptionNodeName@ rather than dropped here, since it must be
+-- treated top-level only (the same name is a live trace-dispatcher field inside a
+-- @HermodTracing@ object, which must survive at depth).
 removedFields :: [Text]
 removedFields =
   [ "PBftSignatureThreshold"
   , "LastKnownBlockVersion-Major"
   , "LastKnownBlockVersion-Minor"
   , "LastKnownBlockVersion-Alt"
+  , "ApplicationVersion"
+  , "EnableP2P"
   , "Protocol"
   , "MaxKnownMajorProtocolVersion"
   ]
@@ -125,7 +142,9 @@ removedFields =
 -- current name of a renamed field sit in the same object. Recurses through objects
 -- and arrays; leaves scalars unchanged. The generic
 -- 'acceptedConnectionsLimitFields' are rewritten only within an
--- @AcceptedConnectionsLimit@ object, not wherever those names happen to appear.
+-- @AcceptedConnectionsLimit@ object, and the flat snapshot options only within a
+-- @LedgerDB@ object (see 'nestSnapshotOptions'), not wherever those names happen
+-- to appear.
 renameLegacy :: Value -> (Value, [ConfigWarning])
 renameLegacy (Object o) =
   (Object (KM.fromList pairs), collisionWarnings <> concatMap snd rekeyed)
@@ -149,9 +168,13 @@ renameLegacy (Object o) =
   pairs = map fst rekeyed
   rekey (k, v) = let (v', w) = renameLegacy v in ((rename renamedFields k, scoped k v'), w)
   -- Inside an AcceptedConnectionsLimit object, also rewrite its (generic) direct
-  -- sub-keys; the recursion above has already handled any deeper nesting.
+  -- sub-keys; the recursion above has already handled any deeper nesting. Inside a
+  -- LedgerDB object, gather the flat snapshot-option keys into a nested Snapshots
+  -- object and fold the flat V2LSM backend keys into the tagged Backend form (see
+  -- 'nestSnapshotOptions'\/'nestBackend').
   scoped k v
     | K.toText k == "AcceptedConnectionsLimit" = renameTopKeys acceptedConnectionsLimitFields v
+    | K.toText k == "LedgerDB" = nestBackend (nestSnapshotOptions v)
     | otherwise = v
 renameLegacy (Array a) =
   let results = fmap renameLegacy a
@@ -165,6 +188,55 @@ renameTopKeys table (Object o) =
   Object (KM.fromList [(rename table k, v) | (k, v) <- KM.toList o])
 renameTopKeys _ v = v
 
+-- | The snapshot-option keys that legacy configs (and the node's own parser)
+-- accept /flat/ directly under @LedgerDB@, but which cardano-config only reads
+-- from a nested @LedgerDB.Snapshots@ object.
+snapshotOptionKeys :: [Text]
+snapshotOptionKeys =
+  [ "SnapshotInterval"
+  , "SlotOffset"
+  , "RateLimit"
+  , "MinDelay"
+  , "MaxDelay"
+  , "NumOfDiskSnapshots"
+  ]
+
+-- | Within a @LedgerDB@ object, move the flat snapshot-option keys
+-- ('snapshotOptionKeys') into a nested @Snapshots@ object — the form
+-- cardano-config's @LedgerDB@ codec reads. The other @LedgerDB@ keys (@Backend@,
+-- @QueryBatchSize@, @LSMDatabasePath@, …) stay at the @LedgerDB@ level. If a
+-- @Snapshots@ key is already present it wins (it is an explicit policy, possibly
+-- the string @"Mithril"@), so the flat legacy keys are dropped rather than merged.
+nestSnapshotOptions :: Value -> Value
+nestSnapshotOptions (Object o)
+  | KM.null flat = Object o
+  | KM.member (K.fromText "Snapshots") rest = Object rest
+  | otherwise = Object (KM.insert (K.fromText "Snapshots") (Object flat) rest)
+ where
+  flat = KM.filterWithKey (\k _ -> K.toText k `elem` snapshotOptionKeys) o
+  rest = KM.filterWithKey (\k _ -> K.toText k `notElem` snapshotOptionKeys) o
+nestSnapshotOptions v = v
+
+-- | Within a @LedgerDB@ object, fold the legacy flat @V2LSM@ backend into the
+-- tagged form: @Backend: "V2LSM"@ (+ optional @LSMDatabasePath@\/@LSMExportPath@)
+-- becomes @Backend: { "LSM": { "DatabasePath": …, "ExportPath": … } }@. The
+-- @V2InMemory@ string is left unchanged.
+nestBackend :: Value -> Value
+nestBackend (Object o)
+  | KM.lookup "Backend" o == Just (String "V2LSM") =
+      Object
+        . KM.insert "Backend" (Object (KM.singleton "LSM" (Object lsm)))
+        . KM.delete "LSMDatabasePath"
+        . KM.delete "LSMExportPath"
+        $ o
+  | otherwise = Object o
+ where
+  lsm =
+    KM.fromList $
+      [("DatabasePath", v) | Just v <- [KM.lookup "LSMDatabasePath" o]]
+        <> [("ExportPath", v) | Just v <- [KM.lookup "LSMExportPath" o]]
+nestBackend v = v
+
 -- | Look a key up in a rename table, returning it unchanged if absent.
 rename :: [(Text, Text)] -> K.Key -> K.Key
 rename table k = maybe k K.fromText (lookup (K.toText k) table)
@@ -172,9 +244,13 @@ rename table k = maybe k K.fromText (lookup (K.toText k) table)
 -- | The flat top-level tracing keys that @trace-dispatcher@'s own parser reads
 -- directly (its \"legacy\" configuration format — see @parseAsLegacy@ in
 -- @Cardano.Logging.ConfigurationParser@). These belong inside @HermodTracing@:
--- @migrate@ gathers them into an inline @HermodTracing@ object, which @resolve@
--- then hands to @trace-dispatcher@ verbatim. @TraceOptions@ is the only one the
--- parser requires; the rest are optional, but all are grouped when present.
+-- @migrate@ gathers them into an inline @HermodTracing@ object /verbatim/, which
+-- @resolve@ then hands to @trace-dispatcher@. We keep the flat names rather than
+-- rewrite them to the inner (@Options@, @Forwarder@, …) spelling because two of
+-- them — @TraceOptionResourceFrequency@ and @TraceOptionLedgerMetricsFrequency@ —
+-- have no inner counterpart, so a full rename would silently drop them.
+-- @TraceOptions@ is the only one the parser requires; the rest are optional, but
+-- all are grouped when present.
 tracingLegacyKeys :: [Text]
 tracingLegacyKeys =
   [ "TraceOptions"
@@ -244,31 +320,36 @@ reshape (Object top) =
     [EnvelopeKeyCollision (K.toText k) | k <- KM.keys siblings, k `KM.member` envelopeBody]
 
   -- Group each body key under its component section. A flat property key nests
-  -- under the section that owns it; a flat trace-dispatcher key nests under
-  -- HermodTracing; an obsolete iohk-monitoring key is dropped; a section key,
-  -- an existing HermodTracing or any unrecognised key stays at the Configuration
-  -- level as-is. A mixed input (a section object plus some of its flat keys, or
-  -- HermodTracing alongside flat tracing keys) is deep-merged.
+  -- under the section that owns it; a flat trace-dispatcher key nests (verbatim)
+  -- under HermodTracing; a top-level @ApplicationName@ is collapsed into
+  -- @HermodTracing.TraceOptionNodeName@ (the tracing node name — the obsolete
+  -- Byron software-version name is repurposed as it, since nothing else reads it);
+  -- an obsolete iohk-monitoring key is dropped; a section key, an existing
+  -- HermodTracing or any unrecognised key stays at the Configuration level as-is.
+  -- A mixed input (a section object plus some of its flat keys, or HermodTracing
+  -- alongside flat tracing keys) is deep-merged.
   configuration = KM.foldrWithKey place KM.empty body
   place k v
     | key `elem` tracingObsoleteKeys = id
-    | key `elem` tracingLegacyKeys = nestUnder "HermodTracing"
-    | Just section <- lookup key propertyToSection = nestUnder section
+    | key `elem` tracingLegacyKeys = nestUnderAs "HermodTracing" k
+    | key == "ApplicationName" = nestUnderAs "HermodTracing" (K.fromText "TraceOptionNodeName")
+    | Just section <- lookup key propertyToSection = nestUnderAs section k
     | otherwise = keepFlat
    where
     key = K.toText k
     keepFlat = KM.insertWith mergeValues k v
-    -- Nest a flat property under its target section, unless that section is
-    -- already present as a non-object — a path to a sub-file. Merging an inline
-    -- key into a file reference would silently drop the key (a file path is not an
-    -- object, so 'mergeValues' would keep the path and lose the value), so in that
-    -- case the property is kept at the Configuration level instead, where it
-    -- surfaces as an unrecognised-key warning on the next parse rather than being
-    -- lost. When the section is absent (a purely flat document) or an inline
-    -- object, the property nests as normal.
-    nestUnder section = case KM.lookup (K.fromText section) body of
+    -- Nest @v@ under @section@ using @targetKey@ (the original key, except a
+    -- top-level @ApplicationName@ is nested as @TraceOptionNodeName@), unless the
+    -- section is already present as a non-object — a path to a sub-file. Merging an
+    -- inline key into a file reference would silently drop the key (a file path is
+    -- not an object, so 'mergeValues' would keep the path and lose the value), so
+    -- in that case the key is kept flat at the Configuration level instead, where
+    -- it surfaces as an unrecognised-key warning on the next parse rather than
+    -- being lost. When the section is absent (a purely flat document) or an inline
+    -- object, the key nests as normal.
+    nestUnderAs section targetKey = case KM.lookup (K.fromText section) body of
       Just v' | not (isObject v') -> keepFlat
-      _ -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton k v))
+      _ -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton targetKey v))
     isObject Object{} = True
     isObject _ = False
 reshape v = (v, [])

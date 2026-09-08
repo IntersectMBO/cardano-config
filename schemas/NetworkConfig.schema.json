@@ -228,7 +228,7 @@
             "type": "number"
         },
         "TxSubmissionInitDelay": {
-            "default": 0,
+            "default": 60,
             "description": "Tx-submission initial delay, in seconds",
             "title": "TxSubmissionInitDelay",
             "type": "number"

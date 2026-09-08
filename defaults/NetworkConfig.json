@@ -20,7 +20,7 @@
     "ExperimentalProtocolsEnabled": false,
     "ProtocolIdleTimeout": 5,
     "TimeWaitTimeout": 60,
-    "TxSubmissionInitDelay": 0,
+    "TxSubmissionInitDelay": 60,
     "MinBigLedgerPeersForTrustedState": 5,
     "TxSubmissionLogicVersion": "TxSubmissionLogicV1",
     "ResponderCoreAffinityPolicy": "NoResponderCoreAffinity"

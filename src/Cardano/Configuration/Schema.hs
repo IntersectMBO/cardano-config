@@ -386,8 +386,21 @@ packageFormatVersion = case versionBranch version of
 -- release. The tag makes it immutable, so a configuration's @$schema@ identifies
 -- exactly one schema, for good.
 --
--- The tag must exist for the URL to resolve, so while the package is still
--- @0.x.x.x@ this points at the not-yet-created @v1@ tag.
+-- /Immutable/ means the constraints are immutable: what a document must satisfy
+-- in order to be valid cannot change under a tag. Annotations may be corrected —
+-- @default@, @description@, @title@ — because they do not affect validation, so a
+-- wrong default is fixed in a @1.x.x.x@ release rather than held back for a new
+-- format version. A change to /what validates/ is the one that needs a new format
+-- version, and gets its own tag.
+--
+-- This leaves the schema stricter than the parser, deliberately:
+-- 'Cardano.Configuration.File.Migrate.migrate' runs on every document, so a
+-- configuration written in a superseded spelling still loads (raising
+-- @MigratedToCurrentFormat@) while failing validation against the schema, which
+-- documents the canonical form alone.
+--
+-- The tag must exist for the URL to resolve, and @v1@ has not been cut yet, so
+-- these URLs do not resolve today.
 schemaTag :: Text
 schemaTag = "v" <> T.pack (show currentFormatVersion)
 
