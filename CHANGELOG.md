@@ -1,5 +1,34 @@
 # Revision history for cardano-config
 
+## Unreleased
+
+### Breaking changes
+
+* `experimentalGenesisConfig` (on both `NodeConfigurationFromFile` and
+  `NodeConfiguration`) is now gated on the `ExperimentalHardForksEnabled`
+  testing flag: it is `SJust` only when the flag is on *and* a
+  `DijkstraGenesisFile` is named. With the flag off it is `SNothing` even if the
+  configuration names a file, and the file is not opened at all — not read, not
+  hash-checked.
+
+  This follows `cardano-node`, which gates its whole Dijkstra
+  protocol-configuration block on the same flag and, with the flag off,
+  substitutes an empty Dijkstra genesis without ever looking at a file. Reading
+  it here would reject configurations the node accepts, and the field's old
+  meaning — "a file was named" — was not the question a consumer has to answer.
+  Every consumer had to re-derive "is there an experimental genesis in play?"
+  from the flag itself, and they disagreed on the answer; now the field states
+  it.
+
+  The price of not reading the file is that a stale `DijkstraGenesisHash`, or a
+  file that has since been moved away, goes unreported while the flag is off.
+  The file being ignored at all is reported, though, by the new warning below.
+
+* `ConfigWarning` gains an `ExperimentalGenesisIgnored` constructor, raised by
+  `parseConfigurationFiles` when a `DijkstraGenesisFile` is named while
+  `ExperimentalHardForksEnabled` is off. Code matching exhaustively on
+  `ConfigWarning` has to account for it.
+
 ## 1.1.0.0 -- 2026-09-08
 
 Schema format version stays at `1`: the `v1` tag had not been cut when

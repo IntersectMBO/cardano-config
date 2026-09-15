@@ -53,7 +53,7 @@ import Cardano.Configuration.Schema
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
-import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), isSJust, strictMaybeToMaybe)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
@@ -156,6 +156,7 @@ cases =
   , dijkstraGenesisHashMismatchCase
   , genesisHashRequiredCase
   , genesisHashPresentCase
+  , experimentalGenesisGateCase
   , decodeCase
       "test/examples/mainnet-shelley-genesis.json (decodes via the ledger instances)"
       (decodeData "test/examples/mainnet-shelley-genesis.json" :: IO (Either String ShelleyGenesis))
@@ -1329,6 +1330,57 @@ genesisHashPresentCase =
     ( decodeData "test/examples/testing-dijkstra.json" ::
         IO (Either String (TestingConfiguration StrictMaybe))
     )
+
+-- | The experimental (Dijkstra) genesis is gated on the
+-- @ExperimentalHardForksEnabled@ testing flag, as it is in @cardano-node@: with
+-- the flag off the named @DijkstraGenesisFile@ is ignored outright and
+-- 'experimentalGenesisConfig' is 'SNothing' on both the parse result and the
+-- resolved configuration; with the flag on it is read, hash-checked and decoded
+-- into an 'SJust'.
+--
+-- The gated-off fixture pins a deliberately wrong @DijkstraGenesisHash@, so
+-- parsing it at all proves the file is not merely dropped after being read: it
+-- is never opened. Because that is exactly the surprising part, an
+-- 'ExperimentalGenesisIgnored' warning names the ignored file — and only in the
+-- gated-off case.
+experimentalGenesisGateCase :: TestTree
+experimentalGenesisGateCase =
+  testCase "the Dijkstra genesis is gated on ExperimentalHardForksEnabled" $ do
+    (off, offWarnings) <- getDataFileName gatedOff >>= parseConfigurationFiles
+    (on, onWarnings) <- getDataFileName gatedOn >>= parseConfigurationFiles
+    case cliArgs [] of
+      Nothing -> assertFailure "could not build default CLI arguments"
+      Just cli -> do
+        offResolved <- resolved cli off
+        onResolved <- resolved cli on
+        expectOk $
+          case (experimentalGenesisConfig off, experimentalGenesisConfig on) of
+            (SNothing, SJust _)
+              | SNothing <- C.experimentalGenesisConfig offResolved
+              , SJust _ <- C.experimentalGenesisConfig onResolved
+              , ignoredFiles offWarnings == ["dijkstra-genesis.json"]
+              , null (ignoredFiles onWarnings) ->
+                  Nothing
+            _ ->
+              Just $
+                "unexpected gating: off="
+                  <> show (isSJust (experimentalGenesisConfig off))
+                  <> " offResolved="
+                  <> show (isSJust (C.experimentalGenesisConfig offResolved))
+                  <> " on="
+                  <> show (isSJust (experimentalGenesisConfig on))
+                  <> " onResolved="
+                  <> show (isSJust (C.experimentalGenesisConfig onResolved))
+                  <> " offIgnored="
+                  <> show (ignoredFiles offWarnings)
+                  <> " onIgnored="
+                  <> show (ignoredFiles onWarnings)
+ where
+  gatedOff = "test/examples/dijkstra-gated-off.json"
+  gatedOn = "test/examples/dijkstra-gated-on.json"
+  resolved cli cfg =
+    either (assertFailure . show) (pure . fst) (resolveConfiguration cli cfg)
+  ignoredFiles ws = [f | ExperimentalGenesisIgnored f <- ws]
 
 -- | The Byron genesis decodes (canonical JSON) and its hash checks out via the
 -- ledger's reader. The expected hash is the real mainnet Byron genesis hash.

@@ -94,7 +94,12 @@ import Cardano.Configuration.Genesis.Injection
 import Cardano.Configuration.Schema (componentPropertyNames)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
-import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe)
+import Cardano.Ledger.BaseTypes
+  ( StrictMaybe (..)
+  , fromSMaybe
+  , maybeToStrictMaybe
+  , strictMaybeToMaybe
+  )
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
@@ -159,8 +164,18 @@ data NodeConfigurationFromFileF f
   , conwayGenesisConfig :: ConwayGenesis
   -- ^ The parsed Conway genesis (read from the @ConwayGenesisFile@).
   , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
-  -- ^ The experimental (Dijkstra) genesis, read and decoded from the
-  -- @DijkstraGenesisFile@ referenced by the testing configuration (if any).
+  -- ^ The experimental (Dijkstra) genesis, when there is one in play: 'SJust'
+  -- only when @ExperimentalHardForksEnabled@ is on /and/ the testing
+  -- configuration names a @DijkstraGenesisFile@, in which case it holds that
+  -- file read, hash-checked and decoded.
+  --
+  -- 'SNothing' therefore says \"no experimental genesis applies\", not merely
+  -- \"no file was named\". With the flag off the file is not opened at all — not
+  -- even hash-checked — which mirrors @cardano-node@: it gates its whole
+  -- Dijkstra protocol-configuration block on the same flag and, with the flag
+  -- off, substitutes an empty genesis without ever reading a file. Naming a
+  -- @DijkstraGenesisFile@ while the flag is off is not silently dropped: it
+  -- raises an 'ExperimentalGenesisIgnored' warning.
   --
   -- These are the parsed genesis values, not file paths — all genesis JSON
   -- resolution happens here.
@@ -222,7 +237,7 @@ parseConfigurationFiles cfgFile = do
   -- to and including @X@). They are enumerated literally rather than derived from
   -- that constant, because each one needs its own parse path, so this list only
   -- ever grows.
-  config <- case version of
+  (config, parseWarnings) <- case version of
     1 -> parseConfigurationVersion1 root minNodeVer configValue
     n ->
       throwIO $
@@ -231,10 +246,11 @@ parseConfigurationFiles cfgFile = do
           SNothing
           [Key "Version"]
           ("unsupported configuration version: " <> show n)
-  pure (config, warnings)
+  pure (config, warnings <> parseWarnings)
 
 -- | Parse a version-1 configuration object, reading each component either
--- inline or from its referenced sub-file.
+-- inline or from its referenced sub-file, together with the warnings that only
+-- the parsed configuration can reveal (an ignored experimental genesis).
 parseConfigurationVersion1 ::
   -- | The directory sub-file paths are resolved against.
   FilePath ->
@@ -242,7 +258,7 @@ parseConfigurationVersion1 ::
   Maybe T.Text ->
   -- | The configuration object.
   Value ->
-  IO NodeConfigurationFromFile
+  IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationVersion1 root minNodeVer configValue = do
   storage <- parseSection root configValue "StorageConfig"
   consensus <- parseSection root configValue "ConsensusConfig"
@@ -278,10 +294,31 @@ parseConfigurationVersion1 root minNodeVer configValue = do
     readEraGenesisOrThrow root "AlonzoGenesisFile" (alonzoGenesis protocol)
   conwayGenesisData <-
     readEraGenesisOrThrow root "ConwayGenesisFile" (conwayGenesis protocol)
+  -- The experimental (Dijkstra) genesis is gated on the
+  -- @ExperimentalHardForksEnabled@ testing flag, exactly as cardano-node gates
+  -- its entire Dijkstra protocol-configuration block: with the flag off the node
+  -- uses an empty Dijkstra genesis and never opens the named file, so neither do
+  -- we — reading it here would reject a configuration the node accepts (a stale
+  -- hash, or a file that has since been moved away, under a flag that says the
+  -- era is not in use). What the node does not do is say so, so an ignored file
+  -- is reported as a warning rather than passed over in silence.
+  --
+  -- The flag is read from the testing section before finalization, where it is
+  -- still a 'StrictMaybe'; the always-applied base-default layer supplies it, and
+  -- its default is off, so an absent value means off here too.
+  let experimentalRef = strictMaybeToMaybe (experimentalGenesis testing)
+      experimentalEnabled = fromSMaybe False (experimentalHardForksEnabled testing)
   experimentalGenesisData <-
-    readExperimentalGenesisOrThrow root (strictMaybeToMaybe (experimentalGenesis testing))
+    if experimentalEnabled
+      then readExperimentalGenesisOrThrow root experimentalRef
+      else pure Nothing
+  let experimentalWarnings =
+        [ ExperimentalGenesisIgnored file
+        | not experimentalEnabled
+        , Hashed file _ <- maybe [] pure experimentalRef
+        ]
   checkInjectionOrThrow injectionRoot shelleyGenesisData conwayGenesisData
-  pure
+  pure . (,experimentalWarnings) $
     NodeConfigurationFromFileV1
       { minNodeVersion = maybeToStrictMaybe minNodeVer
       , storageConfiguration = Identity storage
@@ -339,6 +376,9 @@ readByronGenesisOrThrow root rnm (Hashed file expected) = do
 -- | Read and decode the experimental (Dijkstra) genesis referenced by the
 -- testing configuration, turning a read\/hash\/decode failure into a
 -- 'ConfigurationParsingError' under the @TestingConfig@ section.
+--
+-- Whether to read it at all is the caller's decision: it is called only when
+-- @ExperimentalHardForksEnabled@ is on (see 'experimentalGenesisConfig').
 readExperimentalGenesisOrThrow ::
   FilePath -> Maybe (Hashed FilePath) -> IO (Maybe DijkstraGenesis)
 readExperimentalGenesisOrThrow root mRef = do

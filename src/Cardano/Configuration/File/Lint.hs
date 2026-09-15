@@ -43,6 +43,12 @@ data ConfigWarning
     -- @Configuration@ envelope and inside it. The value inside @Configuration@ (the
     -- canonical location) is kept and the top-level one is dropped.
     EnvelopeKeyCollision Text
+  | -- | The testing configuration named a @DijkstraGenesisFile@ (the 'FilePath')
+    -- while @ExperimentalHardForksEnabled@ is off, so the experimental genesis is
+    -- not in play: the file is ignored — neither read nor hash-checked — and
+    -- @experimentalGenesisConfig@ stays @SNothing@. Enable the flag to use the
+    -- file, or drop the key.
+    ExperimentalGenesisIgnored FilePath
   | -- | A consistency check of warning severity did not hold on the resolved
     -- configuration (e.g. the Mithril snapshot policy under the V2LSM backend
     -- without an @LSMExportPath@). The configuration is still accepted; the
@@ -75,6 +81,12 @@ renderConfigWarning = \case
       <> T.unpack key
       <> "\" appears both at the top level and inside Configuration; "
       <> "keeping the value inside Configuration"
+  ExperimentalGenesisIgnored file ->
+    "the DijkstraGenesisFile \""
+      <> file
+      <> "\" is ignored because ExperimentalHardForksEnabled is off; "
+      <> "the file is not read and no experimental genesis is in play "
+      <> "(enable the flag to use it, or drop the key)"
   ConsistencyWarning msg -> msg
 
 -- | All warnings for an (unwrapped) configuration object.
