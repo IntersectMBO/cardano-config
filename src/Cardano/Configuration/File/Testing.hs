@@ -7,7 +7,7 @@ module Cardano.Configuration.File.Testing
 import Autodocodec
 import Cardano.Configuration.Basic (ErrorMessage, optionalFieldStrict, requireField)
 import Cardano.Configuration.File.Protocol
-import Cardano.Ledger.BaseTypes (StrictMaybe)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Word
@@ -53,7 +53,12 @@ instance HasCodec (TestingConfiguration StrictMaybe) where
   codec =
     object "TestingConfiguration" $ do
       TestingConfiguration
-        <$> optionalFieldStrict "ExperimentalHardForksEnabled" "Enable the experimental eras"
+        <$> optionalFieldStrict
+          "ExperimentalHardForksEnabled"
+          ( "Enable the experimental eras. When true, a DijkstraGenesisFile and its"
+              <> " DijkstraGenesisHash must be given alongside it, or resolution rejects the"
+              <> " configuration (a conditional requirement this schema does not express)."
+          )
           .= experimentalHardForksEnabled
         <*> optionalFieldStrict "TestShelleyHardForkAtEpoch" "Force the Shelley hard fork at this epoch"
           .= testShelleyHardForkAtEpoch
@@ -99,10 +104,35 @@ instance HasCodec (TestingConfiguration StrictMaybe) where
 
 -- | Resolve a partial testing configuration, taking @ExperimentalHardForksEnabled@
 -- from the (always-applied) defaults.
+--
+-- The two experimental-era keys are coupled: enabling the experimental eras
+-- without a genesis to run them from is not a configuration anyone meant to
+-- write, so @ExperimentalHardForksEnabled: true@ without a @DijkstraGenesisFile@
+-- is rejected here. This matches @cardano-node@, where the genesis file is a
+-- mandatory key of the very block it parses only when the flag is on, and it
+-- makes the converse gating in 'Cardano.Configuration.File.experimentalGenesisConfig'
+-- exact rather than one-sided: on a resolved configuration, no experimental
+-- genesis means the flag is off, and nothing else.
+--
+-- The rejection lives here, and not in the JSON Schema as an @if@\/@then@
+-- conditional requirement, only because the schemas are frozen per format
+-- version: under a given @vN@ tag, /what validates/ cannot change (see
+-- 'Cardano.Configuration.Schema.schemaTag'), and @v1@ is cut. So the schema still
+-- describes @DijkstraGenesisFile@ as optional while resolution insists on it —
+-- a discrepancy recorded in the @ExperimentalHardForksEnabled@ description,
+-- which is an annotation and so may be corrected under the tag. A future format
+-- version can express the requirement properly.
 finalizeTesting ::
   TestingConfiguration StrictMaybe -> Either ErrorMessage (TestingConfiguration Identity)
 finalizeTesting c = do
   enabled <- requireField "ExperimentalHardForksEnabled" (experimentalHardForksEnabled c)
+  case (runIdentity enabled, experimentalGenesis c) of
+    (True, SNothing) ->
+      Left $
+        "ExperimentalHardForksEnabled is true, so TestingConfig must also give a "
+          <> "DijkstraGenesisFile (with its DijkstraGenesisHash); "
+          <> "add them, or set ExperimentalHardForksEnabled to false"
+    _ -> Right ()
   pure $
     TestingConfiguration
       { experimentalHardForksEnabled = enabled

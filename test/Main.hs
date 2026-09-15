@@ -157,6 +157,7 @@ cases =
   , genesisHashRequiredCase
   , genesisHashPresentCase
   , experimentalGenesisGateCase
+  , experimentalGenesisRequiredCase
   , decodeCase
       "test/examples/mainnet-shelley-genesis.json (decodes via the ledger instances)"
       (decodeData "test/examples/mainnet-shelley-genesis.json" :: IO (Either String ShelleyGenesis))
@@ -1381,6 +1382,33 @@ experimentalGenesisGateCase =
   resolved cli cfg =
     either (assertFailure . show) (pure . fst) (resolveConfiguration cli cfg)
   ignoredFiles ws = [f | ExperimentalGenesisIgnored f <- ws]
+
+-- | The other half of the gating: @ExperimentalHardForksEnabled: true@ without a
+-- @DijkstraGenesisFile@ is rejected outright, as it is by @cardano-node@ (which
+-- makes the genesis file a mandatory key of the block it parses only when the
+-- flag is on). Enabling an era with no genesis to run it from is not a
+-- configuration anyone meant to write.
+--
+-- The rejection is a resolution error, not a parse error, because
+-- 'finalizeTesting' is where both keys are in hand; parsing the file on its own
+-- still succeeds. The message is asserted on, not merely the failure: someone who
+-- turned the flag on has to be able to fix their file from it, so it names both
+-- keys.
+experimentalGenesisRequiredCase :: TestTree
+experimentalGenesisRequiredCase =
+  testCase "ExperimentalHardForksEnabled without a DijkstraGenesisFile is rejected" $ do
+    (cfg, _) <- getDataFileName fixture >>= parseConfigurationFiles
+    expectOk $ case cliArgs [] of
+      Nothing -> Just "could not build default CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Right _ -> Just "expected the configuration to be rejected, but it resolved"
+        Left err
+          | all (`isInfixOf` show err) named -> Nothing
+          | otherwise -> Just ("rejected, but with an unexpected message: " <> show err)
+ where
+  fixture = "test/examples/dijkstra-gated-on-nofile.json"
+  -- The message has to name the flag, the key to add and its hash key.
+  named = ["ExperimentalHardForksEnabled", "DijkstraGenesisFile", "DijkstraGenesisHash"]
 
 -- | The Byron genesis decodes (canonical JSON) and its hash checks out via the
 -- ledger's reader. The expected hash is the real mainnet Byron genesis hash.

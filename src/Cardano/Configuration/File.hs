@@ -177,6 +177,12 @@ data NodeConfigurationFromFileF f
   -- @DijkstraGenesisFile@ while the flag is off is not silently dropped: it
   -- raises an 'ExperimentalGenesisIgnored' warning.
   --
+  -- The mirror image — the flag on with no file named — is 'SNothing' here too,
+  -- but only because this is the /file-parse/ result, which no resolution has
+  -- run over yet. 'finalizeTesting' rejects that combination, so on a resolved
+  -- t'Cardano.Configuration.NodeConfiguration' it cannot arise: there,
+  -- 'SNothing' means the flag is off and nothing else.
+  --
   -- These are the parsed genesis values, not file paths — all genesis JSON
   -- resolution happens here.
   , genesisInjectionRoot :: FilePath

@@ -219,7 +219,7 @@
         },
         "ExperimentalHardForksEnabled": {
             "default": false,
-            "description": "Enable the experimental eras",
+            "description": "Enable the experimental eras. When true, a DijkstraGenesisFile and its DijkstraGenesisHash must be given alongside it, or resolution rejects the configuration (a conditional requirement this schema does not express).",
             "title": "ExperimentalHardForksEnabled",
             "type": "boolean"
         },

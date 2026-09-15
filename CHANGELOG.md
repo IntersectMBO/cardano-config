@@ -29,6 +29,28 @@
   `ExperimentalHardForksEnabled` is off. Code matching exhaustively on
   `ConfigWarning` has to account for it.
 
+* The converse is now an error: `finalizeTesting` — and so `resolveConfiguration`
+  — rejects `ExperimentalHardForksEnabled: true` without a `DijkstraGenesisFile`.
+  `cardano-node` makes that key mandatory inside the very block it parses only
+  when the flag is on, and enabling an era with no genesis to run it from is not
+  a configuration anyone meant to write. A configuration that set the flag and
+  named no genesis used to resolve; it now fails with a message naming both keys.
+
+  Together with the gating above this makes the pair exact rather than
+  one-sided: on a resolved `NodeConfiguration`, `experimentalGenesisConfig` is
+  `SJust` if and only if `experimentalHardForksEnabled` is set. Both of the
+  combinations where the two disagree are now unreachable, so a consumer that
+  used to handle four has two.
+
+### Changed
+
+* The `ExperimentalHardForksEnabled` description in the JSON schemas now states
+  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. This
+  is an annotation only: *what validates* is unchanged, since the schemas are
+  frozen per format version and `v1` is cut, so the schema still describes
+  `DijkstraGenesisFile` as optional while resolution insists on it. Expressing
+  the requirement as a JSON Schema `if`/`then` needs a new format version.
+
 ## 1.1.0.0 -- 2026-09-08
 
 Schema format version stays at `1`: the `v1` tag had not been cut when
