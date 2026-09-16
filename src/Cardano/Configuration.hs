@@ -176,18 +176,6 @@ data NodeConfiguration = NodeConfiguration
   -- ^ The parsed Conway genesis.
   , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
   -- ^ The parsed experimental (Dijkstra) genesis, when there is one in play.
-  --
-  --     On a resolved configuration this field is exactly
-  --     @experimentalHardForksEnabled@: 'SJust' iff the flag is on, 'SNothing'
-  --     iff it is off. The two ways the pair could disagree are both ruled out
-  --     upstream — with the flag off the named @DijkstraGenesisFile@ is ignored
-  --     and never even read (see 'File.experimentalGenesisConfig' for why, and
-  --     for the warning that reports it), and with the flag on a missing
-  --     @DijkstraGenesisFile@ is a resolution error (see 'File.finalizeTesting').
-  --
-  --     So a consumer needs no second look at the flag to decide whether this
-  --     genesis is live, and has no fourth case to handle: \"flag on but no
-  --     genesis\" does not reach here.
   , genesisInjectionRoot :: FilePath
   -- ^ The directory the ledger resolves genesis initial-data injection files
   --     against: the directory holding the Shelley genesis file. Pass it to

@@ -164,27 +164,7 @@ data NodeConfigurationFromFileF f
   , conwayGenesisConfig :: ConwayGenesis
   -- ^ The parsed Conway genesis (read from the @ConwayGenesisFile@).
   , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
-  -- ^ The experimental (Dijkstra) genesis, when there is one in play: 'SJust'
-  -- only when @ExperimentalHardForksEnabled@ is on /and/ the testing
-  -- configuration names a @DijkstraGenesisFile@, in which case it holds that
-  -- file read, hash-checked and decoded.
-  --
-  -- 'SNothing' therefore says \"no experimental genesis applies\", not merely
-  -- \"no file was named\". With the flag off the file is not opened at all — not
-  -- even hash-checked — which mirrors @cardano-node@: it gates its whole
-  -- Dijkstra protocol-configuration block on the same flag and, with the flag
-  -- off, substitutes an empty genesis without ever reading a file. Naming a
-  -- @DijkstraGenesisFile@ while the flag is off is not silently dropped: it
-  -- raises an 'ExperimentalGenesisIgnored' warning.
-  --
-  -- The mirror image — the flag on with no file named — is 'SNothing' here too,
-  -- but only because this is the /file-parse/ result, which no resolution has
-  -- run over yet. 'finalizeTesting' rejects that combination, so on a resolved
-  -- t'Cardano.Configuration.NodeConfiguration' it cannot arise: there,
-  -- 'SNothing' means the flag is off and nothing else.
-  --
-  -- These are the parsed genesis values, not file paths — all genesis JSON
-  -- resolution happens here.
+  -- ^ The experimental (Dijkstra) genesis, when there is one in play.
   , genesisInjectionRoot :: FilePath
   -- ^ The directory the ledger resolves genesis initial-data injection files
   -- against: the directory holding the Shelley genesis file (which is /not/ in
@@ -301,17 +281,7 @@ parseConfigurationVersion1 root minNodeVer configValue = do
   conwayGenesisData <-
     readEraGenesisOrThrow root "ConwayGenesisFile" (conwayGenesis protocol)
   -- The experimental (Dijkstra) genesis is gated on the
-  -- @ExperimentalHardForksEnabled@ testing flag, exactly as cardano-node gates
-  -- its entire Dijkstra protocol-configuration block: with the flag off the node
-  -- uses an empty Dijkstra genesis and never opens the named file, so neither do
-  -- we — reading it here would reject a configuration the node accepts (a stale
-  -- hash, or a file that has since been moved away, under a flag that says the
-  -- era is not in use). What the node does not do is say so, so an ignored file
-  -- is reported as a warning rather than passed over in silence.
-  --
-  -- The flag is read from the testing section before finalization, where it is
-  -- still a 'StrictMaybe'; the always-applied base-default layer supplies it, and
-  -- its default is off, so an absent value means off here too.
+  -- @ExperimentalHardForksEnabled@ testing flag.
   let experimentalRef = strictMaybeToMaybe (experimentalGenesis testing)
       experimentalEnabled = fromSMaybe False (experimentalHardForksEnabled testing)
   experimentalGenesisData <-
