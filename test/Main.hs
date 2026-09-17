@@ -142,6 +142,8 @@ cases =
   , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
+  , schemaConstraintsCase
+  , snapshotIntervalCase
   , grpcEndpointCase
   , grpcEndpointRejectionCase
   , grpcEndpointCliCase
@@ -1294,6 +1296,84 @@ grpcEnabledEndpointCheckCase =
         | isSJust (grpcEndpoint (C.localConnectionsConfig onSocket)) ->
             Just ("a node socket path invented an endpoint: " <> show (C.localConnectionsConfig onSocket))
         | otherwise -> Nothing
+
+-- | The cross-field rules the parser enforces are stated in the schemas too, so
+-- a validator rejects the documents the parser rejects. This pins that they are
+-- stated at all, which the drift test would not catch, because it compares the
+-- committed files against the generator.
+schemaConstraintsCase :: TestTree
+schemaConstraintsCase =
+  testCase "the schemas state the parser's cross-field rules" $ do
+    results <- mapM check checks
+    expectOk (firstProblem results)
+ where
+  checks =
+    [ ("LocalConnectionsConfig", "the gRPC endpoint exclusions", hasDependencies grpcKeys)
+    , ("MempoolConfig", "the coupled mempool timeouts", hasDependencies mempoolTimeoutKeys)
+    , ("TestingConfig", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
+    , ("TestingConfig", "the experimental-eras requirement", hasIfThen)
+    , ("StorageConfig", "the non-zero SnapshotInterval", hasMinimum "SnapshotInterval" 1)
+    , -- The legacy form puts every component's keys in one flat space, so it
+      -- carries every component's rules at the top level.
+
+      ( "config.legacy-one-file"
+      , "every component's rules, flat"
+      , \v -> hasDependencies (grpcKeys <> mempoolTimeoutKeys <> dijkstraKeys) v && hasIfThen v
+      )
+    ]
+  grpcKeys =
+    [ "GrpcSocketPath"
+    , "GrpcListenAddress"
+    , "GrpcTlsCertificateFile"
+    , "GrpcTlsPrivateKeyFile"
+    , "GrpcTlsChainCertificateFiles"
+    ]
+  mempoolTimeoutKeys = ["MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity"]
+  dijkstraKeys = ["DijkstraGenesisFile", "DijkstraGenesisHash"]
+  check (name, what, holds) = do
+    res <- decodeData ("schemas/" <> name <> ".schema.json") :: IO (Either String Value)
+    pure $ case res of
+      Left err -> Just (name <> ": " <> err)
+      Right v
+        | holds v -> Nothing
+        | otherwise -> Just (name <> ".schema.json does not state " <> what)
+  hasDependencies ks v = all (\k -> KM.member (K.fromString k) (dependenciesOf v)) ks
+  dependenciesOf (Object o) | Just (Object d) <- KM.lookup (K.fromString "dependencies") o = d
+  dependenciesOf _ = KM.empty
+  hasIfThen (Object o)
+    | Just (Array branches) <- KM.lookup (K.fromString "allOf") o = any isIfThen branches
+  hasIfThen _ = False
+  isIfThen (Object b) = KM.member (K.fromString "if") b && KM.member (K.fromString "then") b
+  isIfThen _ = False
+  -- The minimum stated for a property of this name, wherever it appears.
+  hasMinimum name n v = minimaFor name v == [Number n]
+  minimaFor name = go
+   where
+    go (Object o) =
+      [ m
+      | Just (Object props) <- [KM.lookup (K.fromString "properties") o]
+      , Just (Object c) <- [KM.lookup (K.fromString name) props]
+      , Just m <- [KM.lookup (K.fromString "minimum") c]
+      ]
+        <> concatMap go (KM.elems o)
+    go (Array a) = concatMap go a
+    go _ = []
+
+-- | The node rejects a zero snapshot interval, so the parser does too (and the
+-- schema says @minimum: 1@ rather than the 0 a 'Data.Word.Word64' would allow).
+snapshotIntervalCase :: TestTree
+snapshotIntervalCase =
+  testCase "a zero SnapshotInterval is rejected" $
+    expectOk $ case (decodeInterval 0, decodeInterval 1) of
+      (Right _, _) -> Just "SnapshotInterval 0 was accepted"
+      (_, Left err) -> Just ("SnapshotInterval 1 was rejected: " <> err)
+      (Left _, Right _) -> Nothing
+ where
+  decodeInterval n =
+    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("SnapshotInterval", Number n)])])]) ::
+           Result (StorageConfiguration StrictMaybe) of
+      Error err -> Left err
+      Success cfg -> Right cfg
 
 -- | The first problem reported by a list of checks, if any.
 firstProblem :: [Maybe String] -> Maybe String

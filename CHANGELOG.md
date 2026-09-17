@@ -10,10 +10,12 @@ version up to and including 2 and writes 2. A version-1 document still parses,
 unchanged and without a migration warning, and keeps its `$schema` pinned to
 `v1`.
 
-No document changes validity: the sections do not set
-`additionalProperties: false`, so a configuration carrying the new keys already
-validated against the `v1` schemas. The bump keeps the schemas' `$id` honest now
-that the format has keys the `v1` tag does not describe.
+What validates changes in one direction: the schemas now state the cross-field
+rules the parser enforces (below), so a validator rejects documents `v1`
+accepted. Every one of those was already rejected at parse time, so no working
+configuration stops working. The new keys themselves are additive: the sections
+do not set `additionalProperties: false`, so a configuration carrying them
+already validated against `v1`.
 
 ### Breaking changes
 
@@ -116,6 +118,24 @@ that the format has keys the `v1` tag does not describe.
 
 ### Changed
 
+* The schemas state the cross-field rules the parser enforces. A codec cannot
+  express them, because it derives the schema one key at a time:
+
+  - the gRPC endpoint is one listener, so `GrpcSocketPath` excludes the TCP
+    keys, `GrpcListenAddress` and the `GrpcTls*` keys require `GrpcListenPort`,
+    and the certificate and private key require each other (`dependencies`)
+  - `MempoolTimeoutSoft`, `MempoolTimeoutHard` and `MempoolTimeoutCapacity` are
+    all set or all unset (`dependencies`)
+  - `ExperimentalHardForksEnabled` requires a `DijkstraGenesisFile` and
+    `DijkstraGenesisHash` (`if`/`then`), and those two require each other
+  - `SnapshotInterval` is `minimum: 1`, not the 0 its `Word64` would allow
+
+  Only rules whose inputs all come from the configuration file are stated.
+  "Enabling gRPC needs somewhere to listen" is not: a `--socket-path` on the
+  command line satisfies it, and a validator sees only the file.
+  `MinDelay <= MaxDelay` remains parser-only, because JSON Schema cannot compare
+  two properties.
+
 * The lower bounds on the boot libraries `bytestring`, `directory`, `filepath`,
   `text` and `time` are relaxed to the versions GHC 9.6.7 ships. That is the
   oldest compiler in `tested-with`. They were set to what the newest GHC ships,
@@ -124,12 +144,8 @@ that the format has keys the `v1` tag does not describe.
   stable API is used from them, and none of it is `OsPath`.
 
 * The `ExperimentalHardForksEnabled` description in the JSON schemas now states
-  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. This
-  is an annotation only: *what validates* is unchanged, since the schemas are
-  frozen per format version and `v1` is cut, so the schema still describes
-  `DijkstraGenesisFile` as optional while resolution insists on it. Expressing
-  the requirement as a JSON Schema `if`/`then` needs a new format version,
-  which this release cuts.
+  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. The
+  schemas enforce that requirement too, with the `if`/`then` rule above.
 
 ## 1.1.0.0 -- 2026-09-08
 

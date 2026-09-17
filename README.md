@@ -250,8 +250,15 @@ standard validator works, e.g. [`ajv`](https://github.com/ajv-validator/ajv-cli)
 $ ajv validate --spec=draft7 --strict=false -s schemas/config.schema.json -d my-config.json
 ```
 
-This checks structure only, not genesis hashes or the cross-field rules; `resolve`
-is the final check. The CUE front-end wires this up as `just ajv`.
+This checks the structure and the cross-field rules a single file can state (see
+[Warnings](#warnings) for what the parser adds). It does not check genesis
+hashes, nor the rules that span the file, the command line and the defaults -
+"enabling gRPC needs somewhere to listen" is satisfied by a `--socket-path` the
+file never mentions - so `resolve` is still the final check.
+
+A legacy document is expected to *fail* validation: it still parses, because
+`migrate` rewrites it first, but the schema documents the current form alone.
+The CUE front-end wires this up as `just ajv`.
 
 ### ... see the schema for a component (e.g. NetworkConfig)
 
