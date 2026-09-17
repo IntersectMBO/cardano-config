@@ -116,7 +116,7 @@ cases =
       ( decodeData "test/examples/localconnections-tls.json" ::
           IO (Either String (LocalConnectionsConfig StrictMaybe))
       )
-  , parseCase "test/examples/fullconfig.json"
+  , parseCase "test/examples/legacy-fullconfig.json"
   , parseCase "test/examples/split.json"
   , parseCase "test/examples/split-all.json"
   , tracingCase
@@ -269,7 +269,7 @@ misplacedKeyCase =
 migrationWarningCase :: TestTree
 migrationWarningCase =
   testCase "a config that migration changes warns MigratedToCurrentFormat; a canonical one does not" $ do
-    legacyPath <- getDataFileName "test/examples/fullconfig.json"
+    legacyPath <- getDataFileName "test/examples/legacy-fullconfig.json"
     envPath <- getDataFileName "test/examples/min-node-version.json"
     (_, legacyWarnings) <- parseConfigurationFiles legacyPath
     (_, envWarnings) <- parseConfigurationFiles envPath
@@ -360,8 +360,8 @@ formatVersionCase =
 -- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
 migrateCase :: TestTree
 migrateCase =
-  testCase "migrate test/examples/fullconfig.json (legacy flat -> envelope)" $ do
-    res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
+  testCase "migrate test/examples/legacy-fullconfig.json (legacy flat -> envelope)" $ do
+    res <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
       Right raw -> case fst (migrate raw) of
@@ -875,8 +875,8 @@ minNodeVersionCase =
 -- defaults populate every resolved field.
 resolveCase :: TestTree
 resolveCase =
-  testCase "resolveConfiguration examples/fullconfig.json" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+  testCase "resolveConfiguration examples/legacy-fullconfig.json" $ do
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     case cliArgs [] of
       Nothing -> assertFailure "could not build default CLI arguments"
@@ -895,9 +895,9 @@ tracingCase =
   testCase "HermodTracing resolves to a TraceConfig (inline, file, default) and is always rendered" $ do
     inline <- parsed "test/examples/tracing-inline.json"
     fromFile <- parsed "test/examples/tracing-file.json"
-    absent <- parsed "test/examples/fullconfig.json"
+    absent <- parsed "test/examples/legacy-fullconfig.json"
     renderedInline <- rendersTracing "test/examples/tracing-inline.json"
-    renderedAbsent <- rendersTracing "test/examples/fullconfig.json"
+    renderedAbsent <- rendersTracing "test/examples/legacy-fullconfig.json"
     let asJSON = toJSON . tracingConfiguration
         deflt = toJSON defaultCardanoTracingConfig
     expectOk $
@@ -961,7 +961,7 @@ tracingDefaultParityCase =
 genesisRenderCase :: TestTree
 genesisRenderCase =
   testCase "resolve renders era geneses only with IncludeGeneses" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -1016,7 +1016,7 @@ roleVariantParityCase =
 roleSelectionCase :: TestTree
 roleSelectionCase =
   testCase "network role defaults selected from credential presence" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case (cliArgs ["--shelley-vrf-key", "vrf.skey"], cliArgs []) of
       (Just bpCli, Just relayCli) ->
@@ -1275,7 +1275,7 @@ grpcEndpointCliCase =
 grpcEnabledEndpointCheckCase :: TestTree
 grpcEnabledEndpointCheckCase =
   testCase "enabling gRPC requires an endpoint or a node socket path" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     let resolveWith args = case cliArgs ("--config" : path : args) of
           Nothing -> Left ("could not build CLI arguments: " <> show args)
@@ -1432,7 +1432,7 @@ snapshotMithrilResolveCase :: TestTree
 snapshotMithrilResolveCase =
   testCase "Mithril snapshot policy resolves to concrete values (filling partial overrides)" $ do
     fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
-    fromPartial <- resolvedOptions "test/examples/fullconfig.json" -- sets 3 of 6 (= Mithril)
+    fromPartial <- resolvedOptions "test/examples/legacy-fullconfig.json" -- sets 3 of 6 (= Mithril)
     expectOk $ case (fromMithril, fromPartial) of
       (Right a, Right b)
         | a == mithrilFields && b == mithrilFields -> Nothing
