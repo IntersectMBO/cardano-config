@@ -46,6 +46,9 @@ module Cardano.Configuration
   , File.DiffusionMode (..)
   , File.AcceptedConnectionsLimit (..)
   , File.LocalConnectionsConfig (..)
+  , File.GrpcEndpoint (..)
+  , File.GrpcTlsFiles (..)
+  , File.defaultGrpcListenAddress
   , File.ResponderCoreAffinityPolicy (..)
   , File.TxSubmissionLogicVersion (..)
 
@@ -101,7 +104,11 @@ module Cardano.Configuration
   , CLI.parseSocketPath
   , CLI.parseValidateDB
   , CLI.parseEnableGrpc
+  , CLI.parseGrpcEndpoint
   , CLI.parseGrpcSocketPath
+  , CLI.parseGrpcListenAddress
+  , CLI.parseGrpcListenPort
+  , CLI.parseGrpcTlsFiles
   , CLI.parseCredentials
   , CLI.parseKESSource
   , CLI.parseHostIPv4Addr
@@ -234,11 +241,13 @@ defaultConfigChecks :: [ConfigCheck]
 defaultConfigChecks =
   [ ConfigCheck
       CheckError
-      "Enabling the gRPC endpoint requires a gRPC socket path, or a node socket path to derive one from"
+      ( "Enabling the gRPC endpoint requires a gRPC endpoint (a socket path or a listen port), or a "
+          <> "node socket path to derive the default socket from"
+      )
       ( \nc ->
           let lcc = localConnectionsConfig nc
            in not (runIdentity (File.enableGrpc lcc))
-                || isSJust (File.grpcSocketPath lcc)
+                || isSJust (File.grpcEndpoint lcc)
                 || isSJust (File.socketPath lcc)
       )
   , ConfigCheck
@@ -353,7 +362,9 @@ resolveConfigurationWith checks cli file = do
         lcc
           { File.socketPath = CLI.socketPath cli <|> File.socketPath lcc
           , File.enableGrpc = CLI.enableGrpcCLI cli <|> File.enableGrpc lcc
-          , File.grpcSocketPath = CLI.grpcSocketPathCLI cli <|> File.grpcSocketPath lcc
+          , -- The endpoint is one choice, so a command-line endpoint replaces the
+            -- file's endpoint whole rather than merging into it.
+            File.grpcEndpoint = CLI.grpcEndpointCLI cli <|> File.grpcEndpoint lcc
           }
   localConnections <- finalize $ File.finalizeLocalConnections lccWithCli
   -- Storage, consensus and the non-producing flag take their value from the CLI

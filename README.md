@@ -73,7 +73,9 @@ It reshapes the document into the envelope as JSON: it adds `$schema` and
 under its section inside `Configuration`. It also brings field names up to date:
 the parser rejects the old names, so `migrate` rewrites the ones that were
 renamed (`hardLimit`/`softLimit`/`delay` → `HardLimit`/`SoftLimit`/`Delay`,
-`EnableRpc`/`RpcSocketPath` → `EnableGrpc`/`GrpcSocketPath`, `TargetNumberOf*` →
+the `Rpc*` keys → `Grpc*` (`EnableRpc` → `EnableGrpc`, `RpcSocketPath` →
+`GrpcSocketPath`, `RpcListenAddress`/`RpcListenPort` and the `RpcTls*` trio
+likewise), `TargetNumberOf*` →
 `DeadlineTargetNumberOf*`) and drops the ones that were removed
 (`PBftSignatureThreshold`, `LastKnownBlockVersion-Major`/`-Minor`/`-Alt`, now
 supplied by consensus defaults; the vestigial `Protocol`; and
@@ -149,6 +151,51 @@ Give it the keys you want set, and the component's base default (and, for
   }
 }
 ```
+
+### ... serve the gRPC endpoint over TCP, with or without TLS
+
+The gRPC server listens on exactly one endpoint. By default that is a unix
+socket - `GrpcSocketPath`, or, absent one, `rpc.sock` beside the node socket.
+Setting `GrpcListenPort` instead makes it listen over HTTP/2 on TCP, and adding
+a certificate and its private key makes that HTTP/2 over TLS:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
+  "Version": 1,
+  "MinNodeVersion": "11.2",
+  "Configuration": {
+    "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",
+    "LocalConnectionsConfig": {
+      "EnableGrpc": true,
+      "GrpcListenAddress": "0.0.0.0",
+      "GrpcListenPort": 3001,
+      "GrpcTlsCertificateFile": "tls/server.pem",
+      "GrpcTlsPrivateKeyFile": "tls/server.key",
+      "GrpcTlsChainCertificateFiles": ["tls/intermediate.pem"]
+    }
+  }
+}
+```
+
+`GrpcListenAddress` is optional and defaults to `127.0.0.1`, so a port alone
+keeps the endpoint on loopback; the chain certificates are optional too. The
+combinations that describe no single endpoint are rejected as the file is
+parsed: `GrpcSocketPath` alongside any of the TCP keys, an address or a TLS
+credential without a port, or a certificate without its private key (or the
+reverse).
+
+The same on the command line, where `--grpc-socket-path` and
+`--grpc-listen-port` are likewise alternatives:
+
+```console
+$ cardano-node run --grpc-enable --grpc-listen-address 0.0.0.0 --grpc-listen-port 3001 \
+    --grpc-tls-certificate tls/server.pem --grpc-tls-private-key tls/server.key \
+    --grpc-tls-chain-certificate tls/intermediate.pem ...
+```
+
+A command-line endpoint replaces the file's endpoint whole, rather than merging
+into it: the two describe one choice, not a set of independent settings.
 
 ### ... see what my configuration resolves to, with defaults
 

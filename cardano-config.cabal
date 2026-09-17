@@ -197,6 +197,7 @@ test-suite cardano-config-test
     file-embed,
     filepath,
     fs-api,
+    iproute,
     optparse-applicative,
     tasty,
     tasty-hunit,

@@ -4,6 +4,53 @@
 
 ### Breaking changes
 
+* The gRPC server can now listen over HTTP/2 on a TCP port, with or without
+  TLS, rather than only on a unix socket. This follows `cardano-node`'s
+  `RpcEndpoint`. `LocalConnectionsConfig` replaces its
+  `grpcSocketPath :: StrictMaybe FilePath` field with
+  `grpcEndpoint :: StrictMaybe GrpcEndpoint`, the choice among the three
+  listeners:
+
+  ```haskell
+  data GrpcEndpoint
+    = GrpcEndpointUnixSocket FilePath
+    | GrpcEndpointHttp IP PortNumber
+    | GrpcEndpointHttps IP PortNumber GrpcTlsFiles
+  ```
+
+  It is one field rather than a group of independent ones, because the server
+  has exactly one listener. The combinations that describe none are now
+  unrepresentable in a resolved configuration. It stays a `StrictMaybe` once
+  resolved: unset, the consumer derives `rpc.sock` beside the node socket.
+
+  In the configuration file the endpoint is written flat, under
+  `LocalConnectionsConfig`: the existing `GrpcSocketPath`, or the new
+  `GrpcListenPort`, with an optional `GrpcListenAddress` defaulting to
+  `127.0.0.1`. For TLS, add `GrpcTlsCertificateFile` and
+  `GrpcTlsPrivateKeyFile`, with optional `GrpcTlsChainCertificateFiles`. These
+  keys are folded into the endpoint as the section is parsed. The combinations
+  that describe no single listener are rejected there, naming the keys at
+  fault.
+
+* `CliArgs` likewise replaces `grpcSocketPathCLI :: StrictMaybe FilePath` with
+  `grpcEndpointCLI :: StrictMaybe GrpcEndpoint`. It is parsed from the existing
+  `--grpc-socket-path` and the new `--grpc-listen-address`,
+  `--grpc-listen-port`, `--grpc-tls-certificate`, `--grpc-tls-private-key` and
+  (repeatable) `--grpc-tls-chain-certificate`, whose names and help text match
+  `cardano-node`'s. The unix-socket flag and the TCP ones are alternatives, so
+  giving both fails the parse. A command-line endpoint replaces the file's
+  endpoint whole rather than merging into it.
+
+  The individual parsers are exported as usual (`parseGrpcEndpoint`,
+  `parseGrpcSocketPath`, `parseGrpcListenAddress`, `parseGrpcListenPort`,
+  `parseGrpcTlsFiles`), as are `GrpcEndpoint`, `GrpcTlsFiles` and
+  `defaultGrpcListenAddress`.
+
+* The consistency check on enabling gRPC now accepts an endpoint of any kind: a
+  gRPC socket path, a listen port, or a node socket path. A configuration that
+  enables gRPC on a listen port and names no node socket used to be rejected.
+  It now resolves, and the check's `checkDescription` text changed with it.
+
 * `experimentalGenesisConfig` (on both `NodeConfigurationFromFile` and
   `NodeConfiguration`) is now gated on the `ExperimentalHardForksEnabled`
   testing flag: it is `SJust` only when the flag is on *and* a
@@ -41,6 +88,18 @@
   `SJust` if and only if `experimentalHardForksEnabled` is set. Both of the
   combinations where the two disagree are now unreachable, so a consumer that
   used to handle four has two.
+
+### Added
+
+* `migrate` rewrites the remaining `Rpc*` key names to their `Grpc*` form:
+  `RpcListenAddress`, `RpcListenPort`, `RpcTlsCertificateFile`,
+  `RpcTlsPrivateKeyFile` and `RpcTlsChainCertificateFiles`, alongside the
+  `EnableRpc`/`RpcSocketPath` pair it already handled.
+
+  The schemas gain the new keys, as optional properties on a section that does
+  not forbid additional ones. Nothing that validated against the `v1` schemas
+  stops doing so. Publishing them under their own `$id` needs a format version
+  the `v1` tag does not freeze.
 
 ### Changed
 
