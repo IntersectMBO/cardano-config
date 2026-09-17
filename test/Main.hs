@@ -21,7 +21,7 @@ module Main (main) where
 
 import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
-import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
+import Cardano.Configuration.CliArgs (CliArgs, grpcEndpointCLI, parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.File.Storage
@@ -63,6 +63,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.FileEmbed (makeRelativeToProject)
 import Data.Functor.Identity (runIdentity)
+import Data.IP (IP)
 import Data.List (isInfixOf)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
@@ -110,6 +111,11 @@ cases =
       ( decodeData "test/examples/localconnections.json" ::
           IO (Either String (LocalConnectionsConfig StrictMaybe))
       )
+  , decodeCase
+      "test/examples/localconnections-tls.json"
+      ( decodeData "test/examples/localconnections-tls.json" ::
+          IO (Either String (LocalConnectionsConfig StrictMaybe))
+      )
   , parseCase "test/examples/fullconfig.json"
   , parseCase "test/examples/split.json"
   , parseCase "test/examples/split-all.json"
@@ -135,6 +141,10 @@ cases =
   , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
+  , grpcEndpointCase
+  , grpcEndpointRejectionCase
+  , grpcEndpointCliCase
+  , grpcEnabledEndpointCheckCase
   , roleVariantParityCase
   , roleSelectionCase
   , rolePrecedenceCase
@@ -429,7 +439,16 @@ migrateRenameCase =
   -- Globally-unique old names that must never survive (the generic
   -- AcceptedConnectionsLimit sub-keys are checked in place above, since a stray
   -- one is deliberately left unchanged).
-  oldNames = ["EnableRpc", "RpcSocketPath", "TargetNumberOfRootPeers"]
+  oldNames =
+    [ "EnableRpc"
+    , "RpcSocketPath"
+    , "RpcListenAddress"
+    , "RpcListenPort"
+    , "RpcTlsCertificateFile"
+    , "RpcTlsPrivateKeyFile"
+    , "RpcTlsChainCertificateFiles"
+    , "TargetNumberOfRootPeers"
+    ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
     _ -> False
@@ -1085,6 +1104,195 @@ mempoolMixedResolveCase =
 
 -- | Parse @cardano-node@-style CLI arguments for a test (no defaults file is
 -- needed; the parser supplies its own).
+-- | The flat @Grpc*@ keys of @LocalConnectionsConfig@ fold into the single
+-- 'GrpcEndpoint' they describe: a unix socket, a plaintext (h2c) TCP listener
+-- or a TLS one. The listen address defaults to loopback. Each endpoint also
+-- survives a round trip through 'toJSON'.
+grpcEndpointCase :: TestTree
+grpcEndpointCase =
+  testCase "the flat Grpc* keys fold into a GrpcEndpoint (and unfold again)" $
+    expectOk (firstProblem (map check endpoints))
+ where
+  endpoints =
+    [ ("a unix socket", [socketPathKey], GrpcEndpointUnixSocket "rpc.sock")
+    , ("a plaintext listener", [portKey], GrpcEndpointHttp defaultGrpcListenAddress 3001)
+    ,
+      ( "a plaintext listener on a given address"
+      , [addressKey, portKey]
+      , GrpcEndpointHttp (ip "0.0.0.0") 3001
+      )
+    ,
+      ( "a plaintext listener on IPv6"
+      , [("GrpcListenAddress", str "::1"), portKey]
+      , GrpcEndpointHttp (ip "::1") 3001
+      )
+    ,
+      ( "a TLS listener"
+      , [portKey, certificateKey, privateKeyKey]
+      , GrpcEndpointHttps defaultGrpcListenAddress 3001 (GrpcTlsFiles "tls/server.pem" "tls/server.key" [])
+      )
+    ,
+      ( "a TLS listener with a chain"
+      , [addressKey, portKey, certificateKey, privateKeyKey, chainKey]
+      , GrpcEndpointHttps
+          (ip "0.0.0.0")
+          3001
+          (GrpcTlsFiles "tls/server.pem" "tls/server.key" ["tls/intermediate.pem"])
+      )
+    ]
+  check (label, fields, expected) = case decodeLocalConnections fields of
+    Left err -> Just (label <> ": did not decode: " <> err)
+    Right cfg
+      | grpcEndpoint cfg /= SJust expected ->
+          Just (label <> ": decoded to " <> show (grpcEndpoint cfg) <> ", expected " <> show expected)
+      | otherwise -> case fromJSON (toJSON cfg) :: Result (LocalConnectionsConfig StrictMaybe) of
+          Error err -> Just (label <> ": did not re-decode what it rendered: " <> err)
+          Success cfg'
+            | grpcEndpoint cfg' /= grpcEndpoint cfg ->
+                Just (label <> ": did not survive a round trip: " <> show (grpcEndpoint cfg'))
+            | otherwise -> Nothing
+
+-- | The @Grpc*@ key combinations that describe no single listener are rejected
+-- as the section is parsed, naming the keys at fault.
+grpcEndpointRejectionCase :: TestTree
+grpcEndpointRejectionCase =
+  testCase "a Grpc* key combination that describes no single listener is rejected" $
+    expectOk (firstProblem (map check rejected))
+ where
+  rejected =
+    [ ("a socket path and a listen port", [socketPathKey, portKey], "mutually exclusive")
+    , ("a socket path and a listen address", [socketPathKey, addressKey], "mutually exclusive")
+    , ("a socket path and TLS", [socketPathKey, certificateKey, privateKeyKey], "mutually exclusive")
+    , ("a listen address with no port", [addressKey], "GrpcListenAddress requires GrpcListenPort")
+    , ("TLS with no port", [certificateKey, privateKeyKey], "require GrpcListenPort")
+    , ("a certificate with no private key", [portKey, certificateKey], "must be set together")
+    , ("a private key with no certificate", [portKey, privateKeyKey], "must be set together")
+    , ("a TLS chain with no credentials", [portKey, chainKey], "requires GrpcTlsCertificateFile")
+    ]
+  check (label, fields, expectedMessage) = case decodeLocalConnections fields of
+    Right cfg -> Just (label <> ": was accepted, as " <> show (grpcEndpoint cfg))
+    Left err
+      | expectedMessage `isInfixOf` err -> Nothing
+      | otherwise ->
+          Just (label <> ": rejected, but not for " <> show expectedMessage <> ": " <> err)
+
+-- | The same endpoint, from the command line: the unix-socket flag and the TCP
+-- ones are alternatives, so giving both fails the parse, as does an address or
+-- a TLS credential with no port to listen on.
+grpcEndpointCliCase :: TestTree
+grpcEndpointCliCase =
+  testCase "the gRPC endpoint flags build the endpoint, and exclude each other" $
+    expectOk (firstProblem (map accepts accepted <> map rejects rejected))
+ where
+  accepted =
+    [ (["--grpc-socket-path", "rpc.sock"], GrpcEndpointUnixSocket "rpc.sock")
+    , (["--grpc-listen-port", "3001"], GrpcEndpointHttp defaultGrpcListenAddress 3001)
+    ,
+      ( ["--grpc-listen-address", "0.0.0.0", "--grpc-listen-port", "3001"]
+      , GrpcEndpointHttp (ip "0.0.0.0") 3001
+      )
+    ,
+      (
+        [ "--grpc-listen-port"
+        , "3001"
+        , "--grpc-tls-certificate"
+        , "tls/server.pem"
+        , "--grpc-tls-private-key"
+        , "tls/server.key"
+        , "--grpc-tls-chain-certificate"
+        , "tls/intermediate.pem"
+        ]
+      , GrpcEndpointHttps
+          defaultGrpcListenAddress
+          3001
+          (GrpcTlsFiles "tls/server.pem" "tls/server.key" ["tls/intermediate.pem"])
+      )
+    ]
+  rejected =
+    [
+      ( "a socket path and a listen port"
+      , ["--grpc-socket-path", "rpc.sock", "--grpc-listen-port", "3001"]
+      )
+    , ("a listen address with no port", ["--grpc-listen-address", "0.0.0.0"])
+    ,
+      ( "TLS with no port"
+      , ["--grpc-tls-certificate", "tls/server.pem", "--grpc-tls-private-key", "tls/server.key"]
+      )
+    ,
+      ( "a certificate with no private key"
+      , ["--grpc-listen-port", "3001", "--grpc-tls-certificate", "tls/server.pem"]
+      )
+    , ("a port out of range", ["--grpc-listen-port", "65536"])
+    ]
+  accepts (args, expected) = case cliArgs args of
+    Nothing -> Just (show args <> ": did not parse")
+    Just cli
+      | grpcEndpointCLI cli /= SJust expected ->
+          Just (show args <> ": parsed to " <> show (grpcEndpointCLI cli) <> ", expected " <> show expected)
+      | otherwise -> Nothing
+  rejects (label, args) = case cliArgs args of
+    Nothing -> Nothing
+    Just cli -> Just (label <> ": was accepted, as " <> show (grpcEndpointCLI cli))
+
+-- | Enabling the gRPC server needs somewhere for it to listen: an endpoint of
+-- its own, or a node socket path to derive the default @rpc.sock@ from. A
+-- listen port counts, so @--grpc-enable --grpc-listen-port@ needs no node
+-- socket. @--grpc-enable@ alone, with neither, is a resolution error.
+grpcEnabledEndpointCheckCase :: TestTree
+grpcEnabledEndpointCheckCase =
+  testCase "enabling gRPC requires an endpoint or a node socket path" $ do
+    path <- getDataFileName "test/examples/fullconfig.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let resolveWith args = case cliArgs ("--config" : path : args) of
+          Nothing -> Left ("could not build CLI arguments: " <> show args)
+          Just cli -> either (Left . show) (Right . fst) (resolveConfiguration cli cfg)
+    expectOk $ case ( resolveWith ["--grpc-enable"]
+                    , resolveWith ["--grpc-enable", "--grpc-listen-port", "3001"]
+                    , resolveWith ["--grpc-enable", "--socket-path", "node.socket"]
+                    ) of
+      (Right _, _, _) -> Just "gRPC enabled with nothing to listen on was accepted"
+      (_, Left err, _) -> Just ("gRPC enabled on a listen port was rejected: " <> err)
+      (_, _, Left err) -> Just ("gRPC enabled with a node socket path was rejected: " <> err)
+      (Left _, Right onPort, Right onSocket)
+        | grpcEndpoint (C.localConnectionsConfig onPort)
+            /= SJust (GrpcEndpointHttp defaultGrpcListenAddress 3001) ->
+            Just
+              ("the listen port did not resolve to a TCP endpoint: " <> show (C.localConnectionsConfig onPort))
+        -- Left unset, so that the consumer derives rpc.sock beside the node socket.
+        | isSJust (grpcEndpoint (C.localConnectionsConfig onSocket)) ->
+            Just ("a node socket path invented an endpoint: " <> show (C.localConnectionsConfig onSocket))
+        | otherwise -> Nothing
+
+-- | The first problem reported by a list of checks, if any.
+firstProblem :: [Maybe String] -> Maybe String
+firstProblem problems = case [p | Just p <- problems] of
+  (p : _) -> Just p
+  [] -> Nothing
+
+-- | An IP address written the way the configuration and the command line write
+-- it (the test module does not enable @OverloadedStrings@).
+ip :: String -> IP
+ip = read
+
+-- | Decode a @LocalConnectionsConfig@ from the given keys alone.
+decodeLocalConnections :: [(String, Value)] -> Either String (LocalConnectionsConfig StrictMaybe)
+decodeLocalConnections fields = case fromJSON (obj fields) of
+  Error err -> Left err
+  Success cfg -> Right cfg
+
+-- The individual Grpc* keys the cases above combine.
+socketPathKey, addressKey, portKey, certificateKey, privateKeyKey, chainKey :: (String, Value)
+socketPathKey = ("GrpcSocketPath", str "rpc.sock")
+addressKey = ("GrpcListenAddress", str "0.0.0.0")
+portKey = ("GrpcListenPort", Number 3001)
+certificateKey = ("GrpcTlsCertificateFile", str "tls/server.pem")
+privateKeyKey = ("GrpcTlsPrivateKeyFile", str "tls/server.key")
+chainKey = ("GrpcTlsChainCertificateFiles", Array (pure (str "tls/intermediate.pem")))
+
+-- | A JSON string (the test module does not enable @OverloadedStrings@).
+str :: String -> Value
+str = String . T.pack
+
 cliArgs :: [String] -> Maybe CliArgs
 cliArgs = getParseResult . execParserPure defaultPrefs (info parseCliArgs mempty)
 

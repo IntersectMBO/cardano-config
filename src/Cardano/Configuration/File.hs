@@ -28,6 +28,9 @@ module Cardano.Configuration.File
   , DiffusionMode (..)
   , AcceptedConnectionsLimit (..)
   , LocalConnectionsConfig (..)
+  , GrpcEndpoint (..)
+  , GrpcTlsFiles (..)
+  , defaultGrpcListenAddress
   , TestingConfiguration (..)
   , MempoolConfiguration (..)
   , TracingConfiguration (..)
