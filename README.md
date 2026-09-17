@@ -32,9 +32,10 @@ under `Configuration`, each given inline or as a path to a split sub-file:
 }
 ```
 
-Other shapes still parse, but raise a non-fatal warning: a document missing any
-of those envelope keys (`NotVersion1Envelope`) or the legacy flat form with
-component keys at the top level (`LegacySingleFileFormat`). See
+Other shapes still parse: a document missing any of those envelope keys, or the
+legacy flat form with the component keys at the top level, is brought into the
+envelope by `migrate` before it is parsed (see [Schema versioning](#schema-versioning)),
+which raises a single non-fatal `MigratedToCurrentFormat` warning. See
 [Warnings](#warnings).
 
 A component split out into its own sub-file may declare its own `$schema`
@@ -115,6 +116,34 @@ component the layering, from lowest to highest precedence, is:
 `cardano-config` is the *origin* of these default files, but each is ultimately
 owned by the layer that implements the component (networking, consensus, ...); a
 CI check keeps the copies here aligned with upstream.
+
+## Warnings
+
+Parsing and resolution return non-fatal `ConfigWarning`s alongside the
+configuration, rather than printing them: the caller decides whether to print
+them, log them through its own tracer or treat them as fatal.
+`renderConfigWarning` gives the one-line rendering the `cardano-config`
+executable prints to stderr, prefixed with `Warning: `.
+
+`parseConfigurationFiles` raises:
+
+| Warning | Raised when |
+|---------|-------------|
+| `MigratedToCurrentFormat` | The document was not in the current canonical format, so `migrate` changed it before parsing - it was not in the envelope, or used a pre-rename field name, or carried an obsolete key. Run `cardano-config migrate` to update the file. |
+| `RenamedKeyCollision old new` | Both the old and the current name of a renamed field are present at the same level. The current name wins; the other value is dropped. |
+| `EnvelopeKeyCollision key` | A key appears both as a top-level sibling of `Configuration` and inside it. The one inside `Configuration` wins. |
+| `UnrecognisedKeys keys` | Keys at the `Configuration` level that no parser recognises: typos, or a component property left flat instead of under its section. They are ignored, not resolved into a section. |
+| `ExperimentalGenesisIgnored file` | A `DijkstraGenesisFile` is named while `ExperimentalHardForksEnabled` is off, so the file is ignored - neither read nor hash-checked. |
+
+`resolveConfiguration` adds:
+
+| Warning | Raised when |
+|---------|-------------|
+| `ConsistencyWarning description` | A consistency check of warning severity did not hold on the resolved configuration (e.g. a Mithril snapshot policy under the `V2LSM` backend with no `LSMExportPath`). The configuration is still accepted. See `ConfigCheck`. |
+
+Only keys at the `Configuration` level are checked against the recognised set;
+an unknown key *inside* a component section is ignored silently, with no
+warning.
 
 ## Cookbook: I want to ...
 
