@@ -103,6 +103,13 @@
 
 ### Changed
 
+* The lower bounds on the boot libraries `bytestring`, `directory`, `filepath`,
+  `text` and `time` are relaxed to the versions GHC 9.6.7 ships. That is the
+  oldest compiler in `tested-with`. They were set to what the newest GHC ships,
+  so a plan on 9.6 had to reinstall newer ones from Hackage. A downstream plan
+  that cannot do that needed `allow-older` entries for all five. Only long
+  stable API is used from them, and none of it is `OsPath`.
+
 * The `ExperimentalHardForksEnabled` description in the JSON schemas now states
   that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. This
   is an annotation only: *what validates* is unchanged, since the schemas are
