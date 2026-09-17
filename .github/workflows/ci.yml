@@ -43,6 +43,20 @@ jobs:
       - name: Check cabal file formatting
         run: ./scripts/cabal-format.sh
 
+  schemas:
+    name: Schema validation (ajv)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ajv-cli
+        run: |
+          npm install --global ajv-cli
+          ajv help | head -n1
+
+      - name: Check the schemas accept and reject what the parser does
+        run: ./scripts/check-schemas.sh
+
   test:
     name: Build & test (GHC ${{ matrix.ghc }})
     runs-on: ubuntu-latest

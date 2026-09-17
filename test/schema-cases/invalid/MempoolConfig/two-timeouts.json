@@ -1,0 +1,4 @@
+{
+  "MempoolTimeoutSoft": 1,
+  "MempoolTimeoutHard": 1.5
+}

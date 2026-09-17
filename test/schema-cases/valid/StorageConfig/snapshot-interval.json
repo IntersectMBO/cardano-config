@@ -1,0 +1,7 @@
+{
+  "LedgerDB": {
+    "Snapshots": {
+      "SnapshotInterval": 864
+    }
+  }
+}

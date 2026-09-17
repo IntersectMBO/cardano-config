@@ -1,0 +1,4 @@
+{
+  "GrpcListenPort": 3001,
+  "GrpcTlsPrivateKeyFile": "tls/server.key"
+}
