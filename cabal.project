@@ -11,8 +11,8 @@ repository cardano-haskell-packages
 
 -- The index-states
 index-state:
-  , hackage.haskell.org 2026-07-31T11:39:47Z
-  , cardano-haskell-packages 2026-07-30T09:29:13Z
+  , hackage.haskell.org 2026-08-29T13:20:56Z
+  , cardano-haskell-packages 2026-08-21T19:33:33Z
 
 packages:
   .
@@ -38,3 +38,39 @@ if impl(ghc >=9.14)
     , cborg-json:base
     , cborg:base
     , safe-wild-cards:template-haskell
+
+-- 11.2 integration pin on ledger
+source-repository-package
+  type: git
+  location: https://github.com/IntersectMBO/cardano-ledger
+  tag: fb723848a28256fe372ea9ba692eccded6a12a53
+  --sha256: sha256-iL61RTn4OPRNzzPn/2YcVJNMJYolXghaQ9cDG/DOOWM=
+  subdir:
+    eras/allegra/impl
+    eras/alonzo/impl
+    eras/babbage/impl
+    eras/byron/chain/executable-spec
+    eras/byron/crypto
+    eras/byron/ledger/executable-spec
+    eras/byron/ledger/impl
+    eras/conway/impl
+    eras/dijkstra/impl
+    eras/mary/impl
+    eras/shelley/impl
+    eras/shelley/test-suite
+    libs/cardano-data
+    libs/cardano-ledger-api
+    libs/cardano-ledger-binary
+    libs/cardano-ledger-core
+    libs/cardano-protocol
+    libs/cardano-protocol-tpraos
+    libs/non-integral
+    libs/small-steps
+    libs/vector-map
+
+source-repository-package
+  type: git
+  location: https://github.com/intersectmbo/cardano-base.git
+  --sha256: sha256-WUBluY6UqvBkS5cNsJnKMOaW+1dTfL3mg8iq/kVPV0o=
+  tag: 242f1ebde40b137ac024d8b68265e2935e0eba14
+  subdir: cardano-crypto-leios

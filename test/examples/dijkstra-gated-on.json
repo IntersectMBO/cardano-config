@@ -16,7 +16,7 @@
     "TestingConfig": {
       "ExperimentalHardForksEnabled": true,
       "DijkstraGenesisFile": "dijkstra-genesis.json",
-      "DijkstraGenesisHash": "56c06ff0f668c584fc54fa3cee92dd5e121b67696924ac3b01b5aec9ecf95b78"
+      "DijkstraGenesisHash": "c028ebe7fc962cbf2d9cfd73b9d3a932ff183d5bbe654abc760e766287b21e5e"
     }
   }
 }
