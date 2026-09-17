@@ -258,7 +258,10 @@ file never mentions - so `resolve` is still the final check.
 
 A legacy document is expected to *fail* validation: it still parses, because
 `migrate` rewrites it first, but the schema documents the current form alone.
-The CUE front-end wires this up as `just ajv`.
+
+CI runs this over a matrix of documents that must validate and documents that
+must not (`test/schema-cases/`, driven by `scripts/check-schemas.sh`), so the
+schemas stay in step with what the parser accepts.
 
 ### ... see the schema for a component (e.g. NetworkConfig)
 
