@@ -175,8 +175,7 @@ data NodeConfiguration = NodeConfiguration
   , conwayGenesisConfig :: ConwayGenesis
   -- ^ The parsed Conway genesis.
   , experimentalGenesisConfig :: StrictMaybe DijkstraGenesis
-  -- ^ The parsed experimental (Dijkstra) genesis, decoded from the
-  --     @DijkstraGenesisFile@ referenced by the testing configuration, if any.
+  -- ^ The parsed experimental (Dijkstra) genesis, when there is one in play.
   , genesisInjectionRoot :: FilePath
   -- ^ The directory the ledger resolves genesis initial-data injection files
   --     against: the directory holding the Shelley genesis file. Pass it to

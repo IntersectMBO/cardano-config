@@ -7,7 +7,7 @@ module Cardano.Configuration.File.Testing
 import Autodocodec
 import Cardano.Configuration.Basic (ErrorMessage, optionalFieldStrict, requireField)
 import Cardano.Configuration.File.Protocol
-import Cardano.Ledger.BaseTypes (StrictMaybe)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Word
@@ -53,7 +53,12 @@ instance HasCodec (TestingConfiguration StrictMaybe) where
   codec =
     object "TestingConfiguration" $ do
       TestingConfiguration
-        <$> optionalFieldStrict "ExperimentalHardForksEnabled" "Enable the experimental eras"
+        <$> optionalFieldStrict
+          "ExperimentalHardForksEnabled"
+          ( "Enable the experimental eras. When true, a DijkstraGenesisFile and its"
+              <> " DijkstraGenesisHash must be given alongside it, or resolution rejects the"
+              <> " configuration (a conditional requirement this schema does not express)."
+          )
           .= experimentalHardForksEnabled
         <*> optionalFieldStrict "TestShelleyHardForkAtEpoch" "Force the Shelley hard fork at this epoch"
           .= testShelleyHardForkAtEpoch
@@ -99,10 +104,22 @@ instance HasCodec (TestingConfiguration StrictMaybe) where
 
 -- | Resolve a partial testing configuration, taking @ExperimentalHardForksEnabled@
 -- from the (always-applied) defaults.
+--
+-- The two experimental-era keys are coupled: enabling the experimental eras
+-- without a genesis to run them from is not a configuration anyone meant to
+-- write, so @ExperimentalHardForksEnabled: true@ without a @DijkstraGenesisFile@
+-- is rejected here.
 finalizeTesting ::
   TestingConfiguration StrictMaybe -> Either ErrorMessage (TestingConfiguration Identity)
 finalizeTesting c = do
   enabled <- requireField "ExperimentalHardForksEnabled" (experimentalHardForksEnabled c)
+  case (runIdentity enabled, experimentalGenesis c) of
+    (True, SNothing) ->
+      Left $
+        "ExperimentalHardForksEnabled is true, so TestingConfig must also give a "
+          <> "DijkstraGenesisFile (with its DijkstraGenesisHash); "
+          <> "add them, or set ExperimentalHardForksEnabled to false"
+    _ -> Right ()
   pure $
     TestingConfiguration
       { experimentalHardForksEnabled = enabled

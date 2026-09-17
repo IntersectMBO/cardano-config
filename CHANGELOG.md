@@ -1,5 +1,56 @@
 # Revision history for cardano-config
 
+## Unreleased
+
+### Breaking changes
+
+* `experimentalGenesisConfig` (on both `NodeConfigurationFromFile` and
+  `NodeConfiguration`) is now gated on the `ExperimentalHardForksEnabled`
+  testing flag: it is `SJust` only when the flag is on *and* a
+  `DijkstraGenesisFile` is named. With the flag off it is `SNothing` even if the
+  configuration names a file, and the file is not opened at all — not read, not
+  hash-checked.
+
+  This follows `cardano-node`, which gates its whole Dijkstra
+  protocol-configuration block on the same flag and, with the flag off,
+  substitutes an empty Dijkstra genesis without ever looking at a file. Reading
+  it here would reject configurations the node accepts, and the field's old
+  meaning — "a file was named" — was not the question a consumer has to answer.
+  Every consumer had to re-derive "is there an experimental genesis in play?"
+  from the flag itself, and they disagreed on the answer; now the field states
+  it.
+
+  The price of not reading the file is that a stale `DijkstraGenesisHash`, or a
+  file that has since been moved away, goes unreported while the flag is off.
+  The file being ignored at all is reported, though, by the new warning below.
+
+* `ConfigWarning` gains an `ExperimentalGenesisIgnored` constructor, raised by
+  `parseConfigurationFiles` when a `DijkstraGenesisFile` is named while
+  `ExperimentalHardForksEnabled` is off. Code matching exhaustively on
+  `ConfigWarning` has to account for it.
+
+* The converse is now an error: `finalizeTesting` — and so `resolveConfiguration`
+  — rejects `ExperimentalHardForksEnabled: true` without a `DijkstraGenesisFile`.
+  `cardano-node` makes that key mandatory inside the very block it parses only
+  when the flag is on, and enabling an era with no genesis to run it from is not
+  a configuration anyone meant to write. A configuration that set the flag and
+  named no genesis used to resolve; it now fails with a message naming both keys.
+
+  Together with the gating above this makes the pair exact rather than
+  one-sided: on a resolved `NodeConfiguration`, `experimentalGenesisConfig` is
+  `SJust` if and only if `experimentalHardForksEnabled` is set. Both of the
+  combinations where the two disagree are now unreachable, so a consumer that
+  used to handle four has two.
+
+### Changed
+
+* The `ExperimentalHardForksEnabled` description in the JSON schemas now states
+  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. This
+  is an annotation only: *what validates* is unchanged, since the schemas are
+  frozen per format version and `v1` is cut, so the schema still describes
+  `DijkstraGenesisFile` as optional while resolution insists on it. Expressing
+  the requirement as a JSON Schema `if`/`then` needs a new format version.
+
 ## 1.1.0.0 -- 2026-09-08
 
 Schema format version stays at `1`: the `v1` tag had not been cut when

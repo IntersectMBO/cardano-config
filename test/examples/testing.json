@@ -1,5 +1,7 @@
 {
     "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/TestingConfig.schema.json",
     "ExperimentalHardForksEnabled": true,
+    "DijkstraGenesisFile": "dijkstra-genesis.json",
+    "DijkstraGenesisHash": "56c06ff0f668c584fc54fa3cee92dd5e121b67696924ac3b01b5aec9ecf95b78",
     "TestShelleyHardForkAtEpoch": 2
 }
