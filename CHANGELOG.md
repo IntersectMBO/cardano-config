@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+Schema format version 2, and so package version `2.0.0.0`: the configuration
+format gains keys (below), and the `v1` tag, cut alongside
+`cardano-config-1.1.0.0`, is immutable. The schemas that describe the format can
+no longer be published under it. `cardano-config-2.x.x.x` parses every format
+version up to and including 2 and writes 2. A version-1 document still parses,
+unchanged and without a migration warning, and keeps its `$schema` pinned to
+`v1`.
+
+No document changes validity: the sections do not set
+`additionalProperties: false`, so a configuration carrying the new keys already
+validated against the `v1` schemas. The bump keeps the schemas' `$id` honest now
+that the format has keys the `v1` tag does not describe.
+
 ### Breaking changes
 
 * The gRPC server can now listen over HTTP/2 on a TCP port, with or without
@@ -96,10 +109,10 @@
   `RpcTlsPrivateKeyFile` and `RpcTlsChainCertificateFiles`, alongside the
   `EnableRpc`/`RpcSocketPath` pair it already handled.
 
-  The schemas gain the new keys, as optional properties on a section that does
-  not forbid additional ones. Nothing that validated against the `v1` schemas
-  stops doing so. Publishing them under their own `$id` needs a format version
-  the `v1` tag does not freeze.
+  The schemas gain the new keys, and `migrate` now stamps `Version: 2` on the
+  documents it reshapes. An existing `Version`, like an existing `$schema`, is
+  carried through untouched, so a document pinned to an earlier version stays
+  pinned.
 
 ### Changed
 
@@ -115,7 +128,8 @@
   is an annotation only: *what validates* is unchanged, since the schemas are
   frozen per format version and `v1` is cut, so the schema still describes
   `DijkstraGenesisFile` as optional while resolution insists on it. Expressing
-  the requirement as a JSON Schema `if`/`then` needs a new format version.
+  the requirement as a JSON Schema `if`/`then` needs a new format version,
+  which this release cuts.
 
 ## 1.1.0.0 -- 2026-09-08
 

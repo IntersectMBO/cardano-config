@@ -363,7 +363,7 @@ draftURI = "http://json-schema.org/draft-07/schema#"
 -- from here — which is also why bumping this constant is a deliberate act with a
 -- new parse path attached, rather than a consequence of a version bump.
 currentFormatVersion :: Int
-currentFormatVersion = 1
+currentFormatVersion = 2
 
 -- | The newest format version implied by the package version: its first
 -- component, with the pre-1.0 series (@0.x.x.x@) counting as heading for version
@@ -399,8 +399,9 @@ packageFormatVersion = case versionBranch version of
 -- @MigratedToCurrentFormat@) while failing validation against the schema, which
 -- documents the canonical form alone.
 --
--- The tag must exist for the URL to resolve, and @v1@ has not been cut yet, so
--- these URLs do not resolve today.
+-- The tag must exist for the URL to resolve. @v1@ was cut alongside
+-- @cardano-config-1.1.0.0@. @v2@ is cut alongside @cardano-config-2.0.0.0@, so
+-- the URLs the schemas carry today resolve only once that tag exists.
 schemaTag :: Text
 schemaTag = "v" <> T.pack (show currentFormatVersion)
 

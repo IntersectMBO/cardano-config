@@ -1,6 +1,6 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
-    "Version": 1,
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+    "Version": 2,
     "MinNodeVersion": "10.5.0",
     "Configuration": {
         "ProtocolConfig": "protocol.json",

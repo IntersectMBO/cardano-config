@@ -30,7 +30,7 @@ data ConfigWarning
     UnrecognisedKeys [String]
   | -- | The document was not in the current canonical format, so migrating it (see
     -- @Cardano.Configuration.File.Migrate.migrate@) changed it before parsing —
-    -- either it was not in the Version1 envelope, or it still used a pre-rename
+    -- either it was not in the envelope, or it still used a pre-rename
     -- field name, or it carried an obsolete key. Run @cardano-config migrate@ to
     -- update the file on disk.
     MigratedToCurrentFormat
@@ -91,7 +91,7 @@ renderConfigWarning = \case
 
 -- | All warnings for an (unwrapped) configuration object.
 --
--- With the parser accepting only the Version1 format (a document that is not is
+-- With the parser accepting only the enveloped format (a document that is not is
 -- migrated first, which groups every component under its section), the only key
 -- warning left is for keys that none of the parsers recognise — typos, or a
 -- component property placed flat under @Configuration@ rather than under its

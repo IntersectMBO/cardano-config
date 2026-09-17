@@ -1,4 +1,4 @@
--- | Reshape an existing configuration into the recommended Version1 envelope:
+-- | Reshape an existing configuration into the recommended envelope:
 -- @{ $schema, Version, MinNodeVersion, Configuration }@, with every component
 -- grouped under its section key inside @Configuration@.
 --
@@ -62,7 +62,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 
--- | Migrate a raw configuration value to the Version1 envelope, together with the
+-- | Migrate a raw configuration value to the envelope, together with the
 -- non-fatal 'ConfigWarning's raised while doing so (a renamed field colliding with
 -- its current name, or a top-level sibling colliding with a key inside the
 -- envelope). A value that is not a JSON\/YAML object is returned unchanged, with no
@@ -286,7 +286,7 @@ tracingObsoleteKeys =
   , "options"
   ]
 
--- | The structural reshape into the Version1 envelope. A value that is not a
+-- | The structural reshape into the envelope. A value that is not a
 -- JSON\/YAML object is returned unchanged (with no warnings).
 reshape :: Value -> (Value, [ConfigWarning])
 reshape (Object top) =

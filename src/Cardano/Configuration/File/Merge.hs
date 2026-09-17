@@ -160,7 +160,7 @@ loadBaseDefault section =
 -- section that is absent contributes no user layer (so the component takes its
 -- base defaults). Component keys placed flat under @Configuration@ are /not/
 -- resolved into their section — they are left unrecognised (see
--- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-Version1 documents,
+-- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-enveloped documents,
 -- where the keys are flat, are migrated (grouped into sections) before reaching
 -- here.
 sectionUserLayer :: FilePath -> Value -> String -> IO Value

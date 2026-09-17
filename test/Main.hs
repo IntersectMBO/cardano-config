@@ -126,6 +126,7 @@ cases =
   , migrationErrorCase
   , splitSubfileSchemaCase
   , formatVersionCase
+  , formatVersionCompatibilityCase
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
@@ -280,13 +281,13 @@ migrationWarningCase =
               <> " enveloped="
               <> show envWarnings
 
--- | A document that is not in the Version1 format /and/ whose migration still
+-- | A document that is not in the envelope /and/ whose migration still
 -- does not yield a parseable configuration is rejected (the parse error
 -- surfaces). Here a legacy document with an ill-typed @ConsensusMode@ migrates to
--- a Version1 envelope, but the component codec then rejects the value.
+-- an envelope, but the component codec then rejects the value.
 migrationErrorCase :: TestTree
 migrationErrorCase =
-  testCase "a non-Version1 document whose migration is still unparseable is rejected" $ do
+  testCase "a non-enveloped document whose migration is still unparseable is rejected" $ do
     path <- getDataFileName "test/examples/migration-unparseable.json"
     res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
     expectOk $ case res of
@@ -351,13 +352,13 @@ formatVersionCase =
               <> " but the package version implies "
               <> show packageFormatVersion
 
--- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
+-- | 'migrate' reshapes a legacy flat config into the envelope: the
 -- envelope keys appear at the top, each component's flat keys are grouped under
 -- its section (e.g. ConsensusMode under ConsensusConfig), a removed key
 -- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
 migrateCase :: TestTree
 migrateCase =
-  testCase "migrate test/examples/fullconfig.json (legacy flat -> Version1 envelope)" $ do
+  testCase "migrate test/examples/fullconfig.json (legacy flat -> envelope)" $ do
     res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
@@ -384,6 +385,37 @@ migrateCase =
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
     _ -> False
+
+-- | The parser accepts every format version up to and including
+-- 'currentFormatVersion', and nothing beyond it. A version-1 document still
+-- parses and resolves, keeping its @Version@ and its @$schema@ pinned to @v1@,
+-- and @migrate@ leaves it alone with no @MigratedToCurrentFormat@ warning. A
+-- version past the newest is rejected, naming the version.
+formatVersionCompatibilityCase :: TestTree
+formatVersionCompatibilityCase =
+  testCase "an older format version still parses; one past the newest does not" $ do
+    olderPath <- getDataFileName "test/examples/version1.json"
+    raw <- decodeData "test/examples/version1.json" :: IO (Either String Value)
+    (older, warnings) <- parseConfigurationFiles olderPath
+    unsupportedPath <- getDataFileName "test/examples/version-unsupported.json"
+    unsupported <- try (parseConfigurationFiles unsupportedPath)
+    expectOk $ case raw of
+      Left err -> Just ("could not read the version-1 fixture: " <> err)
+      Right rawValue
+        | fst (migrate rawValue) /= rawValue ->
+            Just "migrate changed a version-1 document (it is already in the envelope)"
+        | any isMigrationWarning warnings ->
+            Just ("a version-1 document was reported as migrated: " <> show warnings)
+        | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) older of
+            Left err -> Just ("the version-1 document did not resolve: " <> show err)
+            Right _ -> case unsupported of
+              Right _ -> Just "a document past the newest format version was accepted"
+              Left (e :: SomeException)
+                | "99" `isInfixOf` show e -> Nothing
+                | otherwise -> Just ("rejected, but without naming the version: " <> show e)
+ where
+  isMigrationWarning MigratedToCurrentFormat = True
+  isMigrationWarning _ = False
 
 -- | 'migrate' rewrites the renamed fields to their current names and drops the
 -- removed ones. Renamed flat keys must end up grouped under their section using

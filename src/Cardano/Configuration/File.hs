@@ -227,7 +227,11 @@ parseConfigurationFiles cfgFile = do
   -- that constant, because each one needs its own parse path, so this list only
   -- ever grows.
   (config, parseWarnings) <- case version of
+    -- Versions 1 and 2 share a parse path: version 2 only widened a section's
+    -- key set, it did not reshape the document. The arm is still spelled out,
+    -- so a version that does reshape gets its own path.
     1 -> parseConfigurationVersion1 root minNodeVer configValue
+    2 -> parseConfigurationVersion1 root minNodeVer configValue
     n ->
       throwIO $
         ConfigurationParsingError
@@ -240,6 +244,9 @@ parseConfigurationFiles cfgFile = do
 -- | Parse a version-1 configuration object, reading each component either
 -- inline or from its referenced sub-file, together with the warnings that only
 -- the parsed configuration can reveal (an ignored experimental genesis).
+--
+-- Version 2 has the same document shape, so it is read by this same path. See
+-- the dispatch in 'parseConfigurationFiles'.
 parseConfigurationVersion1 ::
   -- | The directory sub-file paths are resolved against.
   FilePath ->
