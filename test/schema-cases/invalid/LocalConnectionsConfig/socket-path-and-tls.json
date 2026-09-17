@@ -1,0 +1,5 @@
+{
+  "GrpcSocketPath": "rpc.sock",
+  "GrpcTlsCertificateFile": "tls/server.pem",
+  "GrpcTlsPrivateKeyFile": "tls/server.key"
+}

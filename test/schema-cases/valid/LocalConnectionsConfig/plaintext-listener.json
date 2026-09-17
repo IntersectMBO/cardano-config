@@ -1,0 +1,4 @@
+{
+  "EnableGrpc": true,
+  "GrpcListenPort": 3001
+}

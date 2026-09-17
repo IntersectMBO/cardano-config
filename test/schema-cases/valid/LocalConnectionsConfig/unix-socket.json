@@ -1,0 +1,4 @@
+{
+  "EnableGrpc": true,
+  "GrpcSocketPath": "rpc.sock"
+}
