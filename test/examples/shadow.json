@@ -1,6 +1,6 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
-    "Version": 1,
+    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+    "Version": 2,
     "Configuration": {
         "StorageConfig": "storage.json",
         "ConsensusConfig": "consensus.json",

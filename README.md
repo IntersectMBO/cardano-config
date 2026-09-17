@@ -16,14 +16,14 @@ The bundled `cardano-config` executable exposes the same via its `resolve`,
 ## Recommended format
 
 A configuration is a single JSON/YAML object. The recommended form is the
-**Version1 envelope**: `$schema` (the URL of the schema the file follows),
+**versioned envelope**: `$schema` (the URL of the schema the file follows),
 `Version` and `MinNodeVersion` at the top level, with the components grouped
 under `Configuration`, each given inline or as a path to a split sub-file:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
-  "Version": 1,
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+  "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
     "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",
@@ -55,7 +55,7 @@ Each format version is published under its own `vX` git tag — `v1`, `v2`, … 
 alongside the major release that introduces it:
 
 ```
-https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json
+https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json
 ```
 
 `migrate` fills in `$schema` when it is absent but never overwrites one that is
@@ -154,8 +154,8 @@ be passed straight to `--config` (a few show just the relevant fragment).
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
-  "Version": 1,
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+  "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
     "ProtocolConfig": "variants/ProtocolConfig/mainnet.json"
@@ -171,8 +171,8 @@ Give it the keys you want set, and the component's base default (and, for
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
-  "Version": 1,
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+  "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
     "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",
@@ -190,8 +190,8 @@ a certificate and its private key makes that HTTP/2 over TLS:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
-  "Version": 1,
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+  "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
     "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",

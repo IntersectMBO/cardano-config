@@ -1,0 +1,6 @@
+{
+  "Version": 99,
+  "Configuration": {
+    "ProtocolConfig": "protocol.json"
+  }
+}
