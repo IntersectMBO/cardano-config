@@ -113,14 +113,134 @@ rawTracingSchema = toJSON (jsonSchemaViaCodec @TracingConfiguration)
 -- single top-level @HermodTracing@ key (see 'hermodTracingProps').
 rawComponentSchemas :: [(Text, Value)]
 rawComponentSchemas =
-  [ ("StorageConfig", rawStorageSchema)
-  , ("ConsensusConfig", rawConsensusSchema)
-  , ("ProtocolConfig", rawProtocolSchema)
-  , ("NetworkConfig", rawNetworkSchema)
-  , ("LocalConnectionsConfig", rawLocalConnectionsSchema)
-  , ("MempoolConfig", rawMempoolSchema)
-  , ("TestingConfig", rawTestingSchema)
+  [ (name, withConstraints name raw)
+  | (name, raw) <-
+      [ ("StorageConfig", rawStorageSchema)
+      , ("ConsensusConfig", rawConsensusSchema)
+      , ("ProtocolConfig", rawProtocolSchema)
+      , ("NetworkConfig", rawNetworkSchema)
+      , ("LocalConnectionsConfig", rawLocalConnectionsSchema)
+      , ("MempoolConfig", rawMempoolSchema)
+      , ("TestingConfig", rawTestingSchema)
+      ]
   ]
+
+--------------------------------------------------------------------------------
+-- Cross-field constraints
+
+-- | The rules a component's parser enforces across /several/ of its keys, as the
+-- JSON Schema keywords that say the same thing. autodocodec derives a schema key
+-- by key, so a rule spanning two of them has to be attached here.
+--
+-- Only rules whose inputs are all read from the configuration file belong here.
+-- \"Enabling gRPC needs somewhere to listen\" does not: a @--socket-path@ can
+-- satisfy it, and a validator sees only the file.
+--
+-- Each entry holds at most a @dependencies@ object and an @allOf@ array, the two
+-- forms that merge cleanly in the flat legacy key space (see 'mergeConstraints').
+--
+-- These state /what validates/, so they are frozen with the format version (see
+-- 'currentFormatVersion').
+componentConstraints :: Text -> KM.KeyMap Value
+componentConstraints = \case
+  -- The gRPC server has exactly one listener, so a unix socket path excludes the
+  -- TCP keys, an address or a TLS credential needs a port, and the certificate
+  -- and its private key are given together. Mirrors
+  -- 'Cardano.Configuration.Common.grpcEndpointObjectCodec'.
+  "LocalConnectionsConfig" ->
+    dependencies
+      [ ("GrpcSocketPath", excludes tcpEndpointKeys)
+      , ("GrpcListenAddress", requires ["GrpcListenPort"])
+      , ("GrpcTlsCertificateFile", requires ["GrpcTlsPrivateKeyFile", "GrpcListenPort"])
+      , ("GrpcTlsPrivateKeyFile", requires ["GrpcTlsCertificateFile", "GrpcListenPort"])
+      ,
+        ( "GrpcTlsChainCertificateFiles"
+        , requires ["GrpcTlsCertificateFile", "GrpcTlsPrivateKeyFile"]
+        )
+      ]
+  -- The three mempool timeouts are one coupled default: all set, or all unset.
+  -- Mirrors 'Cardano.Configuration.File.Mempool.finalizeMempool'.
+  "MempoolConfig" ->
+    dependencies
+      [ ("MempoolTimeoutSoft", requires ["MempoolTimeoutHard", "MempoolTimeoutCapacity"])
+      , ("MempoolTimeoutHard", requires ["MempoolTimeoutSoft", "MempoolTimeoutCapacity"])
+      , ("MempoolTimeoutCapacity", requires ["MempoolTimeoutSoft", "MempoolTimeoutHard"])
+      ]
+  -- A genesis file is never taken on trust, so its hash comes with it. Enabling
+  -- the experimental eras requires the genesis to run them from.
+  -- Mirrors 'Cardano.Configuration.File.Protocol.optionalHashedGenesisObjectCodec'
+  -- and 'Cardano.Configuration.File.Testing.finalizeTesting'.
+  "TestingConfig" ->
+    mergeConstraints
+      ( dependencies
+          [ ("DijkstraGenesisFile", requires ["DijkstraGenesisHash"])
+          , ("DijkstraGenesisHash", requires ["DijkstraGenesisFile"])
+          ]
+      )
+      (allOf [ifThen experimentalErasEnabled (requiredKeys dijkstraGenesisKeys)])
+  _ -> KM.empty
+ where
+  tcpEndpointKeys =
+    [ "GrpcListenAddress"
+    , "GrpcListenPort"
+    , "GrpcTlsCertificateFile"
+    , "GrpcTlsPrivateKeyFile"
+    , "GrpcTlsChainCertificateFiles"
+    ]
+  dijkstraGenesisKeys = ["DijkstraGenesisFile", "DijkstraGenesisHash"]
+  experimentalErasEnabled =
+    object
+      [ "properties" .= object ["ExperimentalHardForksEnabled" .= object ["const" .= True]]
+      , "required" .= (["ExperimentalHardForksEnabled"] :: [Text])
+      ]
+
+-- | @{ "dependencies": { .. } }@: each key, when present, constrains the object.
+dependencies :: [(Text, Value)] -> KM.KeyMap Value
+dependencies ds =
+  KM.singleton "dependencies" (Object (KM.fromList [(K.fromText k, v) | (k, v) <- ds]))
+
+-- | @{ "allOf": [ .. ] }@.
+allOf :: [Value] -> KM.KeyMap Value
+allOf = KM.singleton "allOf" . toJSON
+
+-- | A @dependencies@ entry in its key-list form: these keys must be present too.
+requires :: [Text] -> Value
+requires = toJSON
+
+-- | A @dependencies@ entry in its schema form: none of these keys may be present.
+excludes :: [Text] -> Value
+excludes ks = object ["not" .= object ["anyOf" .= map (\k -> requiredKeys [k]) ks]]
+
+-- | @{ "required": [ .. ] }@.
+requiredKeys :: [Text] -> Value
+requiredKeys ks = object ["required" .= ks]
+
+-- | @{ "if": .., "then": .. }@.
+ifThen :: Value -> Value -> Value
+ifThen c t = object ["if" .= c, "then" .= t]
+
+-- | Merge two constraint sets: @dependencies@ objects union key by key, @allOf@
+-- arrays concatenate. Used to attach a component's rules to its schema, and to
+-- combine every component's in the flat legacy form.
+mergeConstraints :: KM.KeyMap Value -> KM.KeyMap Value -> KM.KeyMap Value
+mergeConstraints = KM.unionWith merge
+ where
+  merge (Object a) (Object b) = Object (KM.union a b)
+  merge (Array a) (Array b) = Array (a <> b)
+  merge a _ = a
+
+-- | Attach a component's cross-field constraints to its schema, so every
+-- rendering of that component carries them: its own schema file, and the inline
+-- branch of the split configuration schema.
+withConstraints :: Text -> Value -> Value
+withConstraints name (Object o) = Object (mergeConstraints (componentConstraints name) o)
+withConstraints _ v = v
+
+-- | Every component's constraints in one set, for the flat legacy form, where
+-- the keys they speak about all sit at the top level.
+allComponentConstraints :: KM.KeyMap Value
+allComponentConstraints =
+  foldr (mergeConstraints . componentConstraints . fst) KM.empty rawComponentSchemas
 
 -- | Tracing is not a component/section of its own; it contributes exactly one
 -- top-level key, @HermodTracing@ — a path to a separate file that the node's
@@ -189,7 +309,9 @@ legacyOneFileConfigSchema =
   publish
     "Cardano node configuration (legacy single-file form)"
     "config.legacy-one-file.schema.json"
-    $ object
+    $ Object
+    $ mergeConstraints allComponentConstraints
+    $ KM.fromList
       [ "$comment" .= legacyDescription
       , "type" .= ("object" :: Text)
       , "properties" .= Object singleFileProps
@@ -461,8 +583,14 @@ publish title idFile raw =
 transform :: Value -> Value
 transform = \case
   Object o ->
-    Object . titleBranches . collapseStringEnum . typeConst . extractPathFormat . titleProperties $
-      KM.fromList [(rename k, transform v) | (k, v) <- KM.toList o]
+    Object
+      . titleBranches
+      . collapseStringEnum
+      . typeConst
+      . extractPathFormat
+      . constrainProperties
+      . titleProperties
+      $ KM.fromList [(rename k, transform v) | (k, v) <- KM.toList o]
   Array a -> Array (transform <$> a)
   other -> other
  where
@@ -478,6 +606,29 @@ titleProperties o =
  where
   addTitle k (Object c) | not (KM.member "title" c) = Object (KM.insert "title" (String (K.toText k)) c)
   addTitle _ v = v
+
+-- | Narrow a property whose codec derives a wider schema than the parser
+-- accepts. Keyed by the property name, which is unique across the
+-- configuration, so it is matched at any depth.
+--
+-- @SnapshotInterval@ is a 'Data.Word.Word64', so its derived schema admits 0,
+-- which @snapshotIntervalCodec@ rejects. Like 'componentConstraints' this
+-- states what validates, so it is frozen with the format version.
+constrainProperties :: KM.KeyMap Value -> KM.KeyMap Value
+constrainProperties o =
+  case KM.lookup "properties" o of
+    Just (Object props) -> KM.insert "properties" (Object (KM.mapWithKey narrow props)) o
+    _ -> o
+ where
+  narrow k (Object c)
+    | Just extra <- lookup (K.toText k) propertyConstraints = Object (KM.union extra c)
+  narrow _ v = v
+
+-- | The property-level narrowings applied by 'constrainProperties'.
+propertyConstraints :: [(Text, KM.KeyMap Value)]
+propertyConstraints =
+  [ ("SnapshotInterval", KM.singleton "minimum" (Number 1))
+  ]
 
 -- | Lift the file-path sentinel ('filePathFormatMarker') carried in a
 -- @description@ into a @"format": "path"@ annotation, stripping the sentinel.

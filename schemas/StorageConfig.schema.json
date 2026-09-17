@@ -144,7 +144,7 @@
                                 "SnapshotInterval": {
                                     "description": "Slots between snapshots (non-zero)",
                                     "maximum": 1.8446744073709551615e19,
-                                    "minimum": 0,
+                                    "minimum": 1,
                                     "title": "SnapshotInterval",
                                     "type": "integer"
                                 }

@@ -1,6 +1,36 @@
 {
     "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/TestingConfig.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "ExperimentalHardForksEnabled": {
+                        "const": true,
+                        "title": "ExperimentalHardForksEnabled",
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "ExperimentalHardForksEnabled"
+                ]
+            },
+            "then": {
+                "required": [
+                    "DijkstraGenesisFile",
+                    "DijkstraGenesisHash"
+                ]
+            }
+        }
+    ],
+    "dependencies": {
+        "DijkstraGenesisFile": [
+            "DijkstraGenesisHash"
+        ],
+        "DijkstraGenesisHash": [
+            "DijkstraGenesisFile"
+        ]
+    },
     "description": "TestingConfiguration",
     "properties": {
         "$schema": {
@@ -22,7 +52,7 @@
         },
         "ExperimentalHardForksEnabled": {
             "default": false,
-            "description": "Enable the experimental eras. When true, a DijkstraGenesisFile and its DijkstraGenesisHash must be given alongside it, or resolution rejects the configuration (a conditional requirement this schema does not express).",
+            "description": "Enable the experimental eras. When true, a DijkstraGenesisFile and its DijkstraGenesisHash must be given alongside it, or resolution rejects the configuration.",
             "title": "ExperimentalHardForksEnabled",
             "type": "boolean"
         },

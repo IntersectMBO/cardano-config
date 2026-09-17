@@ -1,6 +1,54 @@
 {
     "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/LocalConnectionsConfig.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
+    "dependencies": {
+        "GrpcListenAddress": [
+            "GrpcListenPort"
+        ],
+        "GrpcSocketPath": {
+            "not": {
+                "anyOf": [
+                    {
+                        "required": [
+                            "GrpcListenAddress"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "GrpcListenPort"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "GrpcTlsCertificateFile"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "GrpcTlsPrivateKeyFile"
+                        ]
+                    },
+                    {
+                        "required": [
+                            "GrpcTlsChainCertificateFiles"
+                        ]
+                    }
+                ]
+            }
+        },
+        "GrpcTlsCertificateFile": [
+            "GrpcTlsPrivateKeyFile",
+            "GrpcListenPort"
+        ],
+        "GrpcTlsChainCertificateFiles": [
+            "GrpcTlsCertificateFile",
+            "GrpcTlsPrivateKeyFile"
+        ],
+        "GrpcTlsPrivateKeyFile": [
+            "GrpcTlsCertificateFile",
+            "GrpcListenPort"
+        ]
+    },
     "description": "LocalConnectionsConfig",
     "properties": {
         "$schema": {
