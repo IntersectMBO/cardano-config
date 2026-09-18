@@ -62,7 +62,8 @@ import Cardano.Configuration.File.Lint
   )
 import Cardano.Configuration.File.Mempool
 import Cardano.Configuration.File.Merge
-  ( decodeValueFile
+  ( declaredFormatVersion
+  , decodeValueFile
   , loadBaseDefault
   , parseSection
   , runCodec
@@ -94,7 +95,7 @@ import Cardano.Configuration.Genesis.Injection
   , missingInjectionFiles
   , renderInjectionSlot
   )
-import Cardano.Configuration.Schema (componentPropertyNames)
+import Cardano.Configuration.Schema (componentPropertyNames, currentFormatVersion)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.BaseTypes
@@ -108,6 +109,7 @@ import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Cardano.Logging.Types (TraceConfig)
 import Control.Exception (throwIO)
+import Control.Monad (when)
 import Data.Aeson (FromJSON, Value)
 import qualified Data.Aeson.Key as K
 import Data.Aeson.Types (JSONPathElement (..))
@@ -215,39 +217,48 @@ parseConfigurationFiles cfgFile = do
   -- order-independent comparison). 'migrate' also returns its own warnings for the
   -- fields it had to reconcile. If the migrated document still cannot be parsed, the
   -- parse error surfaces as usual.
+  -- The declared version is read before migrating, because migrating rewrites
+  -- it. A version this library does not write is rejected here rather than
+  -- misread as the current one.
+  declared <- declaredFormatVersion rawValue
+  when (declared > currentFormatVersion) $
+    throwIO $
+      ConfigurationParsingError
+        (SJust cfgFile)
+        SNothing
+        [Key "Version"]
+        ( "unsupported configuration version: "
+            <> show declared
+            <> ". This cardano-config writes version "
+            <> show currentFormatVersion
+            <> ", so upgrade cardano-config to read it."
+        )
   let (mainValue, migrateWarnings) = migrate rawValue
       migrationWarnings =
-        [MigratedToCurrentFormat | mainValue /= rawValue] <> migrateWarnings
-  (version, minNodeVer, configValue) <- splitEnvelope mainValue
+        -- An outdated version is reported on its own. migrate always rewrites
+        -- such a document, so the generic warning would only repeat it.
+        [ MigratedToCurrentFormat
+        | mainValue /= rawValue
+        , declared == currentFormatVersion
+        ]
+          <> [OutdatedFormatVersion declared currentFormatVersion | declared < currentFormatVersion]
+          <> migrateWarnings
+  -- migrate has brought the document to the current version, so there is one
+  -- body parser rather than one per version.
+  (_version, minNodeVer, configValue) <- splitEnvelope mainValue
   let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile
-  -- Versions 1 to 'currentFormatVersion' are all accepted — that is what the
-  -- package version's first component states (@cardano-config-X.y.z.v@ parses up
-  -- to and including @X@). They are enumerated literally rather than derived from
-  -- that constant, because each one needs its own parse path, so this list only
-  -- ever grows.
-  (config, parseWarnings) <- case version of
-    -- Versions 1 and 2 share a parse path: version 2 only widened a section's
-    -- key set, it did not reshape the document. The arm is still spelled out,
-    -- so a version that does reshape gets its own path.
-    1 -> parseConfigurationVersion1 root minNodeVer configValue
-    2 -> parseConfigurationVersion1 root minNodeVer configValue
-    n ->
-      throwIO $
-        ConfigurationParsingError
-          (SJust cfgFile)
-          SNothing
-          [Key "Version"]
-          ("unsupported configuration version: " <> show n)
+  (config, parseWarnings) <- parseConfigurationBody root minNodeVer configValue
   pure (config, warnings <> parseWarnings)
 
--- | Parse a version-1 configuration object, reading each component either
+-- | Parse a configuration object at the current format version, reading each
+-- component either
 -- inline or from its referenced sub-file, together with the warnings that only
 -- the parsed configuration can reveal (an ignored experimental genesis).
 --
 -- Version 2 has the same document shape, so it is read by this same path. See
 -- the dispatch in 'parseConfigurationFiles'.
-parseConfigurationVersion1 ::
+parseConfigurationBody ::
   -- | The directory sub-file paths are resolved against.
   FilePath ->
   -- | The optional top-level @MinNodeVersion@ annotation.
@@ -255,7 +266,7 @@ parseConfigurationVersion1 ::
   -- | The configuration object.
   Value ->
   IO (NodeConfigurationFromFile, [ConfigWarning])
-parseConfigurationVersion1 root minNodeVer configValue = do
+parseConfigurationBody root minNodeVer configValue = do
   storage <- parseSection root configValue "StorageConfig"
   consensus <- parseSection root configValue "ConsensusConfig"
   protocol <- parseSection root configValue "ProtocolConfig"

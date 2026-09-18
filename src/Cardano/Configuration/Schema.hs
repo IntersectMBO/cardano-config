@@ -479,11 +479,10 @@ draftURI = "http://json-schema.org/draft-07/schema#"
 -- to the Haskell code alone, so the schemas are not changed without bumping the
 -- first. 'packageFormatVersion' and the test suite keep the two from drifting.
 --
--- Note this is the /newest/ version, not the whole accepted set: versions @1@
--- through @X@ all stay parseable, and the parser's dispatch
--- (@parseConfigurationFiles@) enumerates them literally rather than deriving them
--- from here — which is also why bumping this constant is a deliberate act with a
--- new parse path attached, rather than a consequence of a version bump.
+-- Note this is the /newest/ version, not the whole accepted set. Versions @1@
+-- through @X@ all stay readable, because @parseConfigurationFiles@ migrates a
+-- document to @X@ before parsing it. Each new version therefore costs one
+-- migration step, not one parse path.
 currentFormatVersion :: Int
 currentFormatVersion = 2
 

@@ -47,7 +47,9 @@ an annotation: the parser accepts and ignores it.
 
 `Version` is the configuration format version, and it is the **first component of
 the package version**, which states how far the parser goes: `cardano-config-X.y.z.v`
-parses every format version up to and including `X`, and writes `X`. The other
+parses every format version up to and including `X`, and writes `X`. It does that
+by migrating an older document to `X` before parsing it, so there is one body
+parser and one migration step per version, not one parser per version. The other
 three components carry changes to the Haskell code alone, so the schemas are not
 changed without bumping the first.
 
@@ -58,8 +60,11 @@ alongside the major release that introduces it:
 https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json
 ```
 
-`migrate` fills in `$schema` when it is absent but never overwrites one that is
-already there, so a URL pinned to an earlier `vX` survives.
+`migrate` writes the `Version` and the `$schema` of the current format version,
+so a document pinned to an earlier `vX` is moved to the current one. A document
+already at the current version keeps a `$schema` it pins. A document declaring a
+version *newer* than the one this `cardano-config` writes is refused, both by
+`migrate` and when read, because migration never goes backwards.
 
 To port an old config to the new format, run `cardano-config migrate` (it reads
 `-` as stdin, so you can fetch and convert in one step):
@@ -129,7 +134,8 @@ executable prints to stderr, prefixed with `Warning: `.
 
 | Warning | Raised when |
 |---------|-------------|
-| `MigratedToCurrentFormat` | The document was not in the current canonical format, so `migrate` changed it before parsing - it was not in the envelope, or used a pre-rename field name, or carried an obsolete key. Run `cardano-config migrate` to update the file. |
+| `OutdatedFormatVersion declared current` | The document is at an older format version, so `migrate` upgraded it in memory. A document with no `Version` key is version 1. Run `cardano-config migrate` to update the file. |
+| `MigratedToCurrentFormat` | The document is at the current version, but `migrate` still changed it before parsing, because it was not in the envelope, or used a pre-rename field name, or carried an obsolete key. An outdated version reports the warning above instead of this one. |
 | `RenamedKeyCollision old new` | Both the old and the current name of a renamed field are present at the same level. The current name wins; the other value is dropped. |
 | `EnvelopeKeyCollision key` | A key appears both as a top-level sibling of `Configuration` and inside it. The one inside `Configuration` wins. |
 | `UnrecognisedKeys keys` | Keys at the `Configuration` level that no parser recognises: typos, or a component property left flat instead of under its section. They are ignored, not resolved into a section. |
