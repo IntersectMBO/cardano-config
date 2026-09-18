@@ -21,7 +21,7 @@ module Main (main) where
 
 import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
-import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
+import Cardano.Configuration.CliArgs (CliArgs, grpcEndpointCLI, parseCliArgs)
 import Cardano.Configuration.File
 import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.File.Storage
@@ -63,6 +63,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.FileEmbed (makeRelativeToProject)
 import Data.Functor.Identity (runIdentity)
+import Data.IP (IP)
 import Data.List (isInfixOf)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
@@ -110,7 +111,12 @@ cases =
       ( decodeData "test/examples/localconnections.json" ::
           IO (Either String (LocalConnectionsConfig StrictMaybe))
       )
-  , parseCase "test/examples/fullconfig.json"
+  , decodeCase
+      "test/examples/localconnections-tls.json"
+      ( decodeData "test/examples/localconnections-tls.json" ::
+          IO (Either String (LocalConnectionsConfig StrictMaybe))
+      )
+  , parseCase "test/examples/legacy-fullconfig.json"
   , parseCase "test/examples/split.json"
   , parseCase "test/examples/split-all.json"
   , tracingCase
@@ -120,6 +126,7 @@ cases =
   , migrationErrorCase
   , splitSubfileSchemaCase
   , formatVersionCase
+  , formatVersionCompatibilityCase
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
@@ -135,6 +142,12 @@ cases =
   , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
+  , schemaConstraintsCase
+  , snapshotIntervalCase
+  , grpcEndpointCase
+  , grpcEndpointRejectionCase
+  , grpcEndpointCliCase
+  , grpcEnabledEndpointCheckCase
   , roleVariantParityCase
   , roleSelectionCase
   , rolePrecedenceCase
@@ -249,34 +262,53 @@ misplacedKeyCase =
   mentionsDijkstra (UnrecognisedKeys ks) = "DijkstraGenesisFile" `elem` ks
   mentionsDijkstra _ = False
 
--- | Every document is migrated before parsing. One that migration changes (here a
--- legacy flat config, reshaped into the envelope) yields a 'MigratedToCurrentFormat'
--- warning; one already in the canonical form (an enveloped config with current
--- field names) migrates to itself and so does not warn.
+-- | Every document is migrated before parsing, and the two warnings that
+-- reports split by cause. A document at an older format version yields
+-- 'OutdatedFormatVersion' alone, since migration always rewrites it and the
+-- generic warning would only repeat that. A document already at the current
+-- version that migration still changes (here a legacy field name inside a
+-- current envelope) yields 'MigratedToCurrentFormat'. A canonical document
+-- migrates to itself and yields neither.
 migrationWarningCase :: TestTree
 migrationWarningCase =
-  testCase "a config that migration changes warns MigratedToCurrentFormat; a canonical one does not" $ do
-    legacyPath <- getDataFileName "test/examples/fullconfig.json"
-    envPath <- getDataFileName "test/examples/min-node-version.json"
-    (_, legacyWarnings) <- parseConfigurationFiles legacyPath
-    (_, envWarnings) <- parseConfigurationFiles envPath
+  testCase "the migration warnings split by cause" $ do
+    legacy <- warningsFor "test/examples/legacy-fullconfig.json"
+    renamed <- warningsFor "test/examples/current-version-legacy-name.json"
+    canonical <- warningsFor "test/examples/min-node-version.json"
     expectOk $
-      if MigratedToCurrentFormat `elem` legacyWarnings && MigratedToCurrentFormat `notElem` envWarnings
-        then Nothing
-        else
-          Just $
-            "expected MigratedToCurrentFormat only for the non-canonical config: legacy="
-              <> show legacyWarnings
-              <> " enveloped="
-              <> show envWarnings
+      firstProblem
+        [ check
+            "an older version"
+            legacy
+            [OutdatedFormatVersion 1 currentFormatVersion]
+            [MigratedToCurrentFormat]
+        , check
+            "a current version still rewritten"
+            renamed
+            [MigratedToCurrentFormat]
+            [OutdatedFormatVersion 1 currentFormatVersion]
+        , check
+            "a canonical document"
+            canonical
+            []
+            [MigratedToCurrentFormat, OutdatedFormatVersion 1 currentFormatVersion]
+        ]
+ where
+  warningsFor p = snd <$> (getDataFileName p >>= parseConfigurationFiles)
+  check what warnings expected unexpected
+    | not (all (`elem` warnings) expected) =
+        Just (what <> ": expected " <> show expected <> ", got " <> show warnings)
+    | any (`elem` warnings) unexpected =
+        Just (what <> ": did not expect " <> show unexpected <> ", got " <> show warnings)
+    | otherwise = Nothing
 
--- | A document that is not in the Version1 format /and/ whose migration still
+-- | A document that is not in the envelope /and/ whose migration still
 -- does not yield a parseable configuration is rejected (the parse error
 -- surfaces). Here a legacy document with an ill-typed @ConsensusMode@ migrates to
--- a Version1 envelope, but the component codec then rejects the value.
+-- an envelope, but the component codec then rejects the value.
 migrationErrorCase :: TestTree
 migrationErrorCase =
-  testCase "a non-Version1 document whose migration is still unparseable is rejected" $ do
+  testCase "a non-enveloped document whose migration is still unparseable is rejected" $ do
     path <- getDataFileName "test/examples/migration-unparseable.json"
     res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
     expectOk $ case res of
@@ -341,14 +373,14 @@ formatVersionCase =
               <> " but the package version implies "
               <> show packageFormatVersion
 
--- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
+-- | 'migrate' reshapes a legacy flat config into the envelope: the
 -- envelope keys appear at the top, each component's flat keys are grouped under
 -- its section (e.g. ConsensusMode under ConsensusConfig), a removed key
 -- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
 migrateCase :: TestTree
 migrateCase =
-  testCase "migrate test/examples/fullconfig.json (legacy flat -> Version1 envelope)" $ do
-    res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
+  testCase "migrate test/examples/legacy-fullconfig.json (legacy flat -> envelope)" $ do
+    res <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
       Right raw -> case fst (migrate raw) of
@@ -373,6 +405,43 @@ migrateCase =
   envelopeKeys = ["$schema", "Version", "MinNodeVersion", "Configuration"]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+
+-- | 'migrate' brings every document it accepts to the current format version,
+-- which is why there is one parse path rather than one per version. A legacy
+-- document and a version-1 document both come out at 'currentFormatVersion',
+-- with the @$schema@ that goes with it. Reading a version-1 document still
+-- works and reports 'OutdatedFormatVersion'. A version past the newest is
+-- rejected, naming it.
+formatVersionCompatibilityCase :: TestTree
+formatVersionCompatibilityCase =
+  testCase "migrate upgrades an older version; a newer one is rejected" $ do
+    olderPath <- getDataFileName "test/examples/version1.json"
+    older <- decodeData "test/examples/version1.json" :: IO (Either String Value)
+    legacy <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
+    (parsed, warnings) <- parseConfigurationFiles olderPath
+    unsupportedPath <- getDataFileName "test/examples/version-unsupported.json"
+    unsupported <- try (parseConfigurationFiles unsupportedPath)
+    expectOk $ case (older, legacy) of
+      (Left err, _) -> Just ("could not read the version-1 fixture: " <> err)
+      (_, Left err) -> Just ("could not read the legacy fixture: " <> err)
+      (Right olderValue, Right legacyValue)
+        | not (upgraded olderValue) -> Just "a version-1 document was not upgraded"
+        | not (upgraded legacyValue) -> Just "a legacy document was not upgraded"
+        | OutdatedFormatVersion 1 currentFormatVersion `notElem` warnings ->
+            Just ("reading a version-1 document did not report it: " <> show warnings)
+        | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) parsed of
+            Left err -> Just ("the version-1 document did not resolve: " <> show err)
+            Right _ -> case unsupported of
+              Right _ -> Just "a document past the newest format version was accepted"
+              Left (e :: SomeException)
+                | "99" `isInfixOf` show e -> Nothing
+                | otherwise -> Just ("rejected, but without naming the version: " <> show e)
+ where
+  upgraded v = case fst (migrate v) of
+    Object o ->
+      KM.lookup (K.fromString "Version") o == Just (Number (fromIntegral currentFormatVersion))
+        && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
     _ -> False
 
 -- | 'migrate' rewrites the renamed fields to their current names and drops the
@@ -429,7 +498,16 @@ migrateRenameCase =
   -- Globally-unique old names that must never survive (the generic
   -- AcceptedConnectionsLimit sub-keys are checked in place above, since a stray
   -- one is deliberately left unchanged).
-  oldNames = ["EnableRpc", "RpcSocketPath", "TargetNumberOfRootPeers"]
+  oldNames =
+    [ "EnableRpc"
+    , "RpcSocketPath"
+    , "RpcListenAddress"
+    , "RpcListenPort"
+    , "RpcTlsCertificateFile"
+    , "RpcTlsPrivateKeyFile"
+    , "RpcTlsChainCertificateFiles"
+    , "TargetNumberOfRootPeers"
+    ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
     _ -> False
@@ -704,35 +782,48 @@ migrateEnvelopeCollisionCase =
       , ("MempoolConfig", obj [("MempoolCapacityOverride", Number 999)])
       ]
 
--- | 'migrate' rewrites a pre-rename field name even when the document is /already/
--- enveloped (the parser used to skip migration for enveloped documents, so an
--- enveloped @EnableRpc@ silently reverted to its default). It also carries an
--- existing @$schema@ through unchanged, rather than clobbering a user's pinned URL.
--- (Regression test for the reviewer's "enveloped legacy fields skipped" and
--- "unconditional schema replacement" concerns.)
+-- | 'migrate' rewrites a pre-rename field name even when the document is
+-- /already/ enveloped (the parser used to skip migration for enveloped
+-- documents, so an enveloped @EnableRpc@ silently reverted to its default).
+--
+-- A pinned @$schema@ survives only while the version does not move. Upgrading a
+-- version-1 document replaces it, because the pinned URL describes a version
+-- the document no longer is; a document already at the current version keeps
+-- whatever URL it pins.
 migrateEnvelopedRenameCase :: TestTree
 migrateEnvelopedRenameCase =
-  testCase "migrate renames fields inside an existing envelope and carries $schema through" $
-    expectOk $ case migrate input of
-      (m@(Object top), _)
-        | KM.lookup (K.fromString "$schema") top /= Just pinnedSchema ->
-            Just
-              ("the pinned $schema was not carried through, got " <> show (KM.lookup (K.fromString "$schema") top))
-        | "EnableRpc" `elem` allKeys m ->
-            Just "the old name EnableRpc survived the rename"
-        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
-            Just (Object cfg)
-              | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
-                  Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
-              | otherwise -> Nothing
-            _ -> Just "Configuration is not an object"
-      (m, _) -> Just ("migrate did not produce an object: " <> show m)
+  testCase "migrate renames inside an envelope, and repins $schema only on an upgrade" $
+    expectOk (firstProblem [renamed, upgradedRepins, currentKeepsPin])
  where
+  renamed = case migrate (envelope 1) of
+    (m@(Object top), _)
+      | "EnableRpc" `elem` allKeys m -> Just "the old name EnableRpc survived the rename"
+      | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+          Just (Object cfg)
+            | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
+                Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
+            | otherwise -> Nothing
+          _ -> Just "Configuration is not an object"
+    (m, _) -> Just ("migrate did not produce an object: " <> show m)
+  upgradedRepins
+    | schemaOf (envelope 1) == Just (String (schemaId "config.schema.json")) = Nothing
+    | otherwise = Just ("an upgraded document kept its old $schema: " <> show (schemaOf (envelope 1)))
+  currentKeepsPin
+    | schemaOf (envelope currentFormatVersion) == Just pinnedSchema = Nothing
+    | otherwise =
+        Just
+          ( "a document already at the current version lost its pinned $schema: "
+              <> show (schemaOf (envelope currentFormatVersion))
+          )
+  schemaOf v = case fst (migrate v) of
+    Object top -> KM.lookup (K.fromString "$schema") top
+    _ -> Nothing
   pinnedSchema = String (T.pack "https://example.com/pinned/config.schema.json")
-  input =
+  envelope :: Int -> Value
+  envelope version =
     obj
       [ ("$schema", pinnedSchema)
-      , ("Version", Number 1)
+      , ("Version", Number (fromIntegral version))
       , ("Configuration", obj [("LocalConnectionsConfig", obj [("EnableRpc", Bool True)])])
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
@@ -822,8 +913,8 @@ minNodeVersionCase =
 -- defaults populate every resolved field.
 resolveCase :: TestTree
 resolveCase =
-  testCase "resolveConfiguration examples/fullconfig.json" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+  testCase "resolveConfiguration examples/legacy-fullconfig.json" $ do
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     case cliArgs [] of
       Nothing -> assertFailure "could not build default CLI arguments"
@@ -842,9 +933,9 @@ tracingCase =
   testCase "HermodTracing resolves to a TraceConfig (inline, file, default) and is always rendered" $ do
     inline <- parsed "test/examples/tracing-inline.json"
     fromFile <- parsed "test/examples/tracing-file.json"
-    absent <- parsed "test/examples/fullconfig.json"
+    absent <- parsed "test/examples/legacy-fullconfig.json"
     renderedInline <- rendersTracing "test/examples/tracing-inline.json"
-    renderedAbsent <- rendersTracing "test/examples/fullconfig.json"
+    renderedAbsent <- rendersTracing "test/examples/legacy-fullconfig.json"
     let asJSON = toJSON . tracingConfiguration
         deflt = toJSON defaultCardanoTracingConfig
     expectOk $
@@ -908,7 +999,7 @@ tracingDefaultParityCase =
 genesisRenderCase :: TestTree
 genesisRenderCase =
   testCase "resolve renders era geneses only with IncludeGeneses" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -963,7 +1054,7 @@ roleVariantParityCase =
 roleSelectionCase :: TestTree
 roleSelectionCase =
   testCase "network role defaults selected from credential presence" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case (cliArgs ["--shelley-vrf-key", "vrf.skey"], cliArgs []) of
       (Just bpCli, Just relayCli) ->
@@ -1085,6 +1176,273 @@ mempoolMixedResolveCase =
 
 -- | Parse @cardano-node@-style CLI arguments for a test (no defaults file is
 -- needed; the parser supplies its own).
+-- | The flat @Grpc*@ keys of @LocalConnectionsConfig@ fold into the single
+-- 'GrpcEndpoint' they describe: a unix socket, a plaintext (h2c) TCP listener
+-- or a TLS one. The listen address defaults to loopback. Each endpoint also
+-- survives a round trip through 'toJSON'.
+grpcEndpointCase :: TestTree
+grpcEndpointCase =
+  testCase "the flat Grpc* keys fold into a GrpcEndpoint (and unfold again)" $
+    expectOk (firstProblem (map check endpoints))
+ where
+  endpoints =
+    [ ("a unix socket", [socketPathKey], GrpcEndpointUnixSocket "rpc.sock")
+    , ("a plaintext listener", [portKey], GrpcEndpointHttp defaultGrpcListenAddress 3001)
+    ,
+      ( "a plaintext listener on a given address"
+      , [addressKey, portKey]
+      , GrpcEndpointHttp (ip "0.0.0.0") 3001
+      )
+    ,
+      ( "a plaintext listener on IPv6"
+      , [("GrpcListenAddress", str "::1"), portKey]
+      , GrpcEndpointHttp (ip "::1") 3001
+      )
+    ,
+      ( "a TLS listener"
+      , [portKey, certificateKey, privateKeyKey]
+      , GrpcEndpointHttps defaultGrpcListenAddress 3001 (GrpcTlsFiles "tls/server.pem" "tls/server.key" [])
+      )
+    ,
+      ( "a TLS listener with a chain"
+      , [addressKey, portKey, certificateKey, privateKeyKey, chainKey]
+      , GrpcEndpointHttps
+          (ip "0.0.0.0")
+          3001
+          (GrpcTlsFiles "tls/server.pem" "tls/server.key" ["tls/intermediate.pem"])
+      )
+    ]
+  check (label, fields, expected) = case decodeLocalConnections fields of
+    Left err -> Just (label <> ": did not decode: " <> err)
+    Right cfg
+      | grpcEndpoint cfg /= SJust expected ->
+          Just (label <> ": decoded to " <> show (grpcEndpoint cfg) <> ", expected " <> show expected)
+      | otherwise -> case fromJSON (toJSON cfg) :: Result (LocalConnectionsConfig StrictMaybe) of
+          Error err -> Just (label <> ": did not re-decode what it rendered: " <> err)
+          Success cfg'
+            | grpcEndpoint cfg' /= grpcEndpoint cfg ->
+                Just (label <> ": did not survive a round trip: " <> show (grpcEndpoint cfg'))
+            | otherwise -> Nothing
+
+-- | The @Grpc*@ key combinations that describe no single listener are rejected
+-- as the section is parsed, naming the keys at fault.
+grpcEndpointRejectionCase :: TestTree
+grpcEndpointRejectionCase =
+  testCase "a Grpc* key combination that describes no single listener is rejected" $
+    expectOk (firstProblem (map check rejected))
+ where
+  rejected =
+    [ ("a socket path and a listen port", [socketPathKey, portKey], "mutually exclusive")
+    , ("a socket path and a listen address", [socketPathKey, addressKey], "mutually exclusive")
+    , ("a socket path and TLS", [socketPathKey, certificateKey, privateKeyKey], "mutually exclusive")
+    , ("a listen address with no port", [addressKey], "GrpcListenAddress requires GrpcListenPort")
+    , ("TLS with no port", [certificateKey, privateKeyKey], "require GrpcListenPort")
+    , ("a certificate with no private key", [portKey, certificateKey], "must be set together")
+    , ("a private key with no certificate", [portKey, privateKeyKey], "must be set together")
+    , ("a TLS chain with no credentials", [portKey, chainKey], "requires GrpcTlsCertificateFile")
+    ]
+  check (label, fields, expectedMessage) = case decodeLocalConnections fields of
+    Right cfg -> Just (label <> ": was accepted, as " <> show (grpcEndpoint cfg))
+    Left err
+      | expectedMessage `isInfixOf` err -> Nothing
+      | otherwise ->
+          Just (label <> ": rejected, but not for " <> show expectedMessage <> ": " <> err)
+
+-- | The same endpoint, from the command line: the unix-socket flag and the TCP
+-- ones are alternatives, so giving both fails the parse, as does an address or
+-- a TLS credential with no port to listen on.
+grpcEndpointCliCase :: TestTree
+grpcEndpointCliCase =
+  testCase "the gRPC endpoint flags build the endpoint, and exclude each other" $
+    expectOk (firstProblem (map accepts accepted <> map rejects rejected))
+ where
+  accepted =
+    [ (["--grpc-socket-path", "rpc.sock"], GrpcEndpointUnixSocket "rpc.sock")
+    , (["--grpc-listen-port", "3001"], GrpcEndpointHttp defaultGrpcListenAddress 3001)
+    ,
+      ( ["--grpc-listen-address", "0.0.0.0", "--grpc-listen-port", "3001"]
+      , GrpcEndpointHttp (ip "0.0.0.0") 3001
+      )
+    ,
+      (
+        [ "--grpc-listen-port"
+        , "3001"
+        , "--grpc-tls-certificate"
+        , "tls/server.pem"
+        , "--grpc-tls-private-key"
+        , "tls/server.key"
+        , "--grpc-tls-chain-certificate"
+        , "tls/intermediate.pem"
+        ]
+      , GrpcEndpointHttps
+          defaultGrpcListenAddress
+          3001
+          (GrpcTlsFiles "tls/server.pem" "tls/server.key" ["tls/intermediate.pem"])
+      )
+    ]
+  rejected =
+    [
+      ( "a socket path and a listen port"
+      , ["--grpc-socket-path", "rpc.sock", "--grpc-listen-port", "3001"]
+      )
+    , ("a listen address with no port", ["--grpc-listen-address", "0.0.0.0"])
+    ,
+      ( "TLS with no port"
+      , ["--grpc-tls-certificate", "tls/server.pem", "--grpc-tls-private-key", "tls/server.key"]
+      )
+    ,
+      ( "a certificate with no private key"
+      , ["--grpc-listen-port", "3001", "--grpc-tls-certificate", "tls/server.pem"]
+      )
+    , ("a port out of range", ["--grpc-listen-port", "65536"])
+    ]
+  accepts (args, expected) = case cliArgs args of
+    Nothing -> Just (show args <> ": did not parse")
+    Just cli
+      | grpcEndpointCLI cli /= SJust expected ->
+          Just (show args <> ": parsed to " <> show (grpcEndpointCLI cli) <> ", expected " <> show expected)
+      | otherwise -> Nothing
+  rejects (label, args) = case cliArgs args of
+    Nothing -> Nothing
+    Just cli -> Just (label <> ": was accepted, as " <> show (grpcEndpointCLI cli))
+
+-- | Enabling the gRPC server needs somewhere for it to listen: an endpoint of
+-- its own, or a node socket path to derive the default @rpc.sock@ from. A
+-- listen port counts, so @--grpc-enable --grpc-listen-port@ needs no node
+-- socket. @--grpc-enable@ alone, with neither, is a resolution error.
+grpcEnabledEndpointCheckCase :: TestTree
+grpcEnabledEndpointCheckCase =
+  testCase "enabling gRPC requires an endpoint or a node socket path" $ do
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let resolveWith args = case cliArgs ("--config" : path : args) of
+          Nothing -> Left ("could not build CLI arguments: " <> show args)
+          Just cli -> either (Left . show) (Right . fst) (resolveConfiguration cli cfg)
+    expectOk $ case ( resolveWith ["--grpc-enable"]
+                    , resolveWith ["--grpc-enable", "--grpc-listen-port", "3001"]
+                    , resolveWith ["--grpc-enable", "--socket-path", "node.socket"]
+                    ) of
+      (Right _, _, _) -> Just "gRPC enabled with nothing to listen on was accepted"
+      (_, Left err, _) -> Just ("gRPC enabled on a listen port was rejected: " <> err)
+      (_, _, Left err) -> Just ("gRPC enabled with a node socket path was rejected: " <> err)
+      (Left _, Right onPort, Right onSocket)
+        | grpcEndpoint (C.localConnectionsConfig onPort)
+            /= SJust (GrpcEndpointHttp defaultGrpcListenAddress 3001) ->
+            Just
+              ("the listen port did not resolve to a TCP endpoint: " <> show (C.localConnectionsConfig onPort))
+        -- Left unset, so that the consumer derives rpc.sock beside the node socket.
+        | isSJust (grpcEndpoint (C.localConnectionsConfig onSocket)) ->
+            Just ("a node socket path invented an endpoint: " <> show (C.localConnectionsConfig onSocket))
+        | otherwise -> Nothing
+
+-- | The cross-field rules the parser enforces are stated in the schemas too, so
+-- a validator rejects the documents the parser rejects. This pins that they are
+-- stated at all, which the drift test would not catch, because it compares the
+-- committed files against the generator.
+schemaConstraintsCase :: TestTree
+schemaConstraintsCase =
+  testCase "the schemas state the parser's cross-field rules" $ do
+    results <- mapM check checks
+    expectOk (firstProblem results)
+ where
+  checks =
+    [ ("LocalConnectionsConfig", "the gRPC endpoint exclusions", hasDependencies grpcKeys)
+    , ("MempoolConfig", "the coupled mempool timeouts", hasDependencies mempoolTimeoutKeys)
+    , ("TestingConfig", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
+    , ("TestingConfig", "the experimental-eras requirement", hasIfThen)
+    , ("StorageConfig", "the non-zero SnapshotInterval", hasMinimum "SnapshotInterval" 1)
+    , -- The legacy form puts every component's keys in one flat space, so it
+      -- carries every component's rules at the top level.
+
+      ( "config.legacy-one-file"
+      , "every component's rules, flat"
+      , \v -> hasDependencies (grpcKeys <> mempoolTimeoutKeys <> dijkstraKeys) v && hasIfThen v
+      )
+    ]
+  grpcKeys =
+    [ "GrpcSocketPath"
+    , "GrpcListenAddress"
+    , "GrpcTlsCertificateFile"
+    , "GrpcTlsPrivateKeyFile"
+    , "GrpcTlsChainCertificateFiles"
+    ]
+  mempoolTimeoutKeys = ["MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity"]
+  dijkstraKeys = ["DijkstraGenesisFile", "DijkstraGenesisHash"]
+  check (name, what, holds) = do
+    res <- decodeData ("schemas/" <> name <> ".schema.json") :: IO (Either String Value)
+    pure $ case res of
+      Left err -> Just (name <> ": " <> err)
+      Right v
+        | holds v -> Nothing
+        | otherwise -> Just (name <> ".schema.json does not state " <> what)
+  hasDependencies ks v = all (\k -> KM.member (K.fromString k) (dependenciesOf v)) ks
+  dependenciesOf (Object o) | Just (Object d) <- KM.lookup (K.fromString "dependencies") o = d
+  dependenciesOf _ = KM.empty
+  hasIfThen (Object o)
+    | Just (Array branches) <- KM.lookup (K.fromString "allOf") o = any isIfThen branches
+  hasIfThen _ = False
+  isIfThen (Object b) = KM.member (K.fromString "if") b && KM.member (K.fromString "then") b
+  isIfThen _ = False
+  -- The minimum stated for a property of this name, wherever it appears.
+  hasMinimum name n v = minimaFor name v == [Number n]
+  minimaFor name = go
+   where
+    go (Object o) =
+      [ m
+      | Just (Object props) <- [KM.lookup (K.fromString "properties") o]
+      , Just (Object c) <- [KM.lookup (K.fromString name) props]
+      , Just m <- [KM.lookup (K.fromString "minimum") c]
+      ]
+        <> concatMap go (KM.elems o)
+    go (Array a) = concatMap go a
+    go _ = []
+
+-- | The node rejects a zero snapshot interval, so the parser does too (and the
+-- schema says @minimum: 1@ rather than the 0 a 'Data.Word.Word64' would allow).
+snapshotIntervalCase :: TestTree
+snapshotIntervalCase =
+  testCase "a zero SnapshotInterval is rejected" $
+    expectOk $ case (decodeInterval 0, decodeInterval 1) of
+      (Right _, _) -> Just "SnapshotInterval 0 was accepted"
+      (_, Left err) -> Just ("SnapshotInterval 1 was rejected: " <> err)
+      (Left _, Right _) -> Nothing
+ where
+  decodeInterval n =
+    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("SnapshotInterval", Number n)])])]) ::
+           Result (StorageConfiguration StrictMaybe) of
+      Error err -> Left err
+      Success cfg -> Right cfg
+
+-- | The first problem reported by a list of checks, if any.
+firstProblem :: [Maybe String] -> Maybe String
+firstProblem problems = case [p | Just p <- problems] of
+  (p : _) -> Just p
+  [] -> Nothing
+
+-- | An IP address written the way the configuration and the command line write
+-- it (the test module does not enable @OverloadedStrings@).
+ip :: String -> IP
+ip = read
+
+-- | Decode a @LocalConnectionsConfig@ from the given keys alone.
+decodeLocalConnections :: [(String, Value)] -> Either String (LocalConnectionsConfig StrictMaybe)
+decodeLocalConnections fields = case fromJSON (obj fields) of
+  Error err -> Left err
+  Success cfg -> Right cfg
+
+-- The individual Grpc* keys the cases above combine.
+socketPathKey, addressKey, portKey, certificateKey, privateKeyKey, chainKey :: (String, Value)
+socketPathKey = ("GrpcSocketPath", str "rpc.sock")
+addressKey = ("GrpcListenAddress", str "0.0.0.0")
+portKey = ("GrpcListenPort", Number 3001)
+certificateKey = ("GrpcTlsCertificateFile", str "tls/server.pem")
+privateKeyKey = ("GrpcTlsPrivateKeyFile", str "tls/server.key")
+chainKey = ("GrpcTlsChainCertificateFiles", Array (pure (str "tls/intermediate.pem")))
+
+-- | A JSON string (the test module does not enable @OverloadedStrings@).
+str :: String -> Value
+str = String . T.pack
+
 cliArgs :: [String] -> Maybe CliArgs
 cliArgs = getParseResult . execParserPure defaultPrefs (info parseCliArgs mempty)
 
@@ -1112,7 +1470,7 @@ snapshotMithrilResolveCase :: TestTree
 snapshotMithrilResolveCase =
   testCase "Mithril snapshot policy resolves to concrete values (filling partial overrides)" $ do
     fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
-    fromPartial <- resolvedOptions "test/examples/fullconfig.json" -- sets 3 of 6 (= Mithril)
+    fromPartial <- resolvedOptions "test/examples/legacy-fullconfig.json" -- sets 3 of 6 (= Mithril)
     expectOk $ case (fromMithril, fromPartial) of
       (Right a, Right b)
         | a == mithrilFields && b == mithrilFields -> Nothing

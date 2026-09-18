@@ -12,6 +12,7 @@ module Cardano.Configuration.File.Merge
   , sectionUserLayer
   , parseSection
   , splitEnvelope
+  , declaredFormatVersion
   ) where
 
 import Cardano.Configuration.Embedded (embeddedDefaults)
@@ -160,7 +161,7 @@ loadBaseDefault section =
 -- section that is absent contributes no user layer (so the component takes its
 -- base defaults). Component keys placed flat under @Configuration@ are /not/
 -- resolved into their section — they are left unrecognised (see
--- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-Version1 documents,
+-- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-enveloped documents,
 -- where the keys are flat, are migrated (grouped into sections) before reaching
 -- here.
 sectionUserLayer :: FilePath -> Value -> String -> IO Value
@@ -207,24 +208,13 @@ splitEnvelope :: Value -> IO (Int, Maybe T.Text, Value)
 splitEnvelope value =
   case value of
     Object o -> do
-      version <- lookupVersion o
+      version <- declaredFormatVersion value
       minNodeVersion <- lookupMinNodeVersion o
       pure (version, minNodeVersion, fromMaybe value (KM.lookup "Configuration" o))
     _ ->
       throwIO $
         ConfigurationParsingError SNothing SNothing [] "expected the configuration to be a JSON/YAML object"
  where
-  -- A missing @Version@ is the legacy version 1 — a fixed historical fact about
-  -- unversioned documents, not @currentFormatVersion@: should the format ever
-  -- reach 2, a document with no @Version@ is still a version-1 document. A present
-  -- one must be an integer in range (not e.g. 1.4 or a huge scientific literal):
-  -- the schema declares it as an integer, so anything else is a hard error.
-  lookupVersion o = case KM.lookup "Version" o of
-    Nothing -> pure 1
-    Just (Number n) ->
-      maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
-    Just _ -> throwIO (badVersion "expected an integer")
-  badVersion msg = ConfigurationParsingError SNothing SNothing [Key "Version"] ("invalid Version: " <> msg)
   -- @MinNodeVersion@ is optional and, when present, must be a string.
   lookupMinNodeVersion o = case KM.lookup "MinNodeVersion" o of
     Nothing -> pure Nothing
@@ -236,3 +226,22 @@ splitEnvelope value =
           SNothing
           [Key "MinNodeVersion"]
           "invalid MinNodeVersion: expected a string"
+
+-- | The format version a document declares, read before any migration, so the
+-- caller can reject a version this library does not write and warn about one it
+-- migrates.
+--
+-- A missing @Version@ is the legacy version 1: a fixed historical fact about
+-- unversioned documents, not 'Cardano.Configuration.Schema.currentFormatVersion'.
+-- A present one must be an integer in range, since the schema declares it as an
+-- integer. A value that is not an object reports 1 and fails later, where the
+-- error names the real problem.
+declaredFormatVersion :: Value -> IO Int
+declaredFormatVersion (Object o) = case KM.lookup "Version" o of
+  Nothing -> pure 1
+  Just (Number n) ->
+    maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
+  Just _ -> throwIO (badVersion "expected an integer")
+ where
+  badVersion msg = ConfigurationParsingError SNothing SNothing [Key "Version"] ("invalid Version: " <> msg)
+declaredFormatVersion _ = pure 1

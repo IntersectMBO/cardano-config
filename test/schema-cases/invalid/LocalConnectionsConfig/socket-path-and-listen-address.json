@@ -1,0 +1,4 @@
+{
+  "GrpcSocketPath": "rpc.sock",
+  "GrpcListenAddress": "0.0.0.0"
+}

@@ -57,7 +57,7 @@ instance HasCodec (TestingConfiguration StrictMaybe) where
           "ExperimentalHardForksEnabled"
           ( "Enable the experimental eras. When true, a DijkstraGenesisFile and its"
               <> " DijkstraGenesisHash must be given alongside it, or resolution rejects the"
-              <> " configuration (a conditional requirement this schema does not express)."
+              <> " configuration."
           )
           .= experimentalHardForksEnabled
         <*> optionalFieldStrict "TestShelleyHardForkAtEpoch" "Force the Shelley hard fork at this epoch"

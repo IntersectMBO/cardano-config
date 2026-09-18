@@ -1,0 +1,4 @@
+{
+  "GrpcSocketPath": "rpc.sock",
+  "GrpcListenPort": 3001
+}

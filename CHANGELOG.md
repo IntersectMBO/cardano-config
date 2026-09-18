@@ -2,7 +2,89 @@
 
 ## Unreleased
 
+Schema format version 2, and so package version `2.0.0.0`: the configuration
+format gains keys (below), and the `v1` tag, cut alongside
+`cardano-config-1.1.0.0`, is immutable. The schemas that describe the format can
+no longer be published under it. `cardano-config-2.x.x.x` parses every format
+version up to and including 2 and writes 2. A version-1 document still parses,
+because `migrate` upgrades it to version 2 before the parser sees it.
+
+What validates changes in one direction: the schemas now state the cross-field
+rules the parser enforces (below), so a validator rejects documents `v1`
+accepted. Every one of those was already rejected at parse time, so no working
+configuration stops working. The new keys themselves are additive: the sections
+do not set `additionalProperties: false`, so a configuration carrying them
+already validated against `v1`.
+
 ### Breaking changes
+
+* `migrate` writes the current format version instead of carrying an older one
+  through, so a legacy or a version-1 document comes out at version 2 with the
+  matching `$schema`. A document already at the current version keeps a
+  `$schema` it pins. A document declaring a newer version is refused, both by
+  `migrate` and when read, because migration never goes backwards.
+
+  `parseConfigurationFiles` migrates before it parses, so this removes the
+  per-version dispatch: every document reaches one body parser, at the current
+  version. A new format version now costs one migration step, not one parse
+  path.
+
+* `ConfigWarning` gains `OutdatedFormatVersion declared current`, raised when a
+  document is at an older format version. It replaces `MigratedToCurrentFormat`
+  in that case, which now reports only a document already at the current
+  version that migration still had to change. Code matching exhaustively on
+  `ConfigWarning` has to account for it.
+
+* The `migrate` subcommand prints a line to stderr telling you to check the
+  result with `resolve`. `migrate` itself still does not parse, resolve or
+  validate, so it stays a purely structural rewrite.
+
+* The gRPC server can now listen over HTTP/2 on a TCP port, with or without
+  TLS, rather than only on a unix socket. This follows `cardano-node`'s
+  `RpcEndpoint`. `LocalConnectionsConfig` replaces its
+  `grpcSocketPath :: StrictMaybe FilePath` field with
+  `grpcEndpoint :: StrictMaybe GrpcEndpoint`, the choice among the three
+  listeners:
+
+  ```haskell
+  data GrpcEndpoint
+    = GrpcEndpointUnixSocket FilePath
+    | GrpcEndpointHttp IP PortNumber
+    | GrpcEndpointHttps IP PortNumber GrpcTlsFiles
+  ```
+
+  It is one field rather than a group of independent ones, because the server
+  has exactly one listener. The combinations that describe none are now
+  unrepresentable in a resolved configuration. It stays a `StrictMaybe` once
+  resolved: unset, the consumer derives `rpc.sock` beside the node socket.
+
+  In the configuration file the endpoint is written flat, under
+  `LocalConnectionsConfig`: the existing `GrpcSocketPath`, or the new
+  `GrpcListenPort`, with an optional `GrpcListenAddress` defaulting to
+  `127.0.0.1`. For TLS, add `GrpcTlsCertificateFile` and
+  `GrpcTlsPrivateKeyFile`, with optional `GrpcTlsChainCertificateFiles`. These
+  keys are folded into the endpoint as the section is parsed. The combinations
+  that describe no single listener are rejected there, naming the keys at
+  fault.
+
+* `CliArgs` likewise replaces `grpcSocketPathCLI :: StrictMaybe FilePath` with
+  `grpcEndpointCLI :: StrictMaybe GrpcEndpoint`. It is parsed from the existing
+  `--grpc-socket-path` and the new `--grpc-listen-address`,
+  `--grpc-listen-port`, `--grpc-tls-certificate`, `--grpc-tls-private-key` and
+  (repeatable) `--grpc-tls-chain-certificate`, whose names and help text match
+  `cardano-node`'s. The unix-socket flag and the TCP ones are alternatives, so
+  giving both fails the parse. A command-line endpoint replaces the file's
+  endpoint whole rather than merging into it.
+
+  The individual parsers are exported as usual (`parseGrpcEndpoint`,
+  `parseGrpcSocketPath`, `parseGrpcListenAddress`, `parseGrpcListenPort`,
+  `parseGrpcTlsFiles`), as are `GrpcEndpoint`, `GrpcTlsFiles` and
+  `defaultGrpcListenAddress`.
+
+* The consistency check on enabling gRPC now accepts an endpoint of any kind: a
+  gRPC socket path, a listen port, or a node socket path. A configuration that
+  enables gRPC on a listen port and names no node socket used to be rejected.
+  It now resolves, and the check's `checkDescription` text changed with it.
 
 * `experimentalGenesisConfig` (on both `NodeConfigurationFromFile` and
   `NodeConfiguration`) is now gated on the `ExperimentalHardForksEnabled`
@@ -42,14 +124,48 @@
   combinations where the two disagree are now unreachable, so a consumer that
   used to handle four has two.
 
+### Added
+
+* `migrate` rewrites the remaining `Rpc*` key names to their `Grpc*` form:
+  `RpcListenAddress`, `RpcListenPort`, `RpcTlsCertificateFile`,
+  `RpcTlsPrivateKeyFile` and `RpcTlsChainCertificateFiles`, alongside the
+  `EnableRpc`/`RpcSocketPath` pair it already handled.
+
+  The schemas gain the new keys, and `migrate` now stamps `Version: 2` on the
+  documents it reshapes. An existing `Version`, like an existing `$schema`, is
+  carried through untouched, so a document pinned to an earlier version stays
+  pinned.
+
 ### Changed
 
+* The schemas state the cross-field rules the parser enforces. A codec cannot
+  express them, because it derives the schema one key at a time:
+
+  - the gRPC endpoint is one listener, so `GrpcSocketPath` excludes the TCP
+    keys, `GrpcListenAddress` and the `GrpcTls*` keys require `GrpcListenPort`,
+    and the certificate and private key require each other (`dependencies`)
+  - `MempoolTimeoutSoft`, `MempoolTimeoutHard` and `MempoolTimeoutCapacity` are
+    all set or all unset (`dependencies`)
+  - `ExperimentalHardForksEnabled` requires a `DijkstraGenesisFile` and
+    `DijkstraGenesisHash` (`if`/`then`), and those two require each other
+  - `SnapshotInterval` is `minimum: 1`, not the 0 its `Word64` would allow
+
+  Only rules whose inputs all come from the configuration file are stated.
+  "Enabling gRPC needs somewhere to listen" is not: a `--socket-path` on the
+  command line satisfies it, and a validator sees only the file.
+  `MinDelay <= MaxDelay` remains parser-only, because JSON Schema cannot compare
+  two properties.
+
+* The lower bounds on the boot libraries `bytestring`, `directory`, `filepath`,
+  `text` and `time` are relaxed to the versions GHC 9.6.7 ships. That is the
+  oldest compiler in `tested-with`. They were set to what the newest GHC ships,
+  so a plan on 9.6 had to reinstall newer ones from Hackage. A downstream plan
+  that cannot do that needed `allow-older` entries for all five. Only long
+  stable API is used from them, and none of it is `OsPath`.
+
 * The `ExperimentalHardForksEnabled` description in the JSON schemas now states
-  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. This
-  is an annotation only: *what validates* is unchanged, since the schemas are
-  frozen per format version and `v1` is cut, so the schema still describes
-  `DijkstraGenesisFile` as optional while resolution insists on it. Expressing
-  the requirement as a JSON Schema `if`/`then` needs a new format version.
+  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. The
+  schemas enforce that requirement too, with the `if`/`then` rule above.
 
 ## 1.1.0.0 -- 2026-09-08
 

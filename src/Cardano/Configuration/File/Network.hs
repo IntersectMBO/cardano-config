@@ -6,6 +6,9 @@ module Cardano.Configuration.File.Network
   , TxSubmissionLogicVersion (..)
   , AcceptedConnectionsLimit (..)
   , LocalConnectionsConfig (..)
+  , GrpcEndpoint (..)
+  , GrpcTlsFiles (..)
+  , defaultGrpcListenAddress
   , finalizeNetwork
   , finalizeLocalConnections
 
@@ -26,7 +29,13 @@ import Cardano.Configuration.Basic
   , optionalFieldWithStrict
   , requireField
   )
-import Cardano.Configuration.Common (filePathCodec)
+import Cardano.Configuration.Common
+  ( GrpcEndpoint (..)
+  , GrpcTlsFiles (..)
+  , defaultGrpcListenAddress
+  , filePathCodec
+  , grpcEndpointObjectCodec
+  )
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
@@ -398,12 +407,16 @@ relayRoleDefaults =
     , peerSharing = SJust True
     }
 
--- | Connections for local clients. @EnableGrpc@ has a default; the socket paths
--- are optional.
+-- | Connections for local clients. @EnableGrpc@ has a default. The node socket
+-- path and the gRPC endpoint are optional.
+--
+-- 'grpcEndpoint' stays optional in the resolved form because its default is not
+-- a constant: the gRPC server listens on @rpc.sock@ beside the node socket, a
+-- path only the consumer can derive.
 data LocalConnectionsConfig f = LocalConnectionsConfig
   { socketPath :: StrictMaybe FilePath
   , enableGrpc :: f Bool
-  , grpcSocketPath :: StrictMaybe FilePath
+  , grpcEndpoint :: StrictMaybe GrpcEndpoint
   }
   deriving Generic
 
@@ -427,8 +440,7 @@ instance HasCodec (LocalConnectionsConfig StrictMaybe) where
         <$> optionalFieldWithStrict "SocketPath" filePathCodec "Path of the socket for local clients"
           .= socketPath
         <*> optionalFieldStrict "EnableGrpc" "Whether to enable the gRPC server" .= enableGrpc
-        <*> optionalFieldWithStrict "GrpcSocketPath" filePathCodec "Path of the gRPC server socket"
-          .= grpcSocketPath
+        <*> grpcEndpointObjectCodec .= grpcEndpoint
 
 -- | Resolve a partial local-connections configuration, taking @EnableGrpc@ from
 -- the (always-applied) defaults.
@@ -436,4 +448,4 @@ finalizeLocalConnections ::
   LocalConnectionsConfig StrictMaybe -> Either ErrorMessage (LocalConnectionsConfig Identity)
 finalizeLocalConnections c = do
   rpc <- requireField "EnableGrpc" (enableGrpc c)
-  pure $ LocalConnectionsConfig (socketPath c) rpc (grpcSocketPath c)
+  pure $ LocalConnectionsConfig (socketPath c) rpc (grpcEndpoint c)

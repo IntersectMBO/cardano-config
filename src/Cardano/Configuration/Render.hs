@@ -150,7 +150,7 @@ weakenLocalConnections l =
   File.LocalConnectionsConfig
     { File.socketPath = File.socketPath l
     , File.enableGrpc = j (File.enableGrpc l)
-    , File.grpcSocketPath = File.grpcSocketPath l
+    , File.grpcEndpoint = File.grpcEndpoint l
     }
 
 weakenTesting :: File.TestingConfiguration Identity -> File.TestingConfiguration StrictMaybe

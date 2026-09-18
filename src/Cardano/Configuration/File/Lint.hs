@@ -30,10 +30,15 @@ data ConfigWarning
     UnrecognisedKeys [String]
   | -- | The document was not in the current canonical format, so migrating it (see
     -- @Cardano.Configuration.File.Migrate.migrate@) changed it before parsing —
-    -- either it was not in the Version1 envelope, or it still used a pre-rename
+    -- either it was not in the envelope, or it still used a pre-rename
     -- field name, or it carried an obsolete key. Run @cardano-config migrate@ to
     -- update the file on disk.
     MigratedToCurrentFormat
+  | -- | The configuration is at an older format version (the first 'Int') than
+    -- the one this library writes (the second). A document with no @Version@
+    -- key is version 1. It was migrated to the current version in memory, so it
+    -- still parses. Run @cardano-config migrate@ to update the file.
+    OutdatedFormatVersion Int Int
   | -- | While migrating, both the old and the current name of a renamed field
     -- were present at the same level (@(old, new)@). The value under the current
     -- name is kept and the one under the old name is dropped. Reconcile the two by
@@ -66,6 +71,12 @@ renderConfigWarning = \case
     "the configuration was not in the current canonical format; "
       <> "it was migrated before parsing "
       <> "(run `cardano-config migrate` to update the file)"
+  OutdatedFormatVersion declared current ->
+    "the configuration is format version "
+      <> show declared
+      <> ", and this cardano-config writes version "
+      <> show current
+      <> ". It was migrated in memory (run `cardano-config migrate` to update the file)"
   RenamedKeyCollision old new ->
     "both the old key \""
       <> T.unpack old
@@ -91,7 +102,7 @@ renderConfigWarning = \case
 
 -- | All warnings for an (unwrapped) configuration object.
 --
--- With the parser accepting only the Version1 format (a document that is not is
+-- With the parser accepting only the enveloped format (a document that is not is
 -- migrated first, which groups every component under its section), the only key
 -- warning left is for keys that none of the parsers recognise — typos, or a
 -- component property placed flat under @Configuration@ rather than under its

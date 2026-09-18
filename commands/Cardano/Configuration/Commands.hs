@@ -55,17 +55,19 @@ module Cardano.Configuration.Commands
 import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, resolveConfiguration)
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
-import Cardano.Configuration.File.Merge (decodeValueFile)
+import Cardano.Configuration.File.Merge (declaredFormatVersion, decodeValueFile)
 import Cardano.Configuration.File.Migrate (migrate)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configurationSchemas
   , configurationSchemasWithDefaults
+  , currentFormatVersion
   , legacyOneFileConfigSchemaWithDefaults
   , splitConfigSchemaWithDefaults
   )
 import Control.Exception (displayException, throwIO)
 import Control.Exception.Safe (handleAny)
+import Control.Monad (when)
 import Data.Aeson (Value)
 import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
 import qualified Data.ByteString as BS
@@ -256,17 +258,32 @@ migrateCommand =
         )
     )
 
--- | Read a configuration and print it, reshaped into the Version1 envelope, as
--- JSON. A purely structural migration: it does not resolve, default or validate.
+-- | Read a configuration and print it, reshaped into the envelope at the
+-- current format version, as JSON. A purely structural migration: it does not
+-- resolve, default or validate, so the hint at the end points at @resolve@.
 -- A path of @-@ reads the configuration from stdin (so it composes with @curl@).
 runMigrateCommand :: MigrateOptions -> IO ()
 runMigrateCommand (MigrateOptions path) = handleAny (die . displayException) $ do
   raw <- case path of
     "-" -> BS.getContents >>= decodeThrow
     _ -> decodeValueFile Nothing path
+  -- A document written for a newer format version cannot be migrated down to
+  -- this one, so say so instead of rewriting it into something it is not.
+  declared <- declaredFormatVersion raw
+  when (declared > currentFormatVersion) $
+    die $
+      "This configuration declares format version "
+        <> show declared
+        <> ", and this cardano-config writes version "
+        <> show currentFormatVersion
+        <> ". Upgrade cardano-config to migrate it."
   let (migrated, warnings) = migrate raw
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
   dump migrated
+  hPutStrLn stderr $
+    "Migrated to format version "
+      <> show currentFormatVersion
+      <> ". Run `cardano-config resolve --config <file>` to check that it parses."
 
 -- Shared helpers --------------------------------------------------------------
 
