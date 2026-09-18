@@ -7,8 +7,7 @@ format gains keys (below), and the `v1` tag, cut alongside
 `cardano-config-1.1.0.0`, is immutable. The schemas that describe the format can
 no longer be published under it. `cardano-config-2.x.x.x` parses every format
 version up to and including 2 and writes 2. A version-1 document still parses,
-unchanged and without a migration warning, and keeps its `$schema` pinned to
-`v1`.
+because `migrate` upgrades it to version 2 before the parser sees it.
 
 What validates changes in one direction: the schemas now state the cross-field
 rules the parser enforces (below), so a validator rejects documents `v1`
@@ -18,6 +17,27 @@ do not set `additionalProperties: false`, so a configuration carrying them
 already validated against `v1`.
 
 ### Breaking changes
+
+* `migrate` writes the current format version instead of carrying an older one
+  through, so a legacy or a version-1 document comes out at version 2 with the
+  matching `$schema`. A document already at the current version keeps a
+  `$schema` it pins. A document declaring a newer version is refused, both by
+  `migrate` and when read, because migration never goes backwards.
+
+  `parseConfigurationFiles` migrates before it parses, so this removes the
+  per-version dispatch: every document reaches one body parser, at the current
+  version. A new format version now costs one migration step, not one parse
+  path.
+
+* `ConfigWarning` gains `OutdatedFormatVersion declared current`, raised when a
+  document is at an older format version. It replaces `MigratedToCurrentFormat`
+  in that case, which now reports only a document already at the current
+  version that migration still had to change. Code matching exhaustively on
+  `ConfigWarning` has to account for it.
+
+* The `migrate` subcommand prints a line to stderr telling you to check the
+  result with `resolve`. `migrate` itself still does not parse, resolve or
+  validate, so it stays a purely structural rewrite.
 
 * The gRPC server can now listen over HTTP/2 on a TCP port, with or without
   TLS, rather than only on a unix socket. This follows `cardano-node`'s

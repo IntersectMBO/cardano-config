@@ -34,6 +34,11 @@ data ConfigWarning
     -- field name, or it carried an obsolete key. Run @cardano-config migrate@ to
     -- update the file on disk.
     MigratedToCurrentFormat
+  | -- | The configuration is at an older format version (the first 'Int') than
+    -- the one this library writes (the second). A document with no @Version@
+    -- key is version 1. It was migrated to the current version in memory, so it
+    -- still parses. Run @cardano-config migrate@ to update the file.
+    OutdatedFormatVersion Int Int
   | -- | While migrating, both the old and the current name of a renamed field
     -- were present at the same level (@(old, new)@). The value under the current
     -- name is kept and the one under the old name is dropped. Reconcile the two by
@@ -66,6 +71,12 @@ renderConfigWarning = \case
     "the configuration was not in the current canonical format; "
       <> "it was migrated before parsing "
       <> "(run `cardano-config migrate` to update the file)"
+  OutdatedFormatVersion declared current ->
+    "the configuration is format version "
+      <> show declared
+      <> ", and this cardano-config writes version "
+      <> show current
+      <> ". It was migrated in memory (run `cardano-config migrate` to update the file)"
   RenamedKeyCollision old new ->
     "both the old key \""
       <> T.unpack old

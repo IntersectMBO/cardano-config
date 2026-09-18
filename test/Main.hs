@@ -262,26 +262,45 @@ misplacedKeyCase =
   mentionsDijkstra (UnrecognisedKeys ks) = "DijkstraGenesisFile" `elem` ks
   mentionsDijkstra _ = False
 
--- | Every document is migrated before parsing. One that migration changes (here a
--- legacy flat config, reshaped into the envelope) yields a 'MigratedToCurrentFormat'
--- warning; one already in the canonical form (an enveloped config with current
--- field names) migrates to itself and so does not warn.
+-- | Every document is migrated before parsing, and the two warnings that
+-- reports split by cause. A document at an older format version yields
+-- 'OutdatedFormatVersion' alone, since migration always rewrites it and the
+-- generic warning would only repeat that. A document already at the current
+-- version that migration still changes (here a legacy field name inside a
+-- current envelope) yields 'MigratedToCurrentFormat'. A canonical document
+-- migrates to itself and yields neither.
 migrationWarningCase :: TestTree
 migrationWarningCase =
-  testCase "a config that migration changes warns MigratedToCurrentFormat; a canonical one does not" $ do
-    legacyPath <- getDataFileName "test/examples/legacy-fullconfig.json"
-    envPath <- getDataFileName "test/examples/min-node-version.json"
-    (_, legacyWarnings) <- parseConfigurationFiles legacyPath
-    (_, envWarnings) <- parseConfigurationFiles envPath
+  testCase "the migration warnings split by cause" $ do
+    legacy <- warningsFor "test/examples/legacy-fullconfig.json"
+    renamed <- warningsFor "test/examples/current-version-legacy-name.json"
+    canonical <- warningsFor "test/examples/min-node-version.json"
     expectOk $
-      if MigratedToCurrentFormat `elem` legacyWarnings && MigratedToCurrentFormat `notElem` envWarnings
-        then Nothing
-        else
-          Just $
-            "expected MigratedToCurrentFormat only for the non-canonical config: legacy="
-              <> show legacyWarnings
-              <> " enveloped="
-              <> show envWarnings
+      firstProblem
+        [ check
+            "an older version"
+            legacy
+            [OutdatedFormatVersion 1 currentFormatVersion]
+            [MigratedToCurrentFormat]
+        , check
+            "a current version still rewritten"
+            renamed
+            [MigratedToCurrentFormat]
+            [OutdatedFormatVersion 1 currentFormatVersion]
+        , check
+            "a canonical document"
+            canonical
+            []
+            [MigratedToCurrentFormat, OutdatedFormatVersion 1 currentFormatVersion]
+        ]
+ where
+  warningsFor p = snd <$> (getDataFileName p >>= parseConfigurationFiles)
+  check what warnings expected unexpected
+    | not (all (`elem` warnings) expected) =
+        Just (what <> ": expected " <> show expected <> ", got " <> show warnings)
+    | any (`elem` warnings) unexpected =
+        Just (what <> ": did not expect " <> show unexpected <> ", got " <> show warnings)
+    | otherwise = Nothing
 
 -- | A document that is not in the envelope /and/ whose migration still
 -- does not yield a parseable configuration is rejected (the parse error
@@ -388,27 +407,30 @@ migrateCase =
     Just (Object s) -> KM.member (K.fromString key) s
     _ -> False
 
--- | The parser accepts every format version up to and including
--- 'currentFormatVersion', and nothing beyond it. A version-1 document still
--- parses and resolves, keeping its @Version@ and its @$schema@ pinned to @v1@,
--- and @migrate@ leaves it alone with no @MigratedToCurrentFormat@ warning. A
--- version past the newest is rejected, naming the version.
+-- | 'migrate' brings every document it accepts to the current format version,
+-- which is why there is one parse path rather than one per version. A legacy
+-- document and a version-1 document both come out at 'currentFormatVersion',
+-- with the @$schema@ that goes with it. Reading a version-1 document still
+-- works and reports 'OutdatedFormatVersion'. A version past the newest is
+-- rejected, naming it.
 formatVersionCompatibilityCase :: TestTree
 formatVersionCompatibilityCase =
-  testCase "an older format version still parses; one past the newest does not" $ do
+  testCase "migrate upgrades an older version; a newer one is rejected" $ do
     olderPath <- getDataFileName "test/examples/version1.json"
-    raw <- decodeData "test/examples/version1.json" :: IO (Either String Value)
-    (older, warnings) <- parseConfigurationFiles olderPath
+    older <- decodeData "test/examples/version1.json" :: IO (Either String Value)
+    legacy <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
+    (parsed, warnings) <- parseConfigurationFiles olderPath
     unsupportedPath <- getDataFileName "test/examples/version-unsupported.json"
     unsupported <- try (parseConfigurationFiles unsupportedPath)
-    expectOk $ case raw of
-      Left err -> Just ("could not read the version-1 fixture: " <> err)
-      Right rawValue
-        | fst (migrate rawValue) /= rawValue ->
-            Just "migrate changed a version-1 document (it is already in the envelope)"
-        | any isMigrationWarning warnings ->
-            Just ("a version-1 document was reported as migrated: " <> show warnings)
-        | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) older of
+    expectOk $ case (older, legacy) of
+      (Left err, _) -> Just ("could not read the version-1 fixture: " <> err)
+      (_, Left err) -> Just ("could not read the legacy fixture: " <> err)
+      (Right olderValue, Right legacyValue)
+        | not (upgraded olderValue) -> Just "a version-1 document was not upgraded"
+        | not (upgraded legacyValue) -> Just "a legacy document was not upgraded"
+        | OutdatedFormatVersion 1 currentFormatVersion `notElem` warnings ->
+            Just ("reading a version-1 document did not report it: " <> show warnings)
+        | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) parsed of
             Left err -> Just ("the version-1 document did not resolve: " <> show err)
             Right _ -> case unsupported of
               Right _ -> Just "a document past the newest format version was accepted"
@@ -416,8 +438,11 @@ formatVersionCompatibilityCase =
                 | "99" `isInfixOf` show e -> Nothing
                 | otherwise -> Just ("rejected, but without naming the version: " <> show e)
  where
-  isMigrationWarning MigratedToCurrentFormat = True
-  isMigrationWarning _ = False
+  upgraded v = case fst (migrate v) of
+    Object o ->
+      KM.lookup (K.fromString "Version") o == Just (Number (fromIntegral currentFormatVersion))
+        && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
+    _ -> False
 
 -- | 'migrate' rewrites the renamed fields to their current names and drops the
 -- removed ones. Renamed flat keys must end up grouped under their section using
@@ -757,35 +782,48 @@ migrateEnvelopeCollisionCase =
       , ("MempoolConfig", obj [("MempoolCapacityOverride", Number 999)])
       ]
 
--- | 'migrate' rewrites a pre-rename field name even when the document is /already/
--- enveloped (the parser used to skip migration for enveloped documents, so an
--- enveloped @EnableRpc@ silently reverted to its default). It also carries an
--- existing @$schema@ through unchanged, rather than clobbering a user's pinned URL.
--- (Regression test for the reviewer's "enveloped legacy fields skipped" and
--- "unconditional schema replacement" concerns.)
+-- | 'migrate' rewrites a pre-rename field name even when the document is
+-- /already/ enveloped (the parser used to skip migration for enveloped
+-- documents, so an enveloped @EnableRpc@ silently reverted to its default).
+--
+-- A pinned @$schema@ survives only while the version does not move. Upgrading a
+-- version-1 document replaces it, because the pinned URL describes a version
+-- the document no longer is; a document already at the current version keeps
+-- whatever URL it pins.
 migrateEnvelopedRenameCase :: TestTree
 migrateEnvelopedRenameCase =
-  testCase "migrate renames fields inside an existing envelope and carries $schema through" $
-    expectOk $ case migrate input of
-      (m@(Object top), _)
-        | KM.lookup (K.fromString "$schema") top /= Just pinnedSchema ->
-            Just
-              ("the pinned $schema was not carried through, got " <> show (KM.lookup (K.fromString "$schema") top))
-        | "EnableRpc" `elem` allKeys m ->
-            Just "the old name EnableRpc survived the rename"
-        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
-            Just (Object cfg)
-              | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
-                  Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
-              | otherwise -> Nothing
-            _ -> Just "Configuration is not an object"
-      (m, _) -> Just ("migrate did not produce an object: " <> show m)
+  testCase "migrate renames inside an envelope, and repins $schema only on an upgrade" $
+    expectOk (firstProblem [renamed, upgradedRepins, currentKeepsPin])
  where
+  renamed = case migrate (envelope 1) of
+    (m@(Object top), _)
+      | "EnableRpc" `elem` allKeys m -> Just "the old name EnableRpc survived the rename"
+      | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+          Just (Object cfg)
+            | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
+                Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
+            | otherwise -> Nothing
+          _ -> Just "Configuration is not an object"
+    (m, _) -> Just ("migrate did not produce an object: " <> show m)
+  upgradedRepins
+    | schemaOf (envelope 1) == Just (String (schemaId "config.schema.json")) = Nothing
+    | otherwise = Just ("an upgraded document kept its old $schema: " <> show (schemaOf (envelope 1)))
+  currentKeepsPin
+    | schemaOf (envelope currentFormatVersion) == Just pinnedSchema = Nothing
+    | otherwise =
+        Just
+          ( "a document already at the current version lost its pinned $schema: "
+              <> show (schemaOf (envelope currentFormatVersion))
+          )
+  schemaOf v = case fst (migrate v) of
+    Object top -> KM.lookup (K.fromString "$schema") top
+    _ -> Nothing
   pinnedSchema = String (T.pack "https://example.com/pinned/config.schema.json")
-  input =
+  envelope :: Int -> Value
+  envelope version =
     obj
       [ ("$schema", pinnedSchema)
-      , ("Version", Number 1)
+      , ("Version", Number (fromIntegral version))
       , ("Configuration", obj [("LocalConnectionsConfig", obj [("EnableRpc", Bool True)])])
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of

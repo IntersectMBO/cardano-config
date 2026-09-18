@@ -19,11 +19,13 @@
 --   * renamed keys are rewritten to their current names and removed keys are
 --     dropped, at every depth (so the grouping below, which keys off the current
 --     names, places them correctly);
---   * @$schema@ (the published schema URL for this format version, see
---     'Cardano.Configuration.Schema.schemaTag') and @Version@
---     ('Cardano.Configuration.Schema.currentFormatVersion') are added when absent;
---     an existing @$schema@\/@Version@\/@MinNodeVersion@ is carried through (so a
---     @$schema@ URL pinned to an earlier release is not clobbered);
+--   * @Version@ and @$schema@ are set to the current format version (see
+--     'Cardano.Configuration.Schema.currentFormatVersion' and
+--     'Cardano.Configuration.Schema.schemaTag'), so an older document comes out
+--     at the current version. A document already at that version keeps a
+--     @$schema@ it pins. A document declaring a /newer/ version keeps it, since
+--     migration never goes backwards, and the reader rejects it. An existing
+--     @MinNodeVersion@ is carried through;
 --   * a flat top-level property key is nested under the component section that
 --     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
 --     @StorageConfig@);
@@ -60,6 +62,7 @@ import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.Maybe (fromMaybe)
+import Data.Scientific (toBoundedInteger)
 import Data.Text (Text)
 
 -- | Migrate a raw configuration value to the envelope, together with the
@@ -298,12 +301,21 @@ reshape (Object top) =
   , collisionWarnings
   )
  where
-  -- Carry an existing $schema through (so a user's pinned schema URL survives —
-  -- including one pinned to an earlier release, which is the schema that document
-  -- was written against), otherwise default to this release's published URL.
-  schemaValue = fromMaybe (String (schemaId "config.schema.json")) (KM.lookup "$schema" top)
-  -- Carry an existing Version, otherwise default to the format this library writes.
-  version = fromMaybe (Number (fromIntegral currentFormatVersion)) (KM.lookup "Version" top)
+  declared = KM.lookup "Version" top
+  -- Write the current format version. A document declaring a newer one is left
+  -- alone: migrate never downgrades, and the reader rejects it before getting
+  -- here (see 'Cardano.Configuration.File.parseConfigurationFiles').
+  version
+    | Just v <- declared, isNewer v = v
+    | otherwise = Number (fromIntegral currentFormatVersion)
+  isNewer (Number n) = maybe False (> currentFormatVersion) (toBoundedInteger n)
+  isNewer _ = False
+  -- Keep a pinned $schema only when the version is unchanged. Once the version
+  -- moves, the pinned URL describes a version the document no longer is.
+  schemaValue
+    | declared == Just version = fromMaybe currentSchema (KM.lookup "$schema" top)
+    | otherwise = currentSchema
+  currentSchema = String (schemaId "config.schema.json")
   -- Carry MinNodeVersion through if present; never invent one (it has no
   -- default, and its absence is itself a useful warning on the next parse).
   withMinNodeVersion = maybe id (KM.insert "MinNodeVersion") (KM.lookup "MinNodeVersion" top)
