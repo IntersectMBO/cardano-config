@@ -40,7 +40,7 @@ module Cardano.Configuration.Schema
   ) where
 
 import Autodocodec.Schema (jsonSchemaViaCodec)
-import Cardano.Configuration.Common (filePathFormatMarker)
+import Cardano.Configuration.Common (defaultGrpcListenAddress, filePathFormatMarker)
 import Cardano.Configuration.File.Consensus (ConsensusConfiguration)
 import Cardano.Configuration.File.Mempool (MempoolConfiguration)
 import Cardano.Configuration.File.Network (LocalConnectionsConfig, NetworkConfiguration)
@@ -446,6 +446,7 @@ transform = \case
       . typeConst
       . extractPathFormat
       . constrainProperties
+      . defaultProperties
       . titleProperties
       $ KM.fromList [(rename k, transform v) | (k, v) <- KM.toList o]
   Array a -> Array (transform <$> a)
@@ -485,6 +486,39 @@ constrainProperties o =
 propertyConstraints :: [(Text, KM.KeyMap Value)]
 propertyConstraints =
   [ ("SnapshotInterval", KM.singleton "minimum" (Number 1))
+  ]
+
+-- | Attach the 'propertyDefaults' to the properties they name. A @default@
+-- already taken from the defaults files wins, since those state what the
+-- bottom layer supplies.
+defaultProperties :: KM.KeyMap Value -> KM.KeyMap Value
+defaultProperties o =
+  case KM.lookup "properties" o of
+    Just (Object props) -> KM.insert "properties" (Object (KM.mapWithKey annotate props)) o
+    _ -> o
+ where
+  annotate k (Object c)
+    | Just d <- lookup (K.toText k) propertyDefaults =
+        Object (KM.insertWith keepExisting "default" d c)
+  annotate _ v = v
+  keepExisting _new old = old
+
+-- | A @default@ the library applies that neither the codec nor the defaults
+-- files can state. Keyed by the property name, which is unique across the
+-- configuration, so it is matched at any depth.
+--
+-- Unlike 'propertyConstraints' these are annotations rather than constraints.
+-- They say what a consumer gets when the key is absent, not what validates,
+-- so correcting one does not need a new format version.
+propertyDefaults :: [(Text, Value)]
+propertyDefaults =
+  [ -- The gRPC listener binds to loopback when a port is given without an
+    -- address. This cannot live in the defaults files: a value there reaches
+    -- every configuration, and an address without a port is rejected, so
+    -- every configuration that sets no port would stop parsing. It is applied
+    -- by 'Cardano.Configuration.Common.defaultGrpcListenAddress', which is
+    -- also where this value comes from, so the two cannot drift.
+    ("GrpcListenAddress", String (T.pack (show defaultGrpcListenAddress)))
   ]
 
 -- | Lift the file-path sentinel ('filePathFormatMarker') carried in a

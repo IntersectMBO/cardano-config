@@ -54,14 +54,20 @@ instance HasCodec (MempoolConfiguration StrictMaybe) where
               "Override for the maximum mempool size in bytes, or the string \"NoOverride\""
           )
           .= mempoolCapacityOverride
-        <*> optionalFieldWithStrict "MempoolTimeoutSoft" diffTimeCodec "Soft mempool timeout, in seconds"
+        <*> optionalFieldWithStrict
+          "MempoolTimeoutSoft"
+          diffTimeCodec
+          "Soft mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5"
           .= mempoolTimeoutSoft
-        <*> optionalFieldWithStrict "MempoolTimeoutHard" diffTimeCodec "Hard mempool timeout, in seconds"
+        <*> optionalFieldWithStrict
+          "MempoolTimeoutHard"
+          diffTimeCodec
+          "Hard mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5"
           .= mempoolTimeoutHard
         <*> optionalFieldWithStrict
           "MempoolTimeoutCapacity"
           diffTimeCodec
-          "Capacity mempool timeout, in seconds"
+          "Capacity mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5"
           .= mempoolTimeoutCapacity
 
 -- | Resolve a partial mempool configuration. The three timeouts are coupled:

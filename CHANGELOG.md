@@ -108,6 +108,19 @@ The split-file form is gone, so those sections hold their objects now (below).
   pure value rather than an `IO` action. The `$schema` lines in the
   per-component test fixtures, which pointed at those URLs, are removed.
 
+* The schema states every default the library applies. `GrpcListenAddress`
+  gains `default: "127.0.0.1"`, taken from `defaultGrpcListenAddress` itself so
+  the two cannot drift. It cannot come from the defaults files: a value there
+  reaches every configuration, and an address without a port is rejected, so
+  every configuration that sets no port would stop parsing.
+
+  Two defaults stay in their descriptions rather than in a `default` keyword,
+  because JSON Schema cannot express either. The mempool timeouts are one
+  coupled default of three values, applied only when all three are unset, and
+  the LSM `DatabasePath` default of `"lsm"` applies only under the LSM
+  backend. `DatabasePath` is also the one property name that is not unique in
+  the configuration, so the by-name annotation could not reach it anyway.
+
 * The configuration schema describes the envelope and only the envelope. It
   used to put the section keys at the *top* level, beside `Version`, and
   declare `Configuration` as a bare `{"type": "object"}` — so it validated a

@@ -171,7 +171,10 @@ instance HasCodec LedgerDbBackendSelector where
           "LSM"
           ( object "LSMOptions" $
               (,)
-                <$> optionalFieldWithStrict "DatabasePath" filePathCodec "Custom path to the LSM database"
+                <$> optionalFieldWithStrict
+                  "DatabasePath"
+                  filePathCodec
+                  "Custom path to the LSM database. Defaults to \"lsm\" when the backend is LSM"
                   .= fst
                 <*> optionalFieldWithStrict
                   "ExportPath"

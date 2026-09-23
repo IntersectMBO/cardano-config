@@ -152,6 +152,7 @@
                             "type": "boolean"
                         },
                         "GrpcListenAddress": {
+                            "default": "127.0.0.1",
                             "description": "IP address (IPv4 or IPv6) the gRPC server binds to. Requires GrpcListenPort. Defaults to 127.0.0.1",
                             "title": "GrpcListenAddress",
                             "type": "string"
@@ -236,17 +237,17 @@
                             "title": "MempoolCapacityBytesOverride"
                         },
                         "MempoolTimeoutCapacity": {
-                            "description": "Capacity mempool timeout, in seconds",
+                            "description": "Capacity mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
                             "title": "MempoolTimeoutCapacity",
                             "type": "number"
                         },
                         "MempoolTimeoutHard": {
-                            "description": "Hard mempool timeout, in seconds",
+                            "description": "Hard mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
                             "title": "MempoolTimeoutHard",
                             "type": "number"
                         },
                         "MempoolTimeoutSoft": {
-                            "description": "Soft mempool timeout, in seconds",
+                            "description": "Soft mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
                             "title": "MempoolTimeoutSoft",
                             "type": "number"
                         }
@@ -643,7 +644,7 @@
                                                     "description": "LSM-tree backend options\nLSMOptions",
                                                     "properties": {
                                                         "DatabasePath": {
-                                                            "description": "Custom path to the LSM database",
+                                                            "description": "Custom path to the LSM database. Defaults to \"lsm\" when the backend is LSM",
                                                             "format": "path",
                                                             "title": "DatabasePath",
                                                             "type": "string"
