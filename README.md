@@ -50,6 +50,16 @@ than produce one the parser will not read, so copy each of those files'
 contents in under its section key. The genesis files and the `HermodTracing`
 file are the exceptions: those stay paths, because the node reads them itself.
 
+**Declare the `$schema`.** Your configuration should carry it, pinned to the
+`vN` tag of the format version it is written for, as every example here does.
+Editors and validators use it to find the schema, and `migrate` writes it, so
+a document without one is a document migration would change: the parser
+accepts it but raises `MigratedToCurrentFormat`, and the schema itself rejects
+it. The schema requires exactly the three keys `migrate` always writes —
+`$schema`, `Version` and `Configuration` — and nothing else. `MinNodeVersion`
+is optional, because `migrate` never invents one, so a file without it is
+already canonical.
+
 Other shapes still parse: a document missing any of those envelope keys, or the
 legacy flat form with the component keys at the top level, is brought into the
 envelope by `migrate` before it is parsed (see [Schema versioning](#schema-versioning)).
@@ -126,6 +136,14 @@ defaults. The two differ only in the `NetworkConfig` deadline peer targets and
 Neither names a genesis, so neither is a configuration you can run: the genesis
 keys are network-specific and deliberately absent (see [Mandatory
 keys](#mandatory-keys)).
+
+That is also why neither declares a `$schema`, though your configuration
+should. `config.schema.json` describes a configuration, and a configuration
+names its four geneses; these two files exist precisely to supply everything
+*except* those, so they fail that schema on purpose and pointing at it would
+just mark them permanently invalid in an editor. They are a layer, not a
+document you hand to a node. There is no separate schema for a layer, so they
+declare nothing.
 
 The layering, from lowest to highest precedence, is:
 

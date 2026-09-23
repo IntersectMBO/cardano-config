@@ -916,6 +916,7 @@
         }
     },
     "required": [
+        "$schema",
         "Version",
         "Configuration"
     ],

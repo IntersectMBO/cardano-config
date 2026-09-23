@@ -239,13 +239,16 @@ configSchemaFrom components =
     object
       [ "$comment" .= configDescription
       , "type" .= ("object" :: Text)
-      , -- A document in the current form states its version and holds its
-        -- configuration under Configuration. Without Version it is version 1,
-        -- and without Configuration its sections are somewhere this schema does
-        -- not describe: either way it is a legacy document for migrate, not a
-        -- current one. $schema and MinNodeVersion stay optional, being
-        -- annotations the parser is happy without.
-        "required" .= (["Version", "Configuration"] :: [Text])
+      , -- The schema requires exactly what 'Cardano.Configuration.File.Migrate.migrate'
+        -- always writes, which is what makes a document canonical: the
+        -- @$schema@ it follows, the @Version@ it is at, and the
+        -- @Configuration@ that is the configuration. A document missing any of
+        -- them is one migration would change, so the parser raises
+        -- @OutdatedFormatVersion@ or @MigratedToCurrentFormat@ on it, and this
+        -- schema rejects it. @MinNodeVersion@ is not required, because
+        -- migration never invents one: a document without it is canonical and
+        -- parses silently.
+        "required" .= (["$schema", "Version", "Configuration"] :: [Text])
       , "properties" .= Object envelopeProps
       ]
  where

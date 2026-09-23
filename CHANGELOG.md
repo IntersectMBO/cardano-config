@@ -110,8 +110,12 @@ The split-file form is gone, so those sections hold their objects now (below).
   shape nothing recommends and let anything at all through inside the envelope.
   A document with a partial mempool timeout set validated against it. The
   sections now sit under `Configuration`, where the parser reads them, and
-  `Version` and `Configuration` are required, so a legacy document fails
-  validation as the README has always said it should.
+  `$schema`, `Version` and `Configuration` are required, so a legacy document
+  fails validation as the README has always said it should. Those three are
+  exactly what `migrate` always writes: a document missing any of them is one
+  migration would change, which the parser already reports as
+  `OutdatedFormatVersion` or `MigratedToCurrentFormat`. `MinNodeVersion` stays
+  optional, because `migrate` never invents one.
 
   This is a change to what validates. The cross-field rules it now reaches
   reject only documents the parser already rejected, but requiring the
