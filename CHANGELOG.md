@@ -80,11 +80,17 @@ The split-file form is gone, so those sections hold their objects now (below).
   your configuration on top and reads each section from the result.
 
   `parseConfigurationFiles` therefore returns what the file said, with nothing
-  filled in. `NodeConfigurationFromFile` loses its seven parsed component
-  fields and its `networkUserLayer`, and gains `userConfiguration :: Value`,
-  the `Configuration` object as written. It keeps what reading the file
-  required: the geneses, the tracing configuration and the injection root. A
-  section that does not parse is still reported while the file is read.
+  filled in. `NodeConfigurationFromFile` keeps its seven parsed component
+  fields, but each now holds the file's own values rather than the file merged
+  over the defaults, so a field the file leaves unset is `SNothing`. It loses
+  `networkUserLayer`, which existed only to carry that same distinction, and
+  gains `userConfiguration :: Value`, the `Configuration` object as JSON.
+
+  Resolution merges the role's defaults under that JSON and reads the
+  components from the result. The merge recurses into nested objects, so a
+  file that sets one field of `LedgerDB` keeps the defaults of the others.
+  Merging the typed components field by field would replace whole nested
+  objects instead, which is why the JSON is carried alongside.
 
   `Cardano.Configuration.File.Merge` swaps `loadBaseDefault` for
   `defaultConfiguration :: BlockProducerOrRelay -> Value`, and gains

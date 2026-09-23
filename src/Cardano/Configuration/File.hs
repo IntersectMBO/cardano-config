@@ -106,7 +106,7 @@ import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Cardano.Logging.Types (TraceConfig)
 import Control.Exception (throwIO)
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Data.Aeson (FromJSON, Value)
 import qualified Data.Aeson.Key as K
 import Data.Aeson.Types (JSONPathElement (..))
@@ -136,11 +136,29 @@ data NodeConfigurationFromFile = NodeConfigurationFromFile
   -- t'Cardano.Configuration.NodeConfiguration'; 'resolveConfiguration' drops it.
   -- It lives only on this file-parse result, so a consumer that wants to act on
   -- it must read it here, before resolving.
+  , storageConfiguration :: StorageConfiguration StrictMaybe
+  , consensusConfiguration :: ConsensusConfiguration StrictMaybe
+  , protocolConfiguration :: ProtocolConfiguration StrictMaybe
+  , networkConfiguration :: NetworkConfiguration StrictMaybe
+  , localConnectionsConfig :: LocalConnectionsConfig StrictMaybe
+  , testingConfiguration :: TestingConfiguration StrictMaybe
+  , mempoolConfiguration :: MempoolConfiguration StrictMaybe
+  -- ^ Each component as the configuration file wrote it, with no defaults
+  -- filled in. A field the file leaves unset is @SNothing@ here.
+  --
+  -- Which defaults apply depends on the node's role, which comes from the
+  -- command line, so these cannot carry them. 'resolveConfiguration' layers
+  -- the role's default configuration under the file and reads each component
+  -- again from the result. Read these to see what the file itself said.
   , userConfiguration :: Value
-  -- ^ The @Configuration@ object as the user wrote it, brought to the current
-  -- format by @migrate@ and checked to read section by section, but with no
-  -- defaults filled in. Resolution merges the role's default configuration
-  -- under this.
+  -- ^ The same @Configuration@ object, as JSON, brought to the current format
+  -- by @migrate@. Resolution merges the role's default configuration under it
+  -- and reads the components from the merge.
+  --
+  -- The merge is by key and recurses into nested objects, so a file that sets
+  -- one field of @LedgerDB@ keeps the defaults of the others. Merging the
+  -- typed components field by field would replace whole nested objects
+  -- instead, which is why the JSON is kept.
   , tracingConfiguration :: TraceConfig
   -- ^ The tracing configuration referenced by the top-level @HermodTracing@ key,
   -- resolved by @trace-dispatcher@'s own parser ('resolveTracingConfiguration'):
@@ -260,12 +278,17 @@ parseConfigurationBody ::
   Value ->
   IO NodeConfigurationFromFile
 parseConfigurationBody root minNodeVer configValue = do
-  -- Every section is read once here, as written, so a section the parsers
-  -- cannot read is reported against the file while it is in hand. Only the two
-  -- the genesis files hang off are kept; resolution reads them all again, from
-  -- the merge of the role defaults with this configuration.
-  mapM_ (checkSection configValue . T.unpack . fst) componentPropertyNames
+  -- Every section is read here, as the file wrote it, so a section the
+  -- parsers cannot read is reported against the file while it is in hand.
+  -- Resolution reads them again from the merge of the role defaults with this
+  -- configuration, because only then is the role known.
+  storage <- parseSection @(StorageConfiguration StrictMaybe) configValue "StorageConfig"
+  consensus <- parseSection @(ConsensusConfiguration StrictMaybe) configValue "ConsensusConfig"
   protocol <- parseSection @(ProtocolConfiguration StrictMaybe) configValue "ProtocolConfig"
+  network <- parseSection @(NetworkConfiguration StrictMaybe) configValue "NetworkConfig"
+  localConnections <-
+    parseSection @(LocalConnectionsConfig StrictMaybe) configValue "LocalConnectionsConfig"
+  mempool <- parseSection @(MempoolConfiguration StrictMaybe) configValue "MempoolConfig"
   testing <- parseSection @(TestingConfiguration StrictMaybe) configValue "TestingConfig"
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
@@ -310,6 +333,13 @@ parseConfigurationBody root minNodeVer configValue = do
   pure $
     NodeConfigurationFromFile
       { minNodeVersion = maybeToStrictMaybe minNodeVer
+      , storageConfiguration = storage
+      , consensusConfiguration = consensus
+      , protocolConfiguration = protocol
+      , networkConfiguration = network
+      , localConnectionsConfig = localConnections
+      , testingConfiguration = testing
+      , mempoolConfiguration = mempool
       , userConfiguration = configValue
       , tracingConfiguration = traceConfig
       , byronGenesisConfig = byronGenesisData
@@ -319,21 +349,6 @@ parseConfigurationBody root minNodeVer configValue = do
       , experimentalGenesisConfig = maybeToStrictMaybe experimentalGenesisData
       , genesisInjectionRoot = injectionRoot
       }
-
--- | Read a section and discard the result, so that a section the parsers
--- cannot read is reported while the configuration file is in hand rather than
--- later, at resolution. Each section is read as its own component type.
-checkSection :: Value -> String -> IO ()
-checkSection cfg = \case
-  "StorageConfig" -> void (parseSection @(StorageConfiguration StrictMaybe) cfg "StorageConfig")
-  "ConsensusConfig" -> void (parseSection @(ConsensusConfiguration StrictMaybe) cfg "ConsensusConfig")
-  "ProtocolConfig" -> void (parseSection @(ProtocolConfiguration StrictMaybe) cfg "ProtocolConfig")
-  "NetworkConfig" -> void (parseSection @(NetworkConfiguration StrictMaybe) cfg "NetworkConfig")
-  "LocalConnectionsConfig" ->
-    void (parseSection @(LocalConnectionsConfig StrictMaybe) cfg "LocalConnectionsConfig")
-  "MempoolConfig" -> void (parseSection @(MempoolConfiguration StrictMaybe) cfg "MempoolConfig")
-  "TestingConfig" -> void (parseSection @(TestingConfiguration StrictMaybe) cfg "TestingConfig")
-  other -> error ("checkSection: unknown section " <> other)
 
 -- | Convert this library's 'RequiresNetworkMagic' to the Byron ledger's, used
 -- when reading the Byron genesis. Absent in the configuration defaults to
