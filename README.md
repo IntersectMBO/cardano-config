@@ -114,26 +114,37 @@ form.)
 
 ## Defaults and layering
 
-Every component ships a **default file** under [`defaults/`](defaults/), with the
-network overlays under [`variants/`](variants/) and the `NetworkConfig` role
-overlays under [`defaults/NetworkConfig/`](defaults/NetworkConfig/). The files
-under `variants/` are templates to copy from: a configuration cannot point at
-one, so paste the contents of `variants/ProtocolConfig/mainnet.json` under your
-`ProtocolConfig` key. For each component the layering, from lowest to highest
-precedence, is:
+The package ships **two default configurations**, under [`defaults/`](defaults/):
+[`config.blockproducer.json`](defaults/config.blockproducer.json) and
+[`config.relay.json`](defaults/config.relay.json). Each is a complete
+configuration in the same envelope you write, holding every component's
+defaults. The two differ only in the `NetworkConfig` deadline peer targets and
+`PeerSharing`, which is what the two roles mean here.
 
-1. the package's base default (`defaults/<Component>.json`), always applied;
-2. for the `Network` component only, a **role layer** chosen automatically from
-   credential presence: the block-producer or relay variant
-   (`defaults/NetworkConfig/{blockproducer,relay}.json`)
-   fills the deadline peer targets and `PeerSharing` when the configuration leaves
-   them unset (so it sits *below* the file value);
-3. the component's inline object in the configuration file;
-4. the matching CLI flag, where one exists.
+Neither names a genesis, so neither is a configuration you can run: the genesis
+keys are network-specific and deliberately absent (see [Mandatory
+keys](#mandatory-keys)).
 
-`cardano-config` is the *origin* of these default files, but each is ultimately
-owned by the layer that implements the component (networking, consensus, ...); a
-CI check keeps the copies here aligned with upstream.
+The layering, from lowest to highest precedence, is:
+
+1. the default configuration for the node's role, chosen automatically from
+   credential presence: a block-forging credential makes it a block producer,
+   no credential makes it a relay;
+2. your configuration file, merged on top key by key, so anything it states
+   wins;
+3. the matching CLI flag, where one exists.
+
+All three are applied by `resolveConfiguration`, which is where the role is
+known. `parseConfigurationFiles` reads the file and the genesis files it names,
+and returns what the file said, with nothing filled in.
+
+The network overlays under [`variants/`](variants/) are templates to copy from,
+not a layer: a configuration cannot point at one, so paste the contents of
+`variants/ProtocolConfig/mainnet.json` under your `ProtocolConfig` key.
+
+`cardano-config` is the *origin* of these defaults, but each component's are
+ultimately owned by the layer that implements it (networking, consensus, ...);
+a CI check keeps the copies here aligned with upstream.
 
 ## Warnings
 
@@ -152,7 +163,6 @@ executable prints to stderr, prefixed with `Warning: `.
 | `RenamedKeyCollision old new` | Both the old and the current name of a renamed field are present at the same level. The current name wins; the other value is dropped. |
 | `EnvelopeKeyCollision key` | A key appears both as a top-level sibling of `Configuration` and inside it. The one inside `Configuration` wins. |
 | `UnrecognisedKeys keys` | Keys at the `Configuration` level that no parser recognises: a typo, or a key of some component this library does not know. They are ignored. A key that *is* a component property is not one of these: `migrate` groups it under the section that owns it. |
-| `ExperimentalGenesisIgnored file` | A `DijkstraGenesisFile` is named while `ExperimentalHardForksEnabled` is off, so the file is ignored - neither read nor hash-checked. |
 
 `resolveConfiguration` adds:
 
@@ -295,19 +305,9 @@ A legacy document is expected to *fail* validation: it still parses, because
 
 CI runs this over a matrix of documents that must validate and documents that
 must not (`test/schema-cases/`, driven by `scripts/check-schemas.sh`), so the
-schemas stay in step with what the parser accepts.
-
-### ... see the schema for a component (e.g. NetworkConfig)
-
-```console
-$ cardano-config schema NetworkConfig
-{
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "NetworkConfiguration",
-    "properties": {
-        "AcceptedConnectionsLimit": {
-...
-```
+schemas stay in step with what the parser accepts. Each case is a whole
+configuration, so the check sees what you actually write; the directory names
+the section the case is about.
 
 ## CLI options
 
@@ -346,8 +346,8 @@ Only **eight** keys are mandatory (no default; parsing fails if absent):
 - `AlonzoGenesisFile` + `AlonzoGenesisHash`
 - `ConwayGenesisFile` + `ConwayGenesisHash`
 
-These are network-specific, so they are deliberately not in the base defaults;
-write them into `ProtocolConfig` yourself, or copy them from
+These are network-specific, so they are deliberately not in the default
+configurations; write them into `ProtocolConfig` yourself, or copy them from
 `variants/ProtocolConfig/<network>.json`.
 
 ## Genesis initial-data injection

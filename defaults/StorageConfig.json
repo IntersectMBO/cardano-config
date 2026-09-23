@@ -1,9 +1,0 @@
-{
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/StorageConfig.schema.json",
-    "DatabasePath": "db",
-    "LedgerDB": {
-        "Backend": "V2InMemory",
-        "Snapshots": "Mithril",
-        "QueryBatchSize": 100000
-    }
-}

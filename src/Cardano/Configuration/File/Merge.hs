@@ -1,5 +1,5 @@
--- | The JSON layering engine: splitting the envelope, deep-merging a section's
--- base default with the user's object and running a component's codec. The
+-- | The JSON layering engine: splitting the envelope, deep-merging the role's
+-- default configuration with the user's and running a component's codec. The
 -- configuration is one file, so the only files read here are the configuration
 -- itself and the @defaults\/@ compiled into the binary. This module knows
 -- nothing about which keys the parsers recognise (that is
@@ -10,24 +10,26 @@ module Cardano.Configuration.File.Merge
   , decodeValueBytes
   , runCodec
   , mergeValues
-  , loadBaseDefault
+  , defaultConfiguration
+  , roleIndependentDefaults
   , sectionUserLayer
   , parseSection
+  , decodeSection
   , splitEnvelope
   , declaredFormatVersion
   ) where
 
-import Cardano.Configuration.Embedded (embeddedDefaults)
+import Cardano.Configuration.Embedded (embeddedBlockProducerDefaults, embeddedRelayDefaults)
 import Cardano.Configuration.File.Error (ConfigurationParsingError (..))
+import Cardano.Configuration.File.Network (BlockProducerOrRelay (..))
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe)
 import Control.Exception (throwIO)
 import Data.Aeson (FromJSON, Value (..), parseJSON)
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
-import Data.Aeson.Types (JSONPathElement (..), iparseEither)
+import Data.Aeson.Types (JSONPathElement (..), formatError, iparseEither)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger)
 import qualified Data.Text as T
@@ -85,16 +87,55 @@ mergeValues :: Value -> Value -> Value
 mergeValues (Object earlier) (Object later) = Object (KM.unionWith mergeValues earlier later)
 mergeValues _ later = later
 
--- | The always-applied base default for a section, read from the
--- @defaults\/\<Section\>.json@ embedded into the binary (see
--- "Cardano.Configuration.Embedded"), if one ships for it.
-loadBaseDefault :: String -> IO (Maybe Value)
-loadBaseDefault section =
-  case Map.lookup name embeddedDefaults of
-    Nothing -> pure Nothing
-    Just bytes -> Just <$> decodeValueBytes (Just section) ("defaults/" <> name) bytes
+-- | The default configuration for a node in the given role: the @Configuration@
+-- object of the matching @defaults\/config.\<role\>.json@ embedded into the
+-- binary (see "Cardano.Configuration.Embedded"). It is the bottom layer of
+-- resolution, with the user's configuration merged on top.
+--
+-- Decoded once, at first use. The files are compiled in and covered by the test
+-- suite, so a failure here means the build itself is broken, which is why it is
+-- an 'error' rather than a value the caller has to handle.
+defaultConfiguration :: BlockProducerOrRelay -> Value
+defaultConfiguration IsBlockProducer = blockProducerDefaults
+defaultConfiguration IsRelay = relayDefaults
+
+blockProducerDefaults, relayDefaults :: Value
+blockProducerDefaults = embeddedConfiguration "config.blockproducer.json" embeddedBlockProducerDefaults
+relayDefaults = embeddedConfiguration "config.relay.json" embeddedRelayDefaults
+
+-- | The @Configuration@ object of an embedded default configuration.
+embeddedConfiguration :: FilePath -> ByteString -> Value
+embeddedConfiguration name bytes =
+  case Yaml.decodeEither' bytes of
+    Left e -> error ("defaults/" <> name <> " is not valid: " <> Yaml.prettyPrintParseException e)
+    Right (Object o) -> fromMaybe (Object KM.empty) (KM.lookup "Configuration" o)
+    Right _ -> error ("defaults/" <> name <> " is not an object")
+
+-- | The defaults both roles agree on, keyed by section. A value the two role
+-- files disagree on is left out, since it is not a default the configuration
+-- has before a role is known. Used to document the defaults in the schema (see
+-- 'Cardano.Configuration.Schema.configSchemaWithDefaults').
+roleIndependentDefaults :: [(T.Text, Value)]
+roleIndependentDefaults =
+  case (blockProducerDefaults, relayDefaults) of
+    (Object bp, Object relay) ->
+      [ (K.toText k, agreed)
+      | (k, bpV) <- KM.toList bp
+      , Just relayV <- [KM.lookup k relay]
+      , Just agreed <- [intersect bpV relayV]
+      ]
+    _ -> []
  where
-  name = section <> ".json"
+  -- The values the two agree on, key by key; objects recurse so a section that
+  -- differs in one field still contributes the rest.
+  intersect (Object a) (Object b) =
+    Just . Object . KM.fromList $
+      [ (k, v)
+      | (k, av) <- KM.toList a
+      , Just bv <- [KM.lookup k b]
+      , Just v <- [intersect av bv]
+      ]
+  intersect a b = if a == b then Just a else Nothing
 
 -- | The configuration layer the user supplied for a section: the inline object
 -- given under the section key. A component is read only from its own section
@@ -128,9 +169,10 @@ sectionUserLayer configValue section =
       throwIO $
         ConfigurationParsingError SNothing SNothing [] "expected the configuration to be a JSON/YAML object"
 
--- | Parse a single component. The package's base default for the section is
--- always read as the bottom layer; the user's layer (see 'sectionUserLayer') is
--- deep-merged on top.
+-- | Parse a single component from a configuration object, as written — no
+-- defaults are applied, so a field the configuration leaves unset is unset
+-- here. The defaults come in at resolution, once the node's role is known (see
+-- 'defaultConfiguration').
 parseSection ::
   FromJSON a =>
   -- | The (unwrapped) configuration object.
@@ -138,11 +180,22 @@ parseSection ::
   -- | The section name.
   String ->
   IO a
-parseSection configValue section = do
-  base <- loadBaseDefault section
-  user <- sectionUserLayer configValue section
-  let withBase = maybe user (`mergeValues` user) base
-  runCodec section withBase
+parseSection configValue section =
+  sectionUserLayer configValue section >>= runCodec section
+
+-- | The pure counterpart of 'parseSection', for resolution, which merges the
+-- role's defaults with the user's configuration and reads each section from the
+-- result. A failure is returned rather than thrown, and rendered against the
+-- section and the JSON path within it.
+decodeSection :: FromJSON a => Value -> String -> Either String a
+decodeSection configValue section =
+  case iparseEither parseJSON sectionValue of
+    Left (path, msg) -> Left (section <> ": " <> formatError path msg)
+    Right a -> Right a
+ where
+  sectionValue = case configValue of
+    Object o -> fromMaybe (Object KM.empty) (KM.lookup (K.fromString section) o)
+    _ -> Object KM.empty
 
 -- | Split the optional configuration envelope @{ \"Version\": N,
 -- \"MinNodeVersion\": \"x.y.z\", \"Configuration\": {..} }@ into the version, the

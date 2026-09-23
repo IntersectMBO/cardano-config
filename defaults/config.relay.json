@@ -1,0 +1,142 @@
+{
+    "Version": 2,
+    "Configuration": {
+        "ConsensusConfig": {
+            "ConsensusMode": "PraosMode"
+        },
+        "HermodTracing": {
+            "ApplicationName": null,
+            "Forwarder": null,
+            "MetricsPrefix": "cardano.node.metrics.",
+            "Options": {
+                "": {
+                    "backends": [
+                        "Stdout MachineFormat",
+                        "EKGBackend"
+                    ],
+                    "detail": "DNormal",
+                    "severity": "Notice"
+                },
+                "BlockFetch.Client.CompletedBlockFetch": {
+                    "maxFrequency": 2
+                },
+                "BlockFetch.Decision": {
+                    "severity": "Silence"
+                },
+                "ChainDB": {
+                    "severity": "Info"
+                },
+                "ChainDB.AddBlockEvent.AddBlockValidation": {
+                    "severity": "Silence"
+                },
+                "ChainDB.AddBlockEvent.AddBlockValidation.ValidCandidate": {
+                    "maxFrequency": 2
+                },
+                "ChainDB.AddBlockEvent.AddedBlockToQueue": {
+                    "maxFrequency": 2
+                },
+                "ChainDB.AddBlockEvent.AddedBlockToVolatileDB": {
+                    "maxFrequency": 2
+                },
+                "ChainDB.CopyToImmutableDBEvent.CopiedBlockToImmutableDB": {
+                    "maxFrequency": 2
+                },
+                "ChainSync.Client": {
+                    "severity": "Warning"
+                },
+                "Forge.Loop": {
+                    "severity": "Info"
+                },
+                "Forge.StateInfo": {
+                    "severity": "Info"
+                },
+                "LedgerMetrics": {
+                    "severity": "Silence"
+                },
+                "Mempool": {
+                    "severity": "Info"
+                },
+                "Net.ConnectionManager.Remote": {
+                    "severity": "Info"
+                },
+                "Net.ErrorPolicy": {
+                    "severity": "Info"
+                },
+                "Net.InboundGovernor": {
+                    "severity": "Warning"
+                },
+                "Net.InboundGovernor.Remote": {
+                    "severity": "Info"
+                },
+                "Net.Mux.Remote": {
+                    "severity": "Info"
+                },
+                "Net.PeerSelection": {
+                    "severity": "Silence"
+                },
+                "Resources": {
+                    "severity": "Silence"
+                },
+                "Startup.DiffusionInit": {
+                    "severity": "Info"
+                }
+            },
+            "PrometheusSimpleRun": null
+        },
+        "LocalConnectionsConfig": {
+            "EnableGrpc": false
+        },
+        "MempoolConfig": {
+            "MempoolCapacityBytesOverride": "NoOverride"
+        },
+        "NetworkConfig": {
+            "AcceptedConnectionsLimit": {
+                "HardLimit": 512,
+                "SoftLimit": 384,
+                "Delay": 5
+            },
+            "ChainSyncIdleTimeout": 3373,
+            "DeadlineTargetNumberOfActiveBigLedgerPeers": 5,
+            "DeadlineTargetNumberOfActivePeers": 20,
+            "DeadlineTargetNumberOfEstablishedBigLedgerPeers": 10,
+            "DeadlineTargetNumberOfEstablishedPeers": 30,
+            "DeadlineTargetNumberOfKnownBigLedgerPeers": 15,
+            "DeadlineTargetNumberOfKnownPeers": 150,
+            "DeadlineTargetNumberOfRootPeers": 60,
+            "DiffusionMode": "InitiatorAndResponder",
+            "EgressPollInterval": 0,
+            "ExperimentalProtocolsEnabled": false,
+            "MaxConcurrencyBulkSync": 1,
+            "MaxConcurrencyDeadline": 1,
+            "MinBigLedgerPeersForTrustedState": 5,
+            "PeerSharing": true,
+            "ProtocolIdleTimeout": 5,
+            "ResponderCoreAffinityPolicy": "NoResponderCoreAffinity",
+            "SyncTargetNumberOfActiveBigLedgerPeers": 30,
+            "SyncTargetNumberOfActivePeers": 5,
+            "SyncTargetNumberOfEstablishedBigLedgerPeers": 40,
+            "SyncTargetNumberOfEstablishedPeers": 10,
+            "SyncTargetNumberOfKnownBigLedgerPeers": 100,
+            "SyncTargetNumberOfKnownPeers": 150,
+            "SyncTargetNumberOfRootPeers": 0,
+            "TimeWaitTimeout": 60,
+            "TxSubmissionInitDelay": 60,
+            "TxSubmissionLogicVersion": "TxSubmissionLogicV1"
+        },
+        "ProtocolConfig": {
+            "RequiresNetworkMagic": "RequiresNoMagic",
+            "StartAsNonProducingNode": false
+        },
+        "StorageConfig": {
+            "DatabasePath": "db",
+            "LedgerDB": {
+                "Backend": "V2InMemory",
+                "Snapshots": "Mithril",
+                "QueryBatchSize": 100000
+            }
+        },
+        "TestingConfig": {
+            "ExperimentalHardForksEnabled": false
+        }
+    }
+}

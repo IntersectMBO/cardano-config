@@ -1,4 +1,9 @@
 {
-  "GrpcListenPort": 3001,
-  "GrpcTlsCertificateFile": "tls/server.pem"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcListenPort": 3001,
+            "GrpcTlsCertificateFile": "tls/server.pem"
+        }
+    }
 }

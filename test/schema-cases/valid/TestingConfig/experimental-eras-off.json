@@ -1,3 +1,8 @@
 {
-  "ExperimentalHardForksEnabled": false
+    "Version": 2,
+    "Configuration": {
+        "TestingConfig": {
+            "ExperimentalHardForksEnabled": false
+        }
+    }
 }

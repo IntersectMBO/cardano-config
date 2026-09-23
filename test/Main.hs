@@ -44,7 +44,6 @@ import Cardano.Configuration.Genesis.Injection
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configSchemaWithDefaults
-  , configurationSchemasWithDefaults
   , currentFormatVersion
   , legacyFlatConfigSchemaWithDefaults
   , packageFormatVersion
@@ -64,7 +63,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.FileEmbed (makeRelativeToProject)
 import Data.Functor.Identity (runIdentity)
 import Data.IP (IP)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, sort)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Word (Word64)
@@ -87,9 +86,7 @@ getDataFileName :: FilePath -> IO FilePath
 getDataFileName p = pure (packageRoot </> p)
 
 main :: IO ()
-main = do
-  schema <- schemaTests
-  defaultMain $ testGroup "cardano-config" (cases <> [schema])
+main = defaultMain $ testGroup "cardano-config" (cases <> [schemaTests])
 
 -- | The example/parser/resolver cases, in the order they used to be checked.
 cases :: [TestTree]
@@ -123,7 +120,6 @@ cases =
   , unrecognisedKeyCase
   , migrationWarningCase
   , migrationErrorCase
-  , componentSchemaPropertyCase
   , formatVersionCase
   , formatVersionCompatibilityCase
   , migrateCase
@@ -147,10 +143,9 @@ cases =
   , grpcEndpointRejectionCase
   , grpcEndpointCliCase
   , grpcEnabledEndpointCheckCase
-  , roleVariantParityCase
   , roleSelectionCase
   , rolePrecedenceCase
-  , roleBeatsBaseDefaultCase
+  , defaultConfigParityCase
   , mempoolAllUnsetCase
   , mempoolAllSetCase
   , mempoolMixedCase
@@ -309,43 +304,6 @@ migrationErrorCase =
     expectOk $ case res of
       Left (_ :: SomeException) -> Nothing
       Right _ -> Just "expected a parse error for a document whose migration is unparseable"
-
--- | Each per-component fixture declares a @$schema@ pointing to that
--- component's schema, and the component schema in turn declares a @$schema@
--- property — so the annotation is recognised. Guards both the fixtures and the
--- schema generation.
-componentSchemaPropertyCase :: TestTree
-componentSchemaPropertyCase =
-  testCase "component documents declare $schema; component schemas have the property" $ do
-    results <- mapM check pairs
-    expectOk (case [m | Just m <- results] of [] -> Nothing; (m : _) -> Just m)
- where
-  pairs =
-    [ ("storage.json", "StorageConfig")
-    , ("consensus.json", "ConsensusConfig")
-    , ("protocol.json", "ProtocolConfig")
-    , ("network.json", "NetworkConfig")
-    , ("localconnections.json", "LocalConnectionsConfig")
-    , ("mempool.json", "MempoolConfig")
-    , ("testing.json", "TestingConfig")
-    ]
-  schemaKey = K.fromString "$schema"
-  check (file, comp) = do
-    sub <- decodeData ("test/examples/" <> file) :: IO (Either String Value)
-    sch <- decodeData ("schemas/" <> comp <> ".schema.json") :: IO (Either String Value)
-    let url = String (schemaId (comp <> ".schema.json"))
-    pure $ case (sub, sch) of
-      (Left e, _) -> Just (file <> ": " <> e)
-      (_, Left e) -> Just (comp <> ".schema.json: " <> e)
-      (Right (Object o), Right schObj)
-        | KM.lookup schemaKey o /= Just url ->
-            Just (file <> ": $schema is " <> show (KM.lookup schemaKey o) <> ", expected " <> show url)
-        | not (KM.member schemaKey (properties schObj)) ->
-            Just (comp <> ".schema.json: missing a $schema property")
-        | otherwise -> Nothing
-      _ -> Just (file <> ": not a JSON object")
-  properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
-  properties _ = KM.empty
 
 -- | The newest configuration format version is the first component of the package
 -- version: @cardano-config-X.y.z.v@ parses every version up to and including @X@,
@@ -966,26 +924,35 @@ tracingCase =
           Object o -> Right (KM.member (K.fromString "HermodTracing") o)
           _ -> Left "rendered configuration was not an object"
 
--- | The committed @defaults/HermodTracing.json@ must equal the JSON of the
--- in-tree 'defaultCardanoTracingConfig' literal (encoded through
--- trace-dispatcher's own 'TraceConfig' codec), so the checked-in default cannot
--- drift from the Haskell source. Regenerate the file from
+-- | The @HermodTracing@ section of the committed default configurations must
+-- equal the JSON of the in-tree 'defaultCardanoTracingConfig' literal (encoded
+-- through trace-dispatcher's own 'TraceConfig' codec), so the checked-in
+-- default cannot drift from the Haskell source. The two role configurations
+-- carry the same tracing defaults, so checking one is enough. Regenerate from
 -- 'defaultCardanoTracingConfig' if this fails.
 tracingDefaultParityCase :: TestTree
 tracingDefaultParityCase =
-  testCase "defaults/HermodTracing.json matches defaultCardanoTracingConfig" $ do
-    path <- getDataFileName "defaults/HermodTracing.json"
+  testCase "the HermodTracing defaults match defaultCardanoTracingConfig" $ do
+    path <- getDataFileName "defaults/config.relay.json"
     committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
-    expectOk $ case committed of
-      Left e -> Just ("could not read defaults/HermodTracing.json: " <> e)
+    expectOk $ case committed >>= tracingSection of
+      Left e -> Just ("could not read defaults/config.relay.json: " <> e)
       Right v
         | toJSON defaultCardanoTracingConfig == v -> Nothing
         | otherwise ->
             Just $
-              "defaults/HermodTracing.json is out of date; regenerate from defaultCardanoTracingConfig: "
+              "the HermodTracing defaults are out of date; regenerate from defaultCardanoTracingConfig: "
                 <> show (toJSON defaultCardanoTracingConfig)
                 <> " /= "
                 <> show v
+ where
+  -- The HermodTracing value inside the default configuration's envelope.
+  tracingSection v = case v of
+    Object top
+      | Just (Object cfg) <- KM.lookup (K.fromString "Configuration") top
+      , Just tracing <- KM.lookup (K.fromString "HermodTracing") cfg ->
+          Right tracing
+    _ -> Left "the default configuration has no Configuration.HermodTracing"
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
 -- of every era genesis (Byron via its canonical-JSON form, the rest via the
@@ -1011,36 +978,6 @@ genesisRenderCase =
                 else Just "geneses not gated correctly by IncludeGeneses/OmitGeneses"
  where
   eras = ["ByronGenesis", "ShelleyGenesis", "AlonzoGenesis", "ConwayGenesis"]
-
--- | The inline role-default partials must equal the committed variant JSON
--- (Option B parity): they are encoded through the same codec and compared to the
--- raw files, so the Haskell literals cannot drift from the data files.
-roleVariantParityCase :: TestTree
-roleVariantParityCase =
-  testCase "network role defaults match the committed variant JSON" $ do
-    bpPath <- getDataFileName "defaults/NetworkConfig/blockproducer.json"
-    relayPath <- getDataFileName "defaults/NetworkConfig/relay.json"
-    bp <- eitherDecodeFileStrict' bpPath :: IO (Either String Value)
-    relay <- eitherDecodeFileStrict' relayPath :: IO (Either String Value)
-    let dropSchema (Object km) = Object (KM.delete (K.fromString "$schema") km)
-        dropSchema _ = error "Impossible"
-    expectOk $ case (fmap dropSchema bp, fmap dropSchema relay) of
-      (Left e, _) -> Just ("could not read blockproducer.json: " <> e)
-      (_, Left e) -> Just ("could not read relay.json: " <> e)
-      (Right bpV, Right relayV)
-        | toJSON blockProducerRoleDefaults /= bpV ->
-            Just $
-              "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json: "
-                <> show (toJSON blockProducerRoleDefaults)
-                <> " /= "
-                <> show bpV
-        | toJSON relayRoleDefaults /= relayV ->
-            Just $
-              "relayRoleDefaults differs from NetworkConfig.relay.json: "
-                <> show (toJSON relayRoleDefaults)
-                <> " /= "
-                <> show relayV
-        | otherwise -> Nothing
 
 -- | The networking role defaults are chosen by credential presence: a credential
 -- (here a VRF key) yields the block-producer targets (root 100, known 100,
@@ -1092,29 +1029,48 @@ rolePrecedenceCase =
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
 
--- | The role default beats a /base/ default for a role field the user did not
--- set: resolution is @base \< role \< user@, so a value present only in the base
--- defaults must not shadow the role default. The base @Network.json@ omits the
--- role fields today, so this pins the ordering rather than relying on that.
-roleBeatsBaseDefaultCase :: TestTree
-roleBeatsBaseDefaultCase =
-  testCase "role default overrides a base default (base < role < user)" $
-    expectOk
-      ( if peerSharing resolved == SJust False -- role's False beats the base's True
-          && deadlineTargetOfRootPeers resolved == SJust 100 -- role's 100 beats the base's 7
-          then Nothing
-          else Just ("role default did not override the base default: " <> show resolved)
-      )
+-- | The two default configurations are one configuration in two roles: they
+-- must differ only in the @NetworkConfig@ fields that the role decides (the
+-- deadline peer targets and @PeerSharing@). Anything else differing means one
+-- file was edited and the other was not.
+defaultConfigParityCase :: TestTree
+defaultConfigParityCase =
+  testCase "the two default configurations differ only in the role fields" $ do
+    bp <- getDataFileName "defaults/config.blockproducer.json" >>= decodeFile
+    relay <- getDataFileName "defaults/config.relay.json" >>= decodeFile
+    expectOk $ case (bp >>= body, relay >>= body) of
+      (Left e, _) -> Just e
+      (_, Left e) -> Just e
+      (Right b, Right r)
+        | differing /= ["NetworkConfig"] ->
+            Just ("sections other than NetworkConfig differ: " <> show differing)
+        | not (null badKeys) ->
+            Just ("NetworkConfig differs outside the role fields: " <> show badKeys)
+        | roleKeys /= sort roleFields ->
+            Just ("the role fields that differ are " <> show roleKeys)
+        | otherwise -> Nothing
+       where
+        differing = sort [K.toString k | (k, v) <- KM.toList b, KM.lookup k r /= Just v]
+        net (Object o) = case KM.lookup (K.fromString "NetworkConfig") o of
+          Just (Object n) -> n
+          _ -> KM.empty
+        net _ = KM.empty
+        roleKeys =
+          sort [K.toString k | (k, v) <- KM.toList (net (Object b)), KM.lookup k (net (Object r)) /= Just v]
+        badKeys = [k | k <- roleKeys, k `notElem` roleFields]
  where
-  -- A base default that sets two role fields, with the user setting nothing. The
-  -- merged layer (base defaults plus the user layer) then equals the base here.
-  base =
-    emptyNetworkConfiguration
-      { peerSharing = SJust True
-      , deadlineTargetOfRootPeers = SJust 7
-      }
-  user = emptyNetworkConfiguration
-  resolved = withRoleDefaults blockProducerRoleDefaults user base
+  decodeFile fp = eitherDecodeFileStrict' fp :: IO (Either String Value)
+  -- Only these three actually hold different values; the rest of the role
+  -- overlay agrees between the two.
+  roleFields =
+    [ "DeadlineTargetNumberOfKnownPeers"
+    , "DeadlineTargetNumberOfRootPeers"
+    , "PeerSharing"
+    ]
+  body (Object top) = case KM.lookup (K.fromString "Configuration") top of
+    Just (Object cfg) -> Right cfg
+    _ -> Left "a default configuration has no Configuration object"
+  body _ = Left "a default configuration is not an object"
 
 -- | All three mempool timeouts unset resolves to the coupled default (1, 1.5, 5).
 mempoolAllUnsetCase :: TestTree
@@ -1332,7 +1288,8 @@ grpcEnabledEndpointCheckCase =
 
 -- | The cross-field rules the parser enforces are stated in the schemas too, so
 -- a validator rejects the documents the parser rejects. This pins that they are
--- stated at all, which the drift test would not catch, because it compares the
+-- stated at all, and on the section a configuration actually writes them
+-- under, which the drift test would not catch, because it compares the
 -- committed files against the generator.
 schemaConstraintsCase :: TestTree
 schemaConstraintsCase =
@@ -1363,13 +1320,25 @@ schemaConstraintsCase =
     ]
   mempoolTimeoutKeys = ["MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity"]
   dijkstraKeys = ["DijkstraGenesisFile", "DijkstraGenesisHash"]
+  -- A component's rules are stated on its section of the whole-configuration
+  -- schema; the legacy flat form states them all at its top level.
   check (name, what, holds) = do
-    res <- decodeData ("schemas/" <> name <> ".schema.json") :: IO (Either String Value)
-    pure $ case res of
+    res <- case name of
+      "config.legacy-flat" -> decodeData "schemas/config.legacy-flat.schema.json"
+      _ -> fmap (>>= sectionOf name) (decodeData "schemas/config.schema.json")
+    pure $ case res :: Either String Value of
       Left err -> Just (name <> ": " <> err)
       Right v
         | holds v -> Nothing
-        | otherwise -> Just (name <> ".schema.json does not state " <> what)
+        | otherwise -> Just (name <> " does not state " <> what)
+  -- The named section of config.schema.json: root.Configuration.<name>.
+  sectionOf name v = case propertyOf name =<< propertyOf "Configuration" v of
+    Just section -> Right section
+    Nothing -> Left ("config.schema.json has no " <> name <> " section")
+  propertyOf name (Object o)
+    | Just (Object props) <- KM.lookup (K.fromString "properties") o =
+        KM.lookup (K.fromString name) props
+  propertyOf _ _ = Nothing
   hasDependencies ks v = all (\k -> KM.member (K.fromString k) (dependenciesOf v)) ks
   dependenciesOf (Object o) | Just (Object d) <- KM.lookup (K.fromString "dependencies") o = d
   dependenciesOf _ = KM.empty
@@ -1694,14 +1663,20 @@ genesisHashPresentCase =
 --
 -- The gated-off fixture pins a deliberately wrong @DijkstraGenesisHash@, so
 -- parsing it at all proves the file is not merely dropped after being read: it
--- is never opened. Because that is exactly the surprising part, an
--- 'ExperimentalGenesisIgnored' warning names the ignored file — and only in the
--- gated-off case.
+-- is never opened.
+--
+-- Neither case says anything about it. A @DijkstraGenesisFile@ named while the
+-- flag is off is passed over in silence, deliberately: turning the flag on
+-- hard-forks the node onto an experimental era, which is coordinated across a
+-- network, so no warning should read as a nudge towards it. This pins that
+-- parsing is silent in both cases.
 experimentalGenesisGateCase :: TestTree
 experimentalGenesisGateCase =
   testCase "the Dijkstra genesis is gated on ExperimentalHardForksEnabled" $ do
     (off, offWarnings) <- getDataFileName gatedOff >>= parseConfigurationFiles
     (on, onWarnings) <- getDataFileName gatedOn >>= parseConfigurationFiles
+    -- Nothing may mention the ignored file, by name or otherwise.
+    let mentions ws = [w | w <- map renderConfigWarning ws, "ijkstra" `isInfixOf` w]
     case cliArgs [] of
       Nothing -> assertFailure "could not build default CLI arguments"
       Just cli -> do
@@ -1712,8 +1687,8 @@ experimentalGenesisGateCase =
             (SNothing, SJust _)
               | SNothing <- C.experimentalGenesisConfig offResolved
               , SJust _ <- C.experimentalGenesisConfig onResolved
-              , ignoredFiles offWarnings == ["dijkstra-genesis.json"]
-              , null (ignoredFiles onWarnings) ->
+              , null (mentions offWarnings)
+              , null (mentions onWarnings) ->
                   Nothing
             _ ->
               Just $
@@ -1725,16 +1700,15 @@ experimentalGenesisGateCase =
                   <> show (isSJust (experimentalGenesisConfig on))
                   <> " onResolved="
                   <> show (isSJust (C.experimentalGenesisConfig onResolved))
-                  <> " offIgnored="
-                  <> show (ignoredFiles offWarnings)
-                  <> " onIgnored="
-                  <> show (ignoredFiles onWarnings)
+                  <> " offMentions="
+                  <> show (mentions offWarnings)
+                  <> " onMentions="
+                  <> show (mentions onWarnings)
  where
   gatedOff = "test/examples/dijkstra-gated-off.json"
   gatedOn = "test/examples/dijkstra-gated-on.json"
   resolved cli cfg =
     either (assertFailure . show) (pure . fst) (resolveConfiguration cli cfg)
-  ignoredFiles ws = [f | ExperimentalGenesisIgnored f <- ws]
 
 -- | The other half of the gating: @ExperimentalHardForksEnabled: true@ without a
 -- @DijkstraGenesisFile@ is rejected outright, as it is by @cardano-node@ (which
@@ -1778,18 +1752,15 @@ byronGenesisDecodeCase =
 -- | The committed schemas under @schemas/@ (the whole configuration and one per
 -- component) must match the schema derived from the codecs, so the documented
 -- schema cannot drift from the parsers. Regenerate them with @scripts/gen-schemas.sh@.
-schemaTests :: IO TestTree
-schemaTests = do
-  defs <- componentDefaults
-  pure $
-    testGroup "schemas" $
-      schemaTest "schemas/config.schema.json" (configSchemaWithDefaults defs)
-        : schemaTest
-          "schemas/config.legacy-flat.schema.json"
-          (legacyFlatConfigSchemaWithDefaults defs)
-        : [ schemaTest ("schemas/" <> T.unpack name <> ".schema.json") schema
-          | (name, schema) <- configurationSchemasWithDefaults defs
-          ]
+schemaTests :: TestTree
+schemaTests =
+  testGroup
+    "schemas"
+    [ schemaTest "schemas/config.schema.json" (configSchemaWithDefaults componentDefaults)
+    , schemaTest
+        "schemas/config.legacy-flat.schema.json"
+        (legacyFlatConfigSchemaWithDefaults componentDefaults)
+    ]
 
 -- | Assert that a committed schema file equals the given derived schema.
 schemaTest :: FilePath -> Value -> TestTree

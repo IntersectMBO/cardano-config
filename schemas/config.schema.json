@@ -15,10 +15,6 @@
                 "ConsensusConfig": {
                     "description": "ConsensusConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/ConsensusConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "ConsensusMode": {
                             "default": "PraosMode",
                             "description": "Which consensus mode to run (PraosMode or GenesisMode)",
@@ -149,10 +145,6 @@
                     },
                     "description": "LocalConnectionsConfig",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/LocalConnectionsConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "EnableGrpc": {
                             "default": false,
                             "description": "Whether to enable the gRPC server",
@@ -225,10 +217,6 @@
                     },
                     "description": "MempoolConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/MempoolConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "MempoolCapacityBytesOverride": {
                             "anyOf": [
                                 {
@@ -269,10 +257,6 @@
                 "NetworkConfig": {
                     "description": "NetworkConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/NetworkConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "AcceptedConnectionsLimit": {
                             "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
                             "properties": {
@@ -314,6 +298,7 @@
                             "type": "number"
                         },
                         "DeadlineTargetNumberOfActiveBigLedgerPeers": {
+                            "default": 5,
                             "description": "Deadline target of active big ledger peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -321,6 +306,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfActivePeers": {
+                            "default": 20,
                             "description": "Deadline target of active peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -328,6 +314,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfEstablishedBigLedgerPeers": {
+                            "default": 10,
                             "description": "Deadline target of established big ledger peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -335,6 +322,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfEstablishedPeers": {
+                            "default": 30,
                             "description": "Deadline target of established peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -342,6 +330,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfKnownBigLedgerPeers": {
+                            "default": 15,
                             "description": "Deadline target of known big ledger peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -514,10 +503,6 @@
                 "ProtocolConfig": {
                     "description": "ProtocolConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/ProtocolConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "AlonzoGenesisFile": {
                             "description": "Path to the genesis file",
                             "format": "path",
@@ -606,10 +591,6 @@
                 "StorageConfig": {
                     "description": "StorageConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/StorageConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "DatabasePath": {
                             "anyOf": [
                                 {
@@ -799,10 +780,6 @@
                     },
                     "description": "TestingConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/TestingConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "DijkstraGenesisFile": {
                             "description": "Path to the genesis file",
                             "format": "path",

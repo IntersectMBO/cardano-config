@@ -1,4 +1,9 @@
 {
-  "MempoolTimeoutSoft": 1,
-  "MempoolTimeoutHard": 1.5
+    "Version": 2,
+    "Configuration": {
+        "MempoolConfig": {
+            "MempoolTimeoutSoft": 1,
+            "MempoolTimeoutHard": 1.5
+        }
+    }
 }

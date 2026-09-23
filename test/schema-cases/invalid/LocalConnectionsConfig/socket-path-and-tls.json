@@ -1,5 +1,10 @@
 {
-  "GrpcSocketPath": "rpc.sock",
-  "GrpcTlsCertificateFile": "tls/server.pem",
-  "GrpcTlsPrivateKeyFile": "tls/server.key"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcSocketPath": "rpc.sock",
+            "GrpcTlsCertificateFile": "tls/server.pem",
+            "GrpcTlsPrivateKeyFile": "tls/server.key"
+        }
+    }
 }

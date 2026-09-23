@@ -1,4 +1,9 @@
 {
-  "EnableGrpc": true,
-  "GrpcListenPort": 3001
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "EnableGrpc": true,
+            "GrpcListenPort": 3001
+        }
+    }
 }

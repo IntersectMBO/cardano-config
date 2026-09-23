@@ -1,5 +1,4 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/StorageConfig.schema.json",
     "LedgerDB": {
         "Snapshots": {
             "SnapshotInterval": 864,

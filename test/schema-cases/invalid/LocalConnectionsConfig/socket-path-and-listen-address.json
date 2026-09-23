@@ -1,4 +1,9 @@
 {
-  "GrpcSocketPath": "rpc.sock",
-  "GrpcListenAddress": "0.0.0.0"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcSocketPath": "rpc.sock",
+            "GrpcListenAddress": "0.0.0.0"
+        }
+    }
 }

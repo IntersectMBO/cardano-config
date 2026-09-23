@@ -158,7 +158,6 @@ library commands
     cardano-config:internal,
     optparse-applicative,
     safe-exceptions ^>=0.1.7,
-    text,
     yaml,
 
   hs-source-dirs: commands

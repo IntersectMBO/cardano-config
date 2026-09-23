@@ -59,6 +59,46 @@ The split-file form is gone, so those sections hold their objects now (below).
   `Cardano.Configuration.Commands.ConfigForm` renames its constructors to
   `CurrentForm` and `LegacyFlatForm`.
 
+* The package ships two default configurations instead of one file per
+  component: `defaults/config.blockproducer.json` and
+  `defaults/config.relay.json`. Each is a complete configuration in the
+  envelope, holding every component's defaults, and the two differ only in the
+  `NetworkConfig` deadline peer targets and `PeerSharing`. The seven
+  `defaults/<Component>.json` files, `defaults/HermodTracing.json` and
+  `defaults/NetworkConfig/{blockproducer,relay}.json` are gone. Because one
+  file now holds every component's defaults, no component team can own its own
+  defaults file: CODEOWNERS gives `defaults/` to all of them.
+
+* The defaults are applied at resolution, not while the file is read. Which
+  ones apply depends on the node's role, and the role comes from the command
+  line, so the merge belongs where the command line is:
+  `resolveConfiguration` now picks the role's default configuration, merges
+  your configuration on top and reads each section from the result.
+
+  `parseConfigurationFiles` therefore returns what the file said, with nothing
+  filled in. `NodeConfigurationFromFile` loses its seven parsed component
+  fields and its `networkUserLayer`, and gains `userConfiguration :: Value`,
+  the `Configuration` object as written. It keeps what reading the file
+  required: the geneses, the tracing configuration and the injection root. A
+  section that does not parse is still reported while the file is read.
+
+  The layering it replaces was `base < role < user` with the role slotted in
+  between (`withRoleDefaults`), which is why the user's layer had to be carried
+  separately. `withRoleDefaults`, `networkRoleDefaults`,
+  `blockProducerRoleDefaults`, `relayRoleDefaults` and
+  `emptyNetworkConfiguration` are all gone; the role values live in the two
+  data files alone. The result is unchanged: the role overlay never touched a
+  field the base set, so folding it in layers identically.
+
+* The per-component schemas are gone: `schemas/<Component>.schema.json`, the
+  `schema <COMPONENT>` argument and `schema --list`. Each was byte-identical
+  to that section of `config.schema.json` plus an `$id`, and with the
+  split-file form removed nothing writes a standalone component document.
+  `configurationSchemas`, `configurationSchemasWithDefaults` and the seven
+  `storageSchema`-style values go with them, and `componentDefaults` is now a
+  pure value rather than an `IO` action. The `$schema` lines in `variants/` and
+  in the per-component test fixtures, which pointed at those URLs, are removed.
+
 * The configuration schema describes the envelope and only the envelope. It
   used to put the section keys at the *top* level, beside `Version`, and
   declare `Configuration` as a bare `{"type": "object"}` — so it validated a
@@ -170,12 +210,9 @@ The split-file form is gone, so those sections hold their objects now (below).
 
   The price of not reading the file is that a stale `DijkstraGenesisHash`, or a
   file that has since been moved away, goes unreported while the flag is off.
-  The file being ignored at all is reported, though, by the new warning below.
-
-* `ConfigWarning` gains an `ExperimentalGenesisIgnored` constructor, raised by
-  `parseConfigurationFiles` when a `DijkstraGenesisFile` is named while
-  `ExperimentalHardForksEnabled` is off. Code matching exhaustively on
-  `ConfigWarning` has to account for it.
+  Nothing is said about the ignored file either, deliberately: turning the flag
+  on hard-forks the node onto an experimental era, which is coordinated across
+  a network, so no message here should read as a nudge towards doing it.
 
 * The converse is now an error: `finalizeTesting` — and so `resolveConfiguration`
   — rejects `ExperimentalHardForksEnabled: true` without a `DijkstraGenesisFile`.

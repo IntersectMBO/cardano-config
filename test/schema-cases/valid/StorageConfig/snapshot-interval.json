@@ -1,7 +1,12 @@
 {
-  "LedgerDB": {
-    "Snapshots": {
-      "SnapshotInterval": 864
+    "Version": 2,
+    "Configuration": {
+        "StorageConfig": {
+            "LedgerDB": {
+                "Snapshots": {
+                    "SnapshotInterval": 864
+                }
+            }
+        }
     }
-  }
 }

@@ -1,4 +1,9 @@
 {
-  "GrpcListenPort": 3001,
-  "GrpcTlsPrivateKeyFile": "tls/server.key"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcListenPort": 3001,
+            "GrpcTlsPrivateKeyFile": "tls/server.key"
+        }
+    }
 }

@@ -1,3 +1,8 @@
 {
-  "GrpcListenAddress": "0.0.0.0"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcListenAddress": "0.0.0.0"
+        }
+    }
 }

@@ -1,6 +1,11 @@
 {
-  "EnableGrpc": true,
-  "GrpcListenPort": 3001,
-  "GrpcTlsCertificateFile": "tls/server.pem",
-  "GrpcTlsPrivateKeyFile": "tls/server.key"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "EnableGrpc": true,
+            "GrpcListenPort": 3001,
+            "GrpcTlsCertificateFile": "tls/server.pem",
+            "GrpcTlsPrivateKeyFile": "tls/server.key"
+        }
+    }
 }

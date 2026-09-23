@@ -1,5 +1,10 @@
 {
-  "ExperimentalHardForksEnabled": true,
-  "DijkstraGenesisFile": "dijkstra-genesis.json",
-  "DijkstraGenesisHash": "0000000000000000000000000000000000000000000000000000000000000000"
+    "Version": 2,
+    "Configuration": {
+        "TestingConfig": {
+            "ExperimentalHardForksEnabled": true,
+            "DijkstraGenesisFile": "dijkstra-genesis.json",
+            "DijkstraGenesisHash": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    }
 }

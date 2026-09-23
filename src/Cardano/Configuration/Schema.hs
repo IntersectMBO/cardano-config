@@ -33,17 +33,6 @@ module Cardano.Configuration.Schema
     -- * Default values
   , configSchemaWithDefaults
   , legacyFlatConfigSchemaWithDefaults
-  , configurationSchemasWithDefaults
-
-    -- * Individual components
-  , configurationSchemas
-  , storageSchema
-  , consensusSchema
-  , protocolSchema
-  , networkSchema
-  , localConnectionsSchema
-  , mempoolSchema
-  , testingSchema
 
     -- * Versioning
   , currentFormatVersion
@@ -72,27 +61,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Version (versionBranch)
 import Paths_cardano_config (version)
-
-storageSchema :: Value
-storageSchema = component "StorageConfig" rawStorageSchema
-
-consensusSchema :: Value
-consensusSchema = component "ConsensusConfig" rawConsensusSchema
-
-protocolSchema :: Value
-protocolSchema = component "ProtocolConfig" rawProtocolSchema
-
-networkSchema :: Value
-networkSchema = component "NetworkConfig" rawNetworkSchema
-
-localConnectionsSchema :: Value
-localConnectionsSchema = component "LocalConnectionsConfig" rawLocalConnectionsSchema
-
-mempoolSchema :: Value
-mempoolSchema = component "MempoolConfig" rawMempoolSchema
-
-testingSchema :: Value
-testingSchema = component "TestingConfig" rawTestingSchema
 
 -- The raw schemas as emitted by autodocodec-schema (descriptions in @$comment@,
 -- no @$schema@). Used internally for merging; 'publish' makes them public.
@@ -248,12 +216,6 @@ allComponentConstraints =
 -- with the parser.
 hermodTracingProps :: KM.KeyMap Value
 hermodTracingProps = properties rawTracingSchema
-
--- | The JSON Schema of each configuration component, keyed by name. Each carries
--- a @$schema@ property so a document holding one component alone can declare
--- which schema it follows.
-configurationSchemas :: [(Text, Value)]
-configurationSchemas = [(name, withSchemaProp name (component name s)) | (name, s) <- rawComponentSchemas]
 
 -- | The JSON Schema of the whole configuration — the current form, and the one
 -- the @schema@ subcommand prints: the @{ $schema, Version, MinNodeVersion,
@@ -506,35 +468,6 @@ schemaId file =
     <> "/schemas/"
     <> T.pack file
 
--- | Post-process a component's raw schema into its published form.
-component :: Text -> Value -> Value
-component name = publish name (T.unpack name <> ".schema.json")
-
--- | Add a @$schema@ property to a (published) component schema, so a document
--- holding that component alone may declare which schema it follows, pointing at
--- that component's own schema. Mirrors the whole configuration's top-level
--- @$schema@, and defaults to the component's schema URL. Applied only to the
--- standalone component schemas, not to the sections of the whole-configuration
--- schema (a section relies on the document's top-level @$schema@).
-withSchemaProp :: Text -> Value -> Value
-withSchemaProp name (Object o) =
-  Object (KM.insert "properties" (Object (KM.insert "$schema" prop (properties (Object o)))) o)
- where
-  prop =
-    object
-      [ "type" .= ("string" :: Text)
-      , "title" .= ("$schema" :: Text)
-      , "default" .= schemaId (T.unpack name <> ".schema.json")
-      , "description"
-          .= ( "URL of the JSON Schema this "
-                 <> name
-                 <> " file follows (the $schema annotation), for editors and validators."
-                 <> " Pinned to the vN tag of the format version it describes." ::
-                 Text
-             )
-      ]
-withSchemaProp _ v = v
-
 -- | Make a raw codec schema friendly to validators, editors and documentation
 -- generators. See the module header for the full list of transformations.
 publish :: Text -> FilePath -> Value -> Value
@@ -703,15 +636,6 @@ configSchemaWithDefaults defs =
 legacyFlatConfigSchemaWithDefaults :: [(Text, Value)] -> Value
 legacyFlatConfigSchemaWithDefaults defs =
   withDefaults (foldr (deepMerge . snd) (Object KM.empty) defs) legacyFlatConfigSchema
-
--- | Each component schema with its @default@s filled in from its
--- @defaults\/<Component>.json@ (when one is supplied).
-configurationSchemasWithDefaults :: [(Text, Value)] -> [(Text, Value)]
-configurationSchemasWithDefaults defs =
-  let defsMap = Map.fromList defs
-   in [ (name, maybe s (`withDefaults` s) (Map.lookup name defsMap))
-      | (name, s) <- configurationSchemas
-      ]
 
 -- | Fill in the @default@ keywords of a schema from a defaults object (a config
 -- object keyed by the configuration keys). Each value is placed at

@@ -12,13 +12,8 @@ module Cardano.Configuration.File.Network
   , finalizeNetwork
   , finalizeLocalConnections
 
-    -- * Role defaults
+    -- * Role
   , BlockProducerOrRelay (..)
-  , withRoleDefaults
-  , networkRoleDefaults
-  , blockProducerRoleDefaults
-  , relayRoleDefaults
-  , emptyNetworkConfiguration
   ) where
 
 import Autodocodec
@@ -37,7 +32,6 @@ import Cardano.Configuration.Common
   , grpcEndpointObjectCodec
   )
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
@@ -289,123 +283,13 @@ finalizeNetwork c = do
 
 -- | Whether the node is a block producer or a relay. Derived from whether the
 -- operator supplied block-forging credentials (see
--- @Cardano.Configuration.roleFromCredentials@); it selects the deadline
--- peer-selection targets and the @PeerSharing@ default.
+-- @Cardano.Configuration.roleFromCredentials@); it selects which of the two
+-- default configurations resolution starts from, and so the deadline
+-- peer-selection targets and @PeerSharing@.
 data BlockProducerOrRelay
   = IsBlockProducer
   | IsRelay
   deriving (Eq, Show)
-
--- | Slot the role-derived defaults into the resolution order @base \< role \<
--- user@ for the eight fields the role variants set (the deadline peer targets
--- and @PeerSharing@; they have no CLI flag). For each such field the value the
--- user wrote wins, then the role default, then the base default — so an explicit
--- file value always wins, and the role default beats the base default rather than
--- the other way around.
---
--- This needs the user's layer (no base) /and/ the full base-with-user merge: when
--- the user set a field, @user@ supplies it (and equals @merged@); when the user
--- did not, @merged@ holds the base value, so @role \<|\> merged@ lets the role
--- default override it. Every other field has no role default and is passed
--- through from @merged@ unchanged.
-withRoleDefaults ::
-  -- | The role defaults (block producer or relay).
-  NetworkConfiguration StrictMaybe ->
-  -- | The user-supplied layer alone (no base defaults merged in).
-  NetworkConfiguration StrictMaybe ->
-  -- | The base defaults.
-  NetworkConfiguration StrictMaybe ->
-  NetworkConfiguration StrictMaybe
-withRoleDefaults role user merged =
-  merged
-    { deadlineTargetOfRootPeers = pick deadlineTargetOfRootPeers
-    , deadlineTargetOfKnownPeers = pick deadlineTargetOfKnownPeers
-    , deadlineTargetOfEstablishedPeers = pick deadlineTargetOfEstablishedPeers
-    , deadlineTargetOfActivePeers = pick deadlineTargetOfActivePeers
-    , deadlineTargetOfKnownBigLedgerPeers = pick deadlineTargetOfKnownBigLedgerPeers
-    , deadlineTargetOfEstablishedBigLedgerPeers = pick deadlineTargetOfEstablishedBigLedgerPeers
-    , deadlineTargetOfActiveBigLedgerPeers = pick deadlineTargetOfActiveBigLedgerPeers
-    , peerSharing = pick peerSharing
-    }
- where
-  -- user value (if any) wins, then the role default, then the base value (held in
-  -- the merge when the user left the field unset).
-  pick :: (NetworkConfiguration StrictMaybe -> StrictMaybe a) -> StrictMaybe a
-  pick f = f user <|> f role <|> f merged
-
--- | The role defaults for the given role.
-networkRoleDefaults :: BlockProducerOrRelay -> NetworkConfiguration StrictMaybe
-networkRoleDefaults IsBlockProducer = blockProducerRoleDefaults
-networkRoleDefaults IsRelay = relayRoleDefaults
-
--- | A wholly-unset partial network configuration: every field 'SNothing'. The
--- starting point for the role-default literals below, which set only the eight
--- role fields.
-emptyNetworkConfiguration :: NetworkConfiguration StrictMaybe
-emptyNetworkConfiguration =
-  NetworkConfiguration
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-    SNothing
-
--- | The block-producer role defaults. These must equal
--- @defaults\/NetworkConfig\/blockproducer.json@ (asserted
--- by a test) and the node's @Ouroboros.defaultDeadlineTargets BlockProducer@ /
--- @PeerSharingDisabled@.
-blockProducerRoleDefaults :: NetworkConfiguration StrictMaybe
-blockProducerRoleDefaults =
-  emptyNetworkConfiguration
-    { deadlineTargetOfRootPeers = SJust 100
-    , deadlineTargetOfKnownPeers = SJust 100
-    , deadlineTargetOfEstablishedPeers = SJust 30
-    , deadlineTargetOfActivePeers = SJust 20
-    , deadlineTargetOfKnownBigLedgerPeers = SJust 15
-    , deadlineTargetOfEstablishedBigLedgerPeers = SJust 10
-    , deadlineTargetOfActiveBigLedgerPeers = SJust 5
-    , peerSharing = SJust False
-    }
-
--- | The relay role defaults. These must equal
--- @defaults\/NetworkConfig\/relay.json@ (asserted by a
--- test) and the node's @Ouroboros.defaultDeadlineTargets Relay@ /
--- @PeerSharingEnabled@.
-relayRoleDefaults :: NetworkConfiguration StrictMaybe
-relayRoleDefaults =
-  emptyNetworkConfiguration
-    { deadlineTargetOfRootPeers = SJust 60
-    , deadlineTargetOfKnownPeers = SJust 150
-    , deadlineTargetOfEstablishedPeers = SJust 30
-    , deadlineTargetOfActivePeers = SJust 20
-    , deadlineTargetOfKnownBigLedgerPeers = SJust 15
-    , deadlineTargetOfEstablishedBigLedgerPeers = SJust 10
-    , deadlineTargetOfActiveBigLedgerPeers = SJust 5
-    , peerSharing = SJust True
-    }
 
 -- | Connections for local clients. @EnableGrpc@ has a default. The node socket
 -- path and the gRPC endpoint are optional.

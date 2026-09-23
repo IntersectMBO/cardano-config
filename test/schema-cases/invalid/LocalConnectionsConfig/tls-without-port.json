@@ -1,4 +1,9 @@
 {
-  "GrpcTlsCertificateFile": "tls/server.pem",
-  "GrpcTlsPrivateKeyFile": "tls/server.key"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcTlsCertificateFile": "tls/server.pem",
+            "GrpcTlsPrivateKeyFile": "tls/server.key"
+        }
+    }
 }

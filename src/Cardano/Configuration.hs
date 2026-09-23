@@ -149,6 +149,7 @@ import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Applicative ((<|>))
 import Control.Exception (Exception)
+import Data.Aeson (FromJSON)
 import Data.Functor.Identity
 import Data.IP
 import Data.List.NonEmpty (NonEmpty (..))
@@ -342,23 +343,25 @@ resolveConfigurationWith ::
   File.NodeConfigurationFromFile ->
   Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning])
 resolveConfigurationWith checks cli file = do
-  -- Components with an always-applied defaults layer are finalized to their
-  -- complete 'Identity' form; a missing default surfaces as a resolution error.
+  -- The defaults are the bottom layer, and which ones apply is decided here:
+  -- the node is a block producer or a relay according to its credentials, and
+  -- the two default configurations differ in exactly the fields that means
+  -- (the deadline peer targets and PeerSharing). The user's configuration is
+  -- merged on top, so anything it states wins, and the CLI wins over both.
   --
-  -- The networking role defaults (deadline peer targets and PeerSharing) are
-  -- derived from whether the operator supplied block-forging credentials and
-  -- slotted into the resolution order base < role < user, so an explicit file
-  -- value wins and the role default beats the base default (see
-  -- 'File.withRoleDefaults').
-  let roleDefaults = File.networkRoleDefaults (roleFromCredentials (CLI.credentials cli))
-      netMerged = File.networkConfiguration file
-      netUser = File.networkUserLayer file
-  network <- finalize $ File.finalizeNetwork (File.withRoleDefaults roleDefaults netUser netMerged)
-  testing <- finalize $ File.finalizeTesting (File.testingConfiguration file)
-  mempool <- finalize $ File.finalizeMempool (File.mempoolConfiguration file)
+  -- Components are then finalized to their complete 'Identity' form; a field
+  -- with neither a default nor a value surfaces as a resolution error.
+  let role = roleFromCredentials (CLI.credentials cli)
+      merged =
+        File.mergeValues (File.defaultConfiguration role) (File.userConfiguration file)
+      section :: FromJSON a => String -> Either ConfigResolutionError a
+      section = finalize . File.decodeSection merged
+  network <- section "NetworkConfig" >>= finalize . File.finalizeNetwork
+  testing <- section "TestingConfig" >>= finalize . File.finalizeTesting
+  mempool <- section "MempoolConfig" >>= finalize . File.finalizeMempool
   -- Local connections additionally take CLI overrides before being finalized.
-  let lcc = File.localConnectionsConfig file
-      lccWithCli =
+  lcc <- section "LocalConnectionsConfig"
+  let lccWithCli =
         lcc
           { File.socketPath = CLI.socketPath cli <|> File.socketPath lcc
           , File.enableGrpc = CLI.enableGrpcCLI cli <|> File.enableGrpc lcc
@@ -368,15 +371,14 @@ resolveConfigurationWith checks cli file = do
           }
   localConnections <- finalize $ File.finalizeLocalConnections lccWithCli
   -- Storage, consensus and the non-producing flag take their value from the CLI
-  -- or the file (whose always-applied base-default layer supplies the default).
-  -- A missing value is a resolution error, not a hard-coded fallback, so the
+  -- or from the merge above (whose bottom layer supplies the default). A
+  -- missing value is a resolution error, not a hard-coded fallback, so the
   -- defaults live solely in the defaults/ files.
-  let sc = File.storageConfiguration file
-      pc = File.protocolConfiguration file
+  sc <- section "StorageConfig"
+  pc <- section "ProtocolConfig"
+  consensus <- section "ConsensusConfig"
   dbPath <- finalize $ require "DatabasePath" (CLI.databasePathCLI cli <|> File.databasePath sc)
-  consensusMode <-
-    finalize $
-      require "ConsensusMode" (getConsensusConfiguration (File.consensusConfiguration file))
+  consensusMode <- finalize $ require "ConsensusMode" (getConsensusConfiguration consensus)
   startNonProducing <-
     finalize $
       require
@@ -423,8 +425,9 @@ resolveConfigurationWith checks cli file = do
 
 -- | Derive the node's role from its credentials: it is a block producer iff
 -- /any/ block-forging credential was supplied, otherwise a relay. This matches
--- @cardano-node@'s @hasProtocolFile@ semantics and selects the network role
--- defaults (see 'File.withRoleDefaults').
+-- @cardano-node@'s @hasProtocolFile@ semantics and selects which of the two
+-- default configurations resolution starts from (see
+-- 'File.defaultConfiguration').
 roleFromCredentials :: CLI.Credentials -> File.BlockProducerOrRelay
 roleFromCredentials c
   | any

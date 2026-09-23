@@ -1,4 +1,9 @@
 {
-  "EnableGrpc": true,
-  "GrpcSocketPath": "rpc.sock"
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "EnableGrpc": true,
+            "GrpcSocketPath": "rpc.sock"
+        }
+    }
 }

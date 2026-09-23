@@ -3,9 +3,9 @@
 # validator accepts matches what the parser accepts.
 #
 # The cases live in test/schema-cases/: a document under valid/ must validate
-# against its component's schema, one under invalid/ must not. The directory
-# names the component, so test/schema-cases/invalid/MempoolConfig/ is checked
-# against schemas/MempoolConfig.schema.json.
+# against schemas/config.schema.json, one under invalid/ must not. Each is a
+# whole configuration, so the check sees what a user actually writes; the
+# directory names the section the case is about.
 #
 # Regenerate the schemas with scripts/gen-schemas.sh.
 
@@ -46,8 +46,7 @@ check() { # <schema> <document> <valid|invalid>
 
 for expectation in valid invalid; do
   for document in test/schema-cases/$expectation/*/*.json; do
-    component=$(basename "$(dirname "$document")")
-    check "schemas/$component.schema.json" "$document" "$expectation"
+    check schemas/config.schema.json "$document" "$expectation"
   done
 done
 

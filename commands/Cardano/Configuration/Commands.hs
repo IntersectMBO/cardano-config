@@ -38,7 +38,6 @@ module Cardano.Configuration.Commands
   , resolveCommand
 
     -- * Schema
-  , SchemaOptions (..)
   , ConfigForm (..)
   , schemaOptionsParser
   , runSchemaCommand
@@ -60,8 +59,6 @@ import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configSchemaWithDefaults
-  , configurationSchemas
-  , configurationSchemasWithDefaults
   , currentFormatVersion
   , legacyFlatConfigSchemaWithDefaults
   )
@@ -73,8 +70,6 @@ import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Foldable (for_)
-import Data.List (intercalate)
-import qualified Data.Text as T
 import Data.Yaml (decodeThrow)
 import Data.Yaml.Pretty (encodePretty, setConfCompare, setConfDropNull)
 import qualified Data.Yaml.Pretty as Yaml
@@ -143,45 +138,26 @@ withGenesesFlag =
 
 -- Schema ----------------------------------------------------------------------
 
--- | What the @schema@ command should print.
-data SchemaOptions
-  = -- | List the available component names.
-    SchemaList
-  | -- | Dump the whole-configuration schema, in the given form.
-    SchemaWhole ConfigForm
-  | -- | Dump the schema for a single named component.
-    SchemaComponent String
-
 -- | Which form of the whole-configuration schema to print.
 data ConfigForm
-  = -- | The current form (each component inline under its section key).
+  = -- | The current form: the envelope, with each component inline under its
+    -- section key inside @Configuration@.
     CurrentForm
   | -- | The legacy flat form (all keys flat at the top level).
     LegacyFlatForm
 
--- | Parser for 'SchemaOptions'.
-schemaOptionsParser :: Parser SchemaOptions
+-- | Parser for 'ConfigForm'.
+schemaOptionsParser :: Parser ConfigForm
 schemaOptionsParser =
-  flag'
-    SchemaList
-    (long "list" <> help "List the available component names.")
-    <|> flag'
-      (SchemaWhole LegacyFlatForm)
-      ( long "legacy-flat"
-          <> help
-            ( "Dump the legacy flat schema (every key flat at the top level). "
-                <> "Prefer the default schema for new configurations."
-            )
-      )
-    <|> ( maybe (SchemaWhole CurrentForm) SchemaComponent
-            <$> optional
-              ( strArgument
-                  ( metavar "COMPONENT"
-                      <> help
-                        "Dump the schema for a single component (default: the whole configuration)."
-                  )
-              )
-        )
+  flag
+    CurrentForm
+    LegacyFlatForm
+    ( long "legacy-flat"
+        <> help
+          ( "Dump the legacy flat schema (every key flat at the top level). "
+              <> "Prefer the default schema for new configurations."
+          )
+    )
 
 -- | The @schema@ subcommand, as an 'hsubparser' entry.
 schemaCommand :: Mod CommandFields (IO ())
@@ -195,24 +171,12 @@ schemaCommand =
         )
     )
 
--- | Print a JSON Schema, or list the component names.
-runSchemaCommand :: SchemaOptions -> IO ()
-runSchemaCommand SchemaList = mapM_ (putStrLn . T.unpack . fst) configurationSchemas
-runSchemaCommand (SchemaWhole form) = do
-  defs <- componentDefaults
+-- | Print the configuration JSON Schema, in the requested form.
+runSchemaCommand :: ConfigForm -> IO ()
+runSchemaCommand form =
   dump $ case form of
-    CurrentForm -> configSchemaWithDefaults defs
-    LegacyFlatForm -> legacyFlatConfigSchemaWithDefaults defs
-runSchemaCommand (SchemaComponent name) = do
-  defs <- componentDefaults
-  case lookup (T.pack name) (configurationSchemasWithDefaults defs) of
-    Just s -> dump s
-    Nothing ->
-      die $
-        "Unknown component: "
-          <> name
-          <> "\nAvailable components: "
-          <> intercalate ", " (map (T.unpack . fst) configurationSchemas)
+    CurrentForm -> configSchemaWithDefaults componentDefaults
+    LegacyFlatForm -> legacyFlatConfigSchemaWithDefaults componentDefaults
 
 -- | How to validate a configuration against the schema, shown under
 -- @cardano-config schema --help@.

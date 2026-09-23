@@ -1,10 +1,11 @@
 {
-    "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/LocalConnectionsConfig.schema.json",
     "SocketPath": "node.socket",
     "EnableGrpc": true,
     "GrpcListenAddress": "0.0.0.0",
     "GrpcListenPort": 3001,
     "GrpcTlsCertificateFile": "tls/server.pem",
     "GrpcTlsPrivateKeyFile": "tls/server.key",
-    "GrpcTlsChainCertificateFiles": ["tls/intermediate.pem"]
+    "GrpcTlsChainCertificateFiles": [
+        "tls/intermediate.pem"
+    ]
 }

@@ -91,9 +91,6 @@
     },
     "description": "The cardano-node configuration (legacy flat form). Every component's keys are given directly at the top level. New configurations should prefer the current form (config.schema.json); this form is retained for compatibility and predates the { Version, Configuration } envelope. Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile, ConwayGenesisFile.",
     "properties": {
-        "$schema": {
-            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/TestingConfig.schema.json"
-        },
         "AcceptedConnectionsLimit": {
             "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
             "properties": {
@@ -224,6 +221,7 @@
             "title": "DatabasePath"
         },
         "DeadlineTargetNumberOfActiveBigLedgerPeers": {
+            "default": 5,
             "description": "Deadline target of active big ledger peers",
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
@@ -231,6 +229,7 @@
             "type": "integer"
         },
         "DeadlineTargetNumberOfActivePeers": {
+            "default": 20,
             "description": "Deadline target of active peers",
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
@@ -238,6 +237,7 @@
             "type": "integer"
         },
         "DeadlineTargetNumberOfEstablishedBigLedgerPeers": {
+            "default": 10,
             "description": "Deadline target of established big ledger peers",
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
@@ -245,6 +245,7 @@
             "type": "integer"
         },
         "DeadlineTargetNumberOfEstablishedPeers": {
+            "default": 30,
             "description": "Deadline target of established peers",
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,
@@ -252,6 +253,7 @@
             "type": "integer"
         },
         "DeadlineTargetNumberOfKnownBigLedgerPeers": {
+            "default": 15,
             "description": "Deadline target of known big ledger peers",
             "maximum": 9223372036854775807,
             "minimum": -9223372036854775808,

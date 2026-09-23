@@ -1,4 +1,9 @@
 {
-  "GrpcSocketPath": "rpc.sock",
-  "GrpcListenPort": 3001
+    "Version": 2,
+    "Configuration": {
+        "LocalConnectionsConfig": {
+            "GrpcSocketPath": "rpc.sock",
+            "GrpcListenPort": 3001
+        }
+    }
 }
