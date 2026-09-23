@@ -11,9 +11,16 @@ import Data.Aeson.Types (JSONPath, formatError)
 -- enough context to point the user at the offending file, section and location.
 data ConfigurationParsingError = ConfigurationParsingError
   { errFile :: StrictMaybe FilePath
-  -- ^ The file the failure occurred in, when the configuration names one (a
-  -- genesis file, or the tracing file). Absent when the failure was in the
-  -- configuration file itself.
+  -- ^ The file the failure is about, when it is about a file as a whole. That
+  -- is the configuration file when it does not decode, declares a format
+  -- version this library cannot read, or cannot be migrated. It is a genesis
+  -- file when that file cannot be read, hash-checked or decoded.
+  --
+  -- Absent when the failure is at a path /inside/ the configuration, which
+  -- 'errSection' and 'errPath' locate instead.
+  --
+  -- The tracing file never appears here. @trace-dispatcher@ reads it and
+  -- reports its own errors.
   , errSection :: StrictMaybe String
   -- ^ The top-level configuration section being parsed (e.g. @"StorageConfig"@).
   , errPath :: JSONPath
