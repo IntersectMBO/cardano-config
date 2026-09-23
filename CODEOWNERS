@@ -15,7 +15,7 @@ flake.lock @IntersectMBO/cardano-node-sre
 
 # Whole directories (the specific rules below override these for individual
 # files). The two whole-configuration schemas (config.schema.json,
-# config.legacy-one-file.schema.json) are covered here.
+# config.legacy-flat.schema.json) are covered here.
 schemas/  @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers
 variants/ @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers
 
