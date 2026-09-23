@@ -65,7 +65,7 @@ import Cardano.Configuration.Schema
   , currentFormatVersion
   , legacyFlatConfigSchemaWithDefaults
   )
-import Control.Exception (displayException, throwIO)
+import Control.Exception (displayException, fromException, throwIO)
 import Control.Exception.Safe (handleAny)
 import Control.Monad (when)
 import Data.Aeson (Value)
@@ -80,7 +80,7 @@ import Data.Yaml.Pretty (encodePretty, setConfCompare, setConfDropNull)
 import qualified Data.Yaml.Pretty as Yaml
 import Options.Applicative
 import Options.Applicative.Help.Pretty (Doc, pretty, vsep)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode, exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 -- | All three configuration subcommands, ready to drop into an 'hsubparser'.
@@ -120,7 +120,7 @@ resolveCommand =
 
 -- | Resolve a configuration and print it as YAML.
 runResolveCommand :: ResolveOptions -> IO ()
-runResolveCommand (ResolveOptions cli geneses) = handleAny (die . displayException) $ do
+runResolveCommand (ResolveOptions cli geneses) = dieOnFailure $ do
   (file, warnings) <- parseConfigurationFiles (configFilePath cli)
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
   (nc, resolveWarnings) <- either throwIO pure $ resolveConfiguration cli file
@@ -263,7 +263,7 @@ migrateCommand =
 -- resolve, default or validate, so the hint at the end points at @resolve@.
 -- A path of @-@ reads the configuration from stdin (so it composes with @curl@).
 runMigrateCommand :: MigrateOptions -> IO ()
-runMigrateCommand (MigrateOptions path) = handleAny (die . displayException) $ do
+runMigrateCommand (MigrateOptions path) = dieOnFailure $ do
   raw <- case path of
     "-" -> BS.getContents >>= decodeThrow
     _ -> decodeValueFile Nothing path
@@ -286,6 +286,15 @@ runMigrateCommand (MigrateOptions path) = handleAny (die . displayException) $ d
       <> ". Run `cardano-config resolve --config <file>` to check that it parses."
 
 -- Shared helpers --------------------------------------------------------------
+
+-- | Run a command action, reporting any failure on @stderr@ and exiting with a
+-- failure status. The 'ExitCode' 'die' throws passes straight through, so a
+-- message 'die' has already printed is not printed a second time as
+-- @ExitFailure 1@.
+dieOnFailure :: IO () -> IO ()
+dieOnFailure = handleAny $ \e -> case fromException e :: Maybe ExitCode of
+  Just code -> throwIO code
+  Nothing -> die (displayException e)
 
 -- | Print a JSON 'Value' with sorted keys for stable output.
 dump :: Value -> IO ()
