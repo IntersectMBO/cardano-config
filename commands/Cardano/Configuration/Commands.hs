@@ -59,11 +59,11 @@ import Cardano.Configuration.File.Merge (declaredFormatVersion, decodeValueFile)
 import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
-  ( configurationSchemas
+  ( configSchemaWithDefaults
+  , configurationSchemas
   , configurationSchemasWithDefaults
   , currentFormatVersion
-  , legacyOneFileConfigSchemaWithDefaults
-  , splitConfigSchemaWithDefaults
+  , legacyFlatConfigSchemaWithDefaults
   )
 import Control.Exception (displayException, throwIO)
 import Control.Exception.Safe (handleAny)
@@ -154,10 +154,10 @@ data SchemaOptions
 
 -- | Which form of the whole-configuration schema to print.
 data ConfigForm
-  = -- | The recommended split-file form (each component under its section key).
-    SplitForm
-  | -- | The legacy single-file form (all keys flat at the top level).
-    LegacyOneFileForm
+  = -- | The current form (each component inline under its section key).
+    CurrentForm
+  | -- | The legacy flat form (all keys flat at the top level).
+    LegacyFlatForm
 
 -- | Parser for 'SchemaOptions'.
 schemaOptionsParser :: Parser SchemaOptions
@@ -166,19 +166,19 @@ schemaOptionsParser =
     SchemaList
     (long "list" <> help "List the available component names.")
     <|> flag'
-      (SchemaWhole LegacyOneFileForm)
-      ( long "legacy-one-file"
+      (SchemaWhole LegacyFlatForm)
+      ( long "legacy-flat"
           <> help
-            ( "Dump the legacy single-file schema (every key flat at the top level). "
-                <> "Prefer the default split-file schema for new configurations."
+            ( "Dump the legacy flat schema (every key flat at the top level). "
+                <> "Prefer the default schema for new configurations."
             )
       )
-    <|> ( maybe (SchemaWhole SplitForm) SchemaComponent
+    <|> ( maybe (SchemaWhole CurrentForm) SchemaComponent
             <$> optional
               ( strArgument
                   ( metavar "COMPONENT"
                       <> help
-                        "Dump the schema for a single component (default: the whole configuration, split-file form)."
+                        "Dump the schema for a single component (default: the whole configuration)."
                   )
               )
         )
@@ -201,8 +201,8 @@ runSchemaCommand SchemaList = mapM_ (putStrLn . T.unpack . fst) configurationSch
 runSchemaCommand (SchemaWhole form) = do
   defs <- componentDefaults
   dump $ case form of
-    SplitForm -> splitConfigSchemaWithDefaults defs
-    LegacyOneFileForm -> legacyOneFileConfigSchemaWithDefaults defs
+    CurrentForm -> configSchemaWithDefaults defs
+    LegacyFlatForm -> legacyFlatConfigSchemaWithDefaults defs
 runSchemaCommand (SchemaComponent name) = do
   defs <- componentDefaults
   case lookup (T.pack name) (configurationSchemasWithDefaults defs) of

@@ -20,20 +20,19 @@
 --     @Untitled@\/@undefined@.
 --
 -- Tracing is not a component of its own: it is surfaced only as the single
--- top-level @HermodTracing@ key, a path to a separate file that the node's
--- tracing system (hermod/@trace-dispatcher@) reads. Its contents are neither
--- parsed nor described here; the authoritative tracing schema lives in that
--- package.
+-- top-level @HermodTracing@ key, which the node's tracing system
+-- (hermod/@trace-dispatcher@) reads. Its contents are neither parsed nor
+-- described here; the authoritative tracing schema lives in that package.
 module Cardano.Configuration.Schema
   ( -- * Whole configuration
-    splitConfigSchema
-  , legacyOneFileConfigSchema
+    configSchema
+  , legacyFlatConfigSchema
   , recognisedKeys
   , componentPropertyNames
 
     -- * Default values
-  , splitConfigSchemaWithDefaults
-  , legacyOneFileConfigSchemaWithDefaults
+  , configSchemaWithDefaults
+  , legacyFlatConfigSchemaWithDefaults
   , configurationSchemasWithDefaults
 
     -- * Individual components
@@ -108,9 +107,9 @@ rawMempoolSchema = toJSON (jsonSchemaViaCodec @(MempoolConfiguration StrictMaybe
 rawTestingSchema = toJSON (jsonSchemaViaCodec @(TestingConfiguration StrictMaybe))
 rawTracingSchema = toJSON (jsonSchemaViaCodec @TracingConfiguration)
 
--- The components that are sections of their own (given inline, as a sub-file, or
--- as a list). Tracing is deliberately absent: it is not a section, only the
--- single top-level @HermodTracing@ key (see 'hermodTracingProps').
+-- The components that are sections of their own. Tracing is deliberately
+-- absent: it is not a section, only the single top-level @HermodTracing@ key
+-- (see 'hermodTracingProps').
 rawComponentSchemas :: [(Text, Value)]
 rawComponentSchemas =
   [ (name, withConstraints name raw)
@@ -230,8 +229,8 @@ mergeConstraints = KM.unionWith merge
   merge a _ = a
 
 -- | Attach a component's cross-field constraints to its schema, so every
--- rendering of that component carries them: its own schema file, and the inline
--- branch of the split configuration schema.
+-- rendering of that component carries them: its own schema file, and its
+-- section of the whole-configuration schema.
 withConstraints :: Text -> Value -> Value
 withConstraints name (Object o) = Object (mergeConstraints (componentConstraints name) o)
 withConstraints _ v = v
@@ -243,50 +242,49 @@ allComponentConstraints =
   foldr (mergeConstraints . componentConstraints . fst) KM.empty rawComponentSchemas
 
 -- | Tracing is not a component/section of its own; it contributes exactly one
--- top-level key, @HermodTracing@ — a path to a separate file that the node's
--- tracing system reads (and which @cardano-config@ neither parses nor describes
--- further). We take that key's schema straight from the TracingConfiguration
--- codec so it stays in step with the parser.
+-- top-level key, @HermodTracing@, which the node's tracing system reads (and
+-- which @cardano-config@ neither parses nor describes further). We take that
+-- key's schema straight from the TracingConfiguration codec so it stays in step
+-- with the parser.
 hermodTracingProps :: KM.KeyMap Value
 hermodTracingProps = properties rawTracingSchema
 
 -- | The JSON Schema of each configuration component, keyed by name. Each carries
--- a @$schema@ property so a split sub-file can declare which schema it follows.
+-- a @$schema@ property so a document holding one component alone can declare
+-- which schema it follows.
 configurationSchemas :: [(Text, Value)]
 configurationSchemas = [(name, withSchemaProp name (component name s)) | (name, s) <- rawComponentSchemas]
 
--- | The JSON Schema of the whole configuration in the /split-file/ form — the
--- recommended form, and the one the @schema@ subcommand prints by default: each
--- component is given under its section key (e.g. @StorageConfig@) as a path to a
--- sub-file or an inline object.
+-- | The JSON Schema of the whole configuration — the current form, and the one
+-- the @schema@ subcommand prints by default: each component is given inline
+-- under its section key (e.g. @StorageConfig@), all in one document.
 --
 -- The whole document may additionally be wrapped in a @{ Version, Configuration
--- }@ envelope. Tracing is not a section; it is just the top-level @HermodTracing@
--- key (a path to a file the node's tracing system reads), whose contents are
--- neither parsed nor described here.
+-- }@ envelope. Tracing is not a section; it is just the top-level
+-- @HermodTracing@ key, whose contents are neither parsed nor described here.
 --
 -- Keeping this form free of the flat top-level keys (which live in
--- 'legacyOneFileConfigSchema') is what lets it drop the per-component
+-- 'legacyFlatConfigSchema') is what lets it drop the per-component
 -- \"section key /xor/ top-level keys\" exclusivity rules entirely, so it is much
 -- simpler than a schema covering both forms at once.
-splitConfigSchema :: Value
-splitConfigSchema = splitConfigSchemaFrom rawComponentSchemas
+configSchema :: Value
+configSchema = configSchemaFrom rawComponentSchemas
 
--- | 'splitConfigSchema', built from the given component schemas, so the
--- defaulted variant ('splitConfigSchemaWithDefaults') can feed in component
--- schemas already carrying their @default@s.
-splitConfigSchemaFrom :: [(Text, Value)] -> Value
-splitConfigSchemaFrom components =
+-- | 'configSchema', built from the given component schemas, so the defaulted
+-- variant ('configSchemaWithDefaults') can feed in component schemas already
+-- carrying their @default@s.
+configSchemaFrom :: [(Text, Value)] -> Value
+configSchemaFrom components =
   publish "Cardano node configuration" "config.schema.json" $
     object
-      [ "$comment" .= splitDescription
+      [ "$comment" .= configDescription
       , "type" .= ("object" :: Text)
-      , "properties" .= Object (sectionRefProps <> hermodTracingProps <> envelopeProps)
+      , "properties" .= Object (sectionProps <> hermodTracingProps <> envelopeProps)
       ]
  where
-  -- Each component reachable under its section key (inline, sub-file, or list).
-  sectionRefProps =
-    KM.fromList [(K.fromText name, sectionRef name raw) | (name, raw) <- components]
+  -- Each component's own schema, inline under its section key. 'publish' adds
+  -- the title, as it does for every other property here.
+  sectionProps = KM.fromList [(K.fromText name, raw) | (name, raw) <- components]
   envelopeProps =
     KM.fromList
       [ ("$schema", schemaRef)
@@ -295,20 +293,20 @@ splitConfigSchemaFrom components =
       , ("Configuration", configurationRef)
       ]
 
--- | The JSON Schema of the whole configuration in the /legacy single-file/ form:
+-- | The JSON Schema of the whole configuration in the /legacy flat/ form:
 -- every component reads its keys directly from the top-level object, so all keys
--- appear flat at the top level. New configurations should prefer the split-file
--- form ('splitConfigSchema'); this form is retained for compatibility and is
--- printed only under @schema --legacy-one-file@.
+-- appear flat at the top level. New configurations should prefer the current
+-- form ('configSchema'); this form is retained for compatibility and is printed
+-- only under @schema --legacy-flat@.
 --
 -- The lone top-level @HermodTracing@ key may appear here too. The legacy form
 -- predates the @{ Version, Configuration }@ envelope, so it does not offer it;
--- use the split-file form for an enveloped configuration.
-legacyOneFileConfigSchema :: Value
-legacyOneFileConfigSchema =
+-- use the current form for an enveloped configuration.
+legacyFlatConfigSchema :: Value
+legacyFlatConfigSchema =
   publish
-    "Cardano node configuration (legacy single-file form)"
-    "config.legacy-one-file.schema.json"
+    "Cardano node configuration (legacy flat form)"
+    "config.legacy-flat.schema.json"
     $ Object
     $ mergeConstraints allComponentConstraints
     $ KM.fromList
@@ -323,57 +321,26 @@ legacyOneFileConfigSchema =
     KM.insert "MinNodeVersion" minNodeVersionRef $
       foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
 
-splitDescription :: Text
-splitDescription =
+configDescription :: Text
+configDescription =
   T.unwords
-    [ "The cardano-node configuration (split-file form, recommended)."
-    , "Each component is given under its section key (e.g. StorageConfig) as a path to a"
-    , "sub-file or an inline object."
+    [ "The cardano-node configuration, held in one file."
+    , "Each component is given inline under its section key (e.g. StorageConfig)."
     , "The whole document may also be wrapped in a { Version, Configuration } envelope."
     , "The mandatory genesis files are supplied through the ProtocolConfig section."
-    , "For the older form with every key at the top level, see config.legacy-one-file.schema.json."
+    , "For the older form with every key at the top level, see config.legacy-flat.schema.json."
     ]
 
 legacyDescription :: Text
 legacyDescription =
   T.unwords
-    [ "The cardano-node configuration (legacy single-file form)."
+    [ "The cardano-node configuration (legacy flat form)."
     , "Every component's keys are given directly at the top level."
-    , "New configurations should prefer the split-file form (config.schema.json);"
+    , "New configurations should prefer the current form (config.schema.json);"
     , "this form is retained for compatibility and predates the { Version, Configuration } envelope."
     , "Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile,"
     , "ConwayGenesisFile."
     ]
-
--- | A component's section key in the split-file form: an inline object (the
--- component schema) or a path to a sub-file.
-sectionRef :: Text -> Value -> Value
-sectionRef name raw =
-  object
-    [ "$comment"
-        .= ( "The "
-               <> name
-               <> " section, given inline (an object) or as a path to a sub-file."
-           )
-    , "anyOf" .= [pathRef desc, withTitle name raw]
-    ]
- where
-  desc = "Path to a file holding the " <> name <> " section"
-
--- | A JSON string that is a filesystem path (tagged so 'publish' adds the
--- @path@ format).
-pathRef :: Text -> Value
-pathRef desc =
-  object
-    [ "type" .= ("string" :: Text)
-    , "title" .= ("File path" :: Text)
-    , "$comment" .= (desc <> "\n" <> filePathFormatMarker)
-    ]
-
--- | Insert a @title@ into a schema object unless it already has one.
-withTitle :: Text -> Value -> Value
-withTitle t (Object o) = Object (KM.insertWith (\_new old -> old) "title" (String t) o)
-withTitle _ v = v
 
 versionRef :: Value
 versionRef =
@@ -437,11 +404,11 @@ schemaRef =
     ]
 
 -- | Every key the parsers recognise at the @Configuration@ level: the section
--- keys (used to reference each component, inline or as a split sub-file), the
--- tracing keys and the envelope keys. Used to detect unrecognised keys (typos, or
--- a component property placed flat here rather than under its section — such a key
--- is reported and ignored, not resolved). A component's own property names are
--- recognised only inside its section, so they are deliberately /not/ listed here.
+-- keys, the tracing keys and the envelope keys. Used to detect unrecognised
+-- keys (a typo, or a key of some component this library does not know). A
+-- component's own property names are recognised only inside its section, so
+-- they are deliberately /not/ listed here; migration has already moved any of
+-- them found at this level.
 recognisedKeys :: [Text]
 recognisedKeys =
   nub $
@@ -452,9 +419,9 @@ recognisedKeys =
   tracingKeys = map K.toText (KM.keys hermodTracingProps)
 
 -- | The property names of each component (the keys it reads at the top level in
--- the single-file form), keyed by the component's section name. Used to detect
--- top-level keys shadowed by a section supplied separately. Every property name
--- belongs to exactly one component.
+-- the legacy flat form), keyed by the component's section name. Used by
+-- migration to group a flat key under the section that owns it. Every property
+-- name belongs to exactly one component.
 componentPropertyNames :: [(Text, [Text])]
 componentPropertyNames =
   [(name, map K.toText (KM.keys (properties s))) | (name, s) <- rawComponentSchemas]
@@ -539,12 +506,12 @@ schemaId file =
 component :: Text -> Value -> Value
 component name = publish name (T.unpack name <> ".schema.json")
 
--- | Add a @$schema@ property to a (published) component schema, so a split
--- sub-file may declare which schema it follows, pointing at that component's own
--- schema. Mirrors the whole configuration's top-level @$schema@, and defaults to
--- the component's schema URL. Applied only to the standalone component schemas,
--- not to the inline section branches of the whole-configuration schema (an
--- inline component relies on the document's top-level @$schema@).
+-- | Add a @$schema@ property to a (published) component schema, so a document
+-- holding that component alone may declare which schema it follows, pointing at
+-- that component's own schema. Mirrors the whole configuration's top-level
+-- @$schema@, and defaults to the component's schema URL. Applied only to the
+-- standalone component schemas, not to the sections of the whole-configuration
+-- schema (a section relies on the document's top-level @$schema@).
 withSchemaProp :: Text -> Value -> Value
 withSchemaProp name (Object o) =
   Object (KM.insert "properties" (Object (KM.insert "$schema" prop (properties (Object o)))) o)
@@ -715,23 +682,23 @@ properties _ = KM.empty
 -- and passes them in — so the documented defaults are exactly the ones the
 -- library applies, with a single source of truth.
 
--- | 'splitConfigSchema' with the @default@ of every key filled in from the
--- per-component defaults (keyed by component name). The defaults are applied to
--- each component's inline-object form, matching the per-component schemas.
-splitConfigSchemaWithDefaults :: [(Text, Value)] -> Value
-splitConfigSchemaWithDefaults defs =
+-- | 'configSchema' with the @default@ of every key filled in from the
+-- per-component defaults (keyed by component name), matching the per-component
+-- schemas.
+configSchemaWithDefaults :: [(Text, Value)] -> Value
+configSchemaWithDefaults defs =
   let defsMap = Map.fromList defs
-   in splitConfigSchemaFrom
+   in configSchemaFrom
         [ (name, maybe raw (`withDefaults` raw) (Map.lookup name defsMap))
         | (name, raw) <- rawComponentSchemas
         ]
 
--- | 'legacyOneFileConfigSchema' with the @default@ of every key filled in from
+-- | 'legacyFlatConfigSchema' with the @default@ of every key filled in from
 -- the per-component defaults. Components share a flat top-level key space, so
 -- their defaults are merged into one overlay.
-legacyOneFileConfigSchemaWithDefaults :: [(Text, Value)] -> Value
-legacyOneFileConfigSchemaWithDefaults defs =
-  withDefaults (foldr (deepMerge . snd) (Object KM.empty) defs) legacyOneFileConfigSchema
+legacyFlatConfigSchemaWithDefaults :: [(Text, Value)] -> Value
+legacyFlatConfigSchemaWithDefaults defs =
+  withDefaults (foldr (deepMerge . snd) (Object KM.empty) defs) legacyFlatConfigSchema
 
 -- | Each component schema with its @default@s filled in from its
 -- @defaults\/<Component>.json@ (when one is supplied).

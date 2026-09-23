@@ -43,12 +43,12 @@ import Cardano.Configuration.Genesis.Injection
   )
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
-  ( configurationSchemasWithDefaults
+  ( configSchemaWithDefaults
+  , configurationSchemasWithDefaults
   , currentFormatVersion
-  , legacyOneFileConfigSchemaWithDefaults
+  , legacyFlatConfigSchemaWithDefaults
   , packageFormatVersion
   , schemaId
-  , splitConfigSchemaWithDefaults
   )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
@@ -1349,7 +1349,7 @@ schemaConstraintsCase =
     , -- The legacy form puts every component's keys in one flat space, so it
       -- carries every component's rules at the top level.
 
-      ( "config.legacy-one-file"
+      ( "config.legacy-flat"
       , "every component's rules, flat"
       , \v -> hasDependencies (grpcKeys <> mempoolTimeoutKeys <> dijkstraKeys) v && hasIfThen v
       )
@@ -1783,10 +1783,10 @@ schemaTests = do
   defs <- componentDefaults
   pure $
     testGroup "schemas" $
-      schemaTest "schemas/config.schema.json" (splitConfigSchemaWithDefaults defs)
+      schemaTest "schemas/config.schema.json" (configSchemaWithDefaults defs)
         : schemaTest
-          "schemas/config.legacy-one-file.schema.json"
-          (legacyOneFileConfigSchemaWithDefaults defs)
+          "schemas/config.legacy-flat.schema.json"
+          (legacyFlatConfigSchemaWithDefaults defs)
         : [ schemaTest ("schemas/" <> T.unpack name <> ".schema.json") schema
           | (name, schema) <- configurationSchemasWithDefaults defs
           ]
