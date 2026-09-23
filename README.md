@@ -52,9 +52,11 @@ file are the exceptions: those stay paths, because the node reads them itself.
 
 Other shapes still parse: a document missing any of those envelope keys, or the
 legacy flat form with the component keys at the top level, is brought into the
-envelope by `migrate` before it is parsed (see [Schema versioning](#schema-versioning)),
-which raises a single non-fatal `MigratedToCurrentFormat` warning. See
-[Warnings](#warnings).
+envelope by `migrate` before it is parsed (see [Schema versioning](#schema-versioning)).
+That raises one non-fatal warning: `OutdatedFormatVersion` when the document is
+at an older format version (a document with no `Version` is version 1, so the
+legacy form lands here), and `MigratedToCurrentFormat` when it is already at the
+current version but migration still had to change it. See [Warnings](#warnings).
 
 ### Schema versioning
 
@@ -143,8 +145,11 @@ not a layer: a configuration cannot point at one, so paste the contents of
 `variants/ProtocolConfig/mainnet.json` under your `ProtocolConfig` key.
 
 `cardano-config` is the *origin* of these defaults, but each component's are
-ultimately owned by the layer that implements it (networking, consensus, ...);
-a CI check keeps the copies here aligned with upstream.
+ultimately owned by the layer that implements it (networking, consensus, ...).
+Nothing checks them against those layers automatically; keeping them in step is
+a review matter, which is what the CODEOWNERS entry on `defaults/` is for. What
+CI does check is that the two files stay one configuration in two roles, and
+that the `HermodTracing` section matches `defaultCardanoTracingConfig`.
 
 ## Warnings
 
@@ -205,14 +210,14 @@ a `ProtocolConfig` naming the four genesis files, as the first one does.
 }
 ```
 
-That `ProtocolConfig` object is the contents of
-[`variants/ProtocolConfig/mainnet.json`](variants/ProtocolConfig/mainnet.json),
-minus its `$schema` line. The other networks have their own file to copy from.
+That `ProtocolConfig` object is exactly the contents of
+[`variants/ProtocolConfig/mainnet.json`](variants/ProtocolConfig/mainnet.json).
+The other networks have their own file to copy from.
 
 ### ... override options in a component
 
-Give the section the keys you want set, and the component's base default (and,
-for `NetworkConfig`, the credential-derived role layer) fills the rest:
+Give the section the keys you want set, and the role's default configuration
+fills the rest:
 
 ```json
 {
@@ -328,15 +333,18 @@ configuration schema describes `HermodTracing` only as "a path or a JSON
 object".
 
 Instead, the parser hands the `HermodTracing` value to `trace-dispatcher`'s own
-parser (`readConfiguration`), which resolves it into a `TraceConfig`: a file
-reference is read via `FromFile` (after resolving the path to its canonical
-location), an inline object via `FromJSONObject`.
+parser (`readConfigurationWithDefault`), which resolves it into a
+`TraceConfig`: a file reference is read via `FromFile` (after resolving the
+path to its canonical location), an inline object via `FromJSONObject`. Either
+way `defaultCardanoTracingConfig` supplies the top-level fields the source
+leaves unset.
 
 The resolved `TraceConfig` is carried through to the final `NodeConfiguration`
-(as `tracingConfiguration :: Maybe TraceConfig`), so a consumer of the library
-gets the tracing configuration already parsed, and `cardano-config resolve`
-emits it back under the `HermodTracing` key (as an inline object). It is
-`Nothing`/absent when the configuration has no `HermodTracing` key.
+(as `tracingConfiguration :: TraceConfig`), so a consumer of the library gets
+the tracing configuration already parsed, and `cardano-config resolve` emits it
+back under the `HermodTracing` key (as an inline object). A configuration with
+no `HermodTracing` key gets `defaultCardanoTracingConfig` unchanged, so there
+is always a tracing configuration.
 
 ## Mandatory keys
 
