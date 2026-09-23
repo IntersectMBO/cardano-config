@@ -59,6 +59,19 @@ The split-file form is gone, so those sections hold their objects now (below).
   `Cardano.Configuration.Commands.ConfigForm` renames its constructors to
   `CurrentForm` and `LegacyFlatForm`.
 
+* `NodeConfigurationFromFile` is a plain record. It was
+  `NodeConfigurationFromFileF Identity`, where the `f` parameter staged a
+  component that might still be a sub-file reference against one already read;
+  with no sub-files there is one stage. Each field now holds its component
+  directly, so a consumer drops the `runIdentity` around
+  `storageConfiguration`, `protocolConfiguration` and the rest. The type
+  synonym and `NodeConfigurationFromFileF` are gone, and the constructor is
+  `NodeConfigurationFromFile`, not `NodeConfigurationFromFileV1`.
+
+* `Cardano.Configuration.File.Merge.runCodec` loses its `Maybe FilePath`
+  argument and `decodeValueFile` loses its `Maybe String` section argument.
+  Both only ever named a sub-file, so every caller passed `Nothing`.
+
 * `migrate` writes the current format version instead of carrying an older one
   through, so a legacy or a version-1 document comes out at version 2 with the
   matching `$schema`. A document already at the current version keeps a

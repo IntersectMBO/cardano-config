@@ -34,14 +34,10 @@ import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
 
 -- | Read and decode a YAML\/JSON file into a 'Value', reporting syntax errors as
--- a 'ConfigurationParsingError' that names the file and section.
-decodeValueFile ::
-  -- | The section being read, for error reporting.
-  Maybe String ->
-  -- | The file to read.
-  FilePath ->
-  IO Value
-decodeValueFile section fp = BS.readFile fp >>= decodeValueBytes section fp
+-- a 'ConfigurationParsingError' that names the file. Only the configuration
+-- file itself is read this way, so there is no section to name.
+decodeValueFile :: FilePath -> IO Value
+decodeValueFile fp = BS.readFile fp >>= decodeValueBytes Nothing fp
 
 -- | Decode already-read YAML\/JSON bytes into a 'Value', reporting syntax errors
 -- against the given name. Used for the files embedded into the binary (see
@@ -66,19 +62,19 @@ decodeValueBytes section fp bytes =
     Right v -> pure v
 
 -- | Run a component parser on a 'Value', turning a failure into a structured
--- 'ConfigurationParsingError' carrying the file, section and JSON path.
+-- 'ConfigurationParsingError' carrying the section and JSON path. Every value
+-- parsed here comes from the configuration file, so the error names no other
+-- file.
 runCodec ::
   FromJSON a =>
-  -- | The file the value came from, if any.
-  Maybe FilePath ->
   -- | The section being parsed, for error reporting.
   String ->
   -- | The value to parse.
   Value ->
   IO a
-runCodec mFile section value =
+runCodec section value =
   case iparseEither parseJSON value of
-    Left (path, msg) -> throwIO $ ConfigurationParsingError (maybeToStrictMaybe mFile) (SJust section) path msg
+    Left (path, msg) -> throwIO $ ConfigurationParsingError SNothing (SJust section) path msg
     Right a -> pure a
 
 -- | Deep, right-biased merge of two JSON values: two objects are merged key by
@@ -146,7 +142,7 @@ parseSection configValue section = do
   base <- loadBaseDefault section
   user <- sectionUserLayer configValue section
   let withBase = maybe user (`mergeValues` user) base
-  runCodec Nothing section withBase
+  runCodec section withBase
 
 -- | Split the optional configuration envelope @{ \"Version\": N,
 -- \"MinNodeVersion\": \"x.y.z\", \"Configuration\": {..} }@ into the version, the

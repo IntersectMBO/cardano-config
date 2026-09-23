@@ -266,7 +266,7 @@ runMigrateCommand :: MigrateOptions -> IO ()
 runMigrateCommand (MigrateOptions path) = dieOnFailure $ do
   raw <- case path of
     "-" -> BS.getContents >>= decodeThrow
-    _ -> decodeValueFile Nothing path
+    _ -> decodeValueFile path
   -- A document written for a newer format version cannot be migrated down to
   -- this one, so say so instead of rewriting it into something it is not.
   declared <- declaredFormatVersion raw

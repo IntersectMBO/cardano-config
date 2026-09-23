@@ -1,13 +1,10 @@
-{-# LANGUAGE GADTs #-}
-
 -- | Orchestration of configuration-file parsing: it ties together the JSON
 -- layering engine ("Cardano.Configuration.File.Merge"), the key linting
 -- ("Cardano.Configuration.File.Lint") and the per-component parsers and genesis
 -- readers, and re-exports the public surface.
 module Cardano.Configuration.File
   ( -- * Configuration file
-    NodeConfigurationFromFile
-  , NodeConfigurationFromFileF (..)
+    NodeConfigurationFromFile (..)
   , parseConfigurationFiles
 
     -- * Warnings
@@ -113,19 +110,20 @@ import Control.Monad (when)
 import Data.Aeson (FromJSON, Value)
 import qualified Data.Aeson.Key as K
 import Data.Aeson.Types (JSONPathElement (..))
-import Data.Functor.Identity (Identity (..))
 import Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import GHC.Stack
 import System.FilePath (takeDirectory, (</>))
 
--- | The configuration from the files, parsed with 'parseConfigurationFiles'
-type NodeConfigurationFromFile = NodeConfigurationFromFileF Identity
-
--- | The fully parsed configuration, as read from the configuration file.
-data NodeConfigurationFromFileF f
-  = NodeConfigurationFromFileV1
+-- | The fully parsed configuration, as read from the configuration file with
+-- 'parseConfigurationFiles'.
+--
+-- Each component is the merge of its base default with the section the user
+-- wrote, so its own @f@ parameter is 'StrictMaybe': a field the configuration
+-- leaves unset is @SNothing@ here and is filled at resolution, from the command
+-- line or as an error (see 'Cardano.Configuration.resolveConfiguration').
+data NodeConfigurationFromFile = NodeConfigurationFromFile
   { minNodeVersion :: StrictMaybe T.Text
   -- ^ The minimum @cardano-node@ version expected to run this configuration,
   -- taken from the optional top-level @MinNodeVersion@ key (a sibling of
@@ -136,11 +134,11 @@ data NodeConfigurationFromFileF f
   -- t'Cardano.Configuration.NodeConfiguration'; 'resolveConfiguration' drops it.
   -- It lives only on this file-parse result, so a consumer that wants to act on
   -- it must read it here, before resolving.
-  , storageConfiguration :: f (StorageConfiguration StrictMaybe)
-  , consensusConfiguration :: f (ConsensusConfiguration StrictMaybe)
-  , protocolConfiguration :: f (ProtocolConfiguration StrictMaybe)
-  , networkConfiguration :: f (NetworkConfiguration StrictMaybe)
-  , networkUserLayer :: f (NetworkConfiguration StrictMaybe)
+  , storageConfiguration :: StorageConfiguration StrictMaybe
+  , consensusConfiguration :: ConsensusConfiguration StrictMaybe
+  , protocolConfiguration :: ProtocolConfiguration StrictMaybe
+  , networkConfiguration :: NetworkConfiguration StrictMaybe
+  , networkUserLayer :: NetworkConfiguration StrictMaybe
   -- ^ The user-supplied network layer alone, /without/ the base defaults merged
   -- in (unlike 'networkConfiguration', which is the full merge of the base
   -- defaults with the user layer on top).
@@ -148,9 +146,9 @@ data NodeConfigurationFromFileF f
   -- Resolution needs to tell a value the user actually wrote from one that only
   -- came from the base defaults, so the role defaults can sit between them
   -- (@base \< role \< user@); see 'withRoleDefaults'.
-  , localConnectionsConfig :: f (LocalConnectionsConfig StrictMaybe)
-  , testingConfiguration :: f (TestingConfiguration StrictMaybe)
-  , mempoolConfiguration :: f (MempoolConfiguration StrictMaybe)
+  , localConnectionsConfig :: LocalConnectionsConfig StrictMaybe
+  , testingConfiguration :: TestingConfiguration StrictMaybe
+  , mempoolConfiguration :: MempoolConfiguration StrictMaybe
   , tracingConfiguration :: TraceConfig
   -- ^ The tracing configuration referenced by the top-level @HermodTracing@ key,
   -- resolved by @trace-dispatcher@'s own parser ('resolveTracingConfiguration'):
@@ -180,9 +178,7 @@ data NodeConfigurationFromFileF f
   -- consumer building the node's @SomeHasFS@ does not have to re-derive it; see
   -- "Cardano.Configuration.Genesis.Injection".
   }
-  deriving Generic
-
-deriving instance Show (NodeConfigurationFromFileF Identity)
+  deriving (Generic, Show)
 
 -- | The per-component base defaults (@defaults\/<Component>.json@), for schema
 -- generation. Keyed by component name; components without a defaults file are
@@ -209,7 +205,7 @@ componentDefaults =
 parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
-  rawValue <- decodeValueFile Nothing cfgFile
+  rawValue <- decodeValueFile cfgFile
   -- Every document is run through 'migrate' before parsing, so an already-enveloped
   -- configuration that still uses a pre-rename field name (or carries a stray
   -- top-level sibling) is brought up to the current shape too — not only a
@@ -278,14 +274,14 @@ parseConfigurationBody root minNodeVer configValue = do
   -- The user's network layer on its own (no base defaults), so resolution can
   -- distinguish a user-set field from a base default (see 'withRoleDefaults').
   networkUser <-
-    sectionUserLayer configValue "NetworkConfig" >>= runCodec Nothing "NetworkConfig"
+    sectionUserLayer configValue "NetworkConfig" >>= runCodec "NetworkConfig"
   localConnections <- parseSection configValue "LocalConnectionsConfig"
   testing <- parseSection configValue "TestingConfig"
   mempool <- parseSection configValue "MempoolConfig"
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
   -- 'TraceConfig' — reading the referenced file, or the inline object directly.
-  tracing <- runCodec Nothing "Tracing" configValue
+  tracing <- runCodec "Tracing" configValue
   traceConfig <- resolveTracingConfiguration root tracing
   -- The genesis files referenced by the configuration are read and decoded
   -- here, so that JSON resolution happens entirely within this library.
@@ -320,16 +316,16 @@ parseConfigurationBody root minNodeVer configValue = do
         ]
   checkInjectionOrThrow injectionRoot shelleyGenesisData conwayGenesisData
   pure . (,experimentalWarnings) $
-    NodeConfigurationFromFileV1
+    NodeConfigurationFromFile
       { minNodeVersion = maybeToStrictMaybe minNodeVer
-      , storageConfiguration = Identity storage
-      , consensusConfiguration = Identity consensus
-      , protocolConfiguration = Identity protocol
-      , networkConfiguration = Identity network
-      , networkUserLayer = Identity networkUser
-      , localConnectionsConfig = Identity localConnections
-      , testingConfiguration = Identity testing
-      , mempoolConfiguration = Identity mempool
+      , storageConfiguration = storage
+      , consensusConfiguration = consensus
+      , protocolConfiguration = protocol
+      , networkConfiguration = network
+      , networkUserLayer = networkUser
+      , localConnectionsConfig = localConnections
+      , testingConfiguration = testing
+      , mempoolConfiguration = mempool
       , tracingConfiguration = traceConfig
       , byronGenesisConfig = byronGenesisData
       , shelleyGenesisConfig = shelleyGenesisData

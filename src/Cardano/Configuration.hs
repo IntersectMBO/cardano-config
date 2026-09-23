@@ -351,13 +351,13 @@ resolveConfigurationWith checks cli file = do
   -- value wins and the role default beats the base default (see
   -- 'File.withRoleDefaults').
   let roleDefaults = File.networkRoleDefaults (roleFromCredentials (CLI.credentials cli))
-      netMerged = runIdentity (File.networkConfiguration file)
-      netUser = runIdentity (File.networkUserLayer file)
+      netMerged = File.networkConfiguration file
+      netUser = File.networkUserLayer file
   network <- finalize $ File.finalizeNetwork (File.withRoleDefaults roleDefaults netUser netMerged)
-  testing <- finalize $ File.finalizeTesting (runIdentity (File.testingConfiguration file))
-  mempool <- finalize $ File.finalizeMempool (runIdentity (File.mempoolConfiguration file))
+  testing <- finalize $ File.finalizeTesting (File.testingConfiguration file)
+  mempool <- finalize $ File.finalizeMempool (File.mempoolConfiguration file)
   -- Local connections additionally take CLI overrides before being finalized.
-  let lcc = runIdentity $ File.localConnectionsConfig file
+  let lcc = File.localConnectionsConfig file
       lccWithCli =
         lcc
           { File.socketPath = CLI.socketPath cli <|> File.socketPath lcc
@@ -371,12 +371,12 @@ resolveConfigurationWith checks cli file = do
   -- or the file (whose always-applied base-default layer supplies the default).
   -- A missing value is a resolution error, not a hard-coded fallback, so the
   -- defaults live solely in the defaults/ files.
-  let sc = runIdentity $ File.storageConfiguration file
-      pc = runIdentity $ File.protocolConfiguration file
+  let sc = File.storageConfiguration file
+      pc = File.protocolConfiguration file
   dbPath <- finalize $ require "DatabasePath" (CLI.databasePathCLI cli <|> File.databasePath sc)
   consensusMode <-
     finalize $
-      require "ConsensusMode" (getConsensusConfiguration (runIdentity (File.consensusConfiguration file)))
+      require "ConsensusMode" (getConsensusConfiguration (File.consensusConfiguration file))
   startNonProducing <-
     finalize $
       require
