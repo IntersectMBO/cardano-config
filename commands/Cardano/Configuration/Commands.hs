@@ -56,7 +56,7 @@ import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, reso
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
 import Cardano.Configuration.File.Merge (declaredFormatVersion, decodeValueFile)
-import Cardano.Configuration.File.Migrate (migrate)
+import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
   ( configurationSchemas
@@ -253,7 +253,7 @@ migrateCommand =
         ( progDesc
             ( "Reshape a configuration into the recommended "
                 <> "{ $schema, Version, MinNodeVersion, Configuration } envelope and print it as JSON. "
-                <> "Preserves the values as written (no defaults are filled, no sub-files inlined)."
+                <> "Preserves the values as written (no defaults are filled, no genesis files read)."
             )
         )
     )
@@ -277,7 +277,7 @@ runMigrateCommand (MigrateOptions path) = handleAny (die . displayException) $ d
         <> ", and this cardano-config writes version "
         <> show currentFormatVersion
         <> ". Upgrade cardano-config to migrate it."
-  let (migrated, warnings) = migrate raw
+  (migrated, warnings) <- either (die . renderMigrationError) pure (migrate raw)
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
   dump migrated
   hPutStrLn stderr $

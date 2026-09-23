@@ -9,10 +9,15 @@
 -- configuration up to the current names.
 --
 -- Apart from those renames\/removals this is a purely structural migration: it
--- preserves the values as written and does /not/ fill in defaults, inline
--- referenced sub-files, or read genesis files. It is meant to port a legacy
--- single-file (flat) or otherwise non-enveloped configuration to the new layout;
--- resolution and validation are left to a subsequent @resolve@.
+-- preserves the values as written and does /not/ fill in defaults or read
+-- genesis files. It is meant to port a legacy flat or otherwise non-enveloped
+-- configuration to the new layout; resolution and validation are left to a
+-- subsequent @resolve@.
+--
+-- A configuration is one file, so a section that names a separate file instead
+-- of holding an object cannot be migrated: reading that file is exactly what
+-- @migrate@ does not do. Such a document is rejected with a
+-- 'MigrationError' naming every section at fault (see 'renderMigrationError').
 --
 -- The reshaping (see 'migrate'):
 --
@@ -41,9 +46,9 @@
 --     name), and the obsolete keys of the old iohk-monitoring logging system
 --     (@setupScribes@, @minSeverity@, … — no longer read by anything) are dropped
 --     (see 'tracingLegacyKeys'\/'tracingObsoleteKeys');
---   * a section key (whether an inline object or a path to a sub-file), an
---     existing @HermodTracing@ key, and any unrecognised key are kept at the
---     @Configuration@ level as-is (so nothing is silently dropped);
+--   * a section key, an existing @HermodTracing@ key, and any unrecognised key
+--     are kept at the @Configuration@ level as-is (so nothing is silently
+--     dropped);
 --   * a top-level sibling of an existing @Configuration@ envelope (e.g. a stray
 --     @ByronGenesisFile@) is merged into the body and regrouped, not dropped; if it
 --     collides with a key already inside @Configuration@ the enveloped value wins
@@ -53,6 +58,8 @@
 --   * a document already in the envelope is reshaped idempotently.
 module Cardano.Configuration.File.Migrate
   ( migrate
+  , MigrationError (..)
+  , renderMigrationError
   ) where
 
 import Cardano.Configuration.File.Lint (ConfigWarning (..))
@@ -61,9 +68,11 @@ import Cardano.Configuration.Schema (componentPropertyNames, currentFormatVersio
 import Data.Aeson (Value (..))
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger)
 import Data.Text (Text)
+import qualified Data.Text as T
 
 -- | Migrate a raw configuration value to the envelope, together with the
 -- non-fatal 'ConfigWarning's raised while doing so (a renamed field colliding with
@@ -73,11 +82,33 @@ import Data.Text (Text)
 --
 -- Renames and removals are applied first (recursively, over the whole document)
 -- so that the subsequent structural grouping sees only current names.
-migrate :: Value -> (Value, [ConfigWarning])
-migrate value =
+--
+-- A document whose sections do not all hold an object is rejected with a
+-- 'MigrationError': see the module header.
+migrate :: Value -> Either MigrationError (Value, [ConfigWarning])
+migrate value = do
   let (renamed, renameWarnings) = renameLegacy value
-      (reshaped, reshapeWarnings) = reshape renamed
-   in (reshaped, renameWarnings <> reshapeWarnings)
+  (reshaped, reshapeWarnings) <- reshape renamed
+  pure (reshaped, renameWarnings <> reshapeWarnings)
+
+-- | Why a document cannot be migrated.
+newtype MigrationError
+  = -- | These sections (the section name and the value found) hold something
+    -- other than a configuration object. Older configurations split a section
+    -- out into a separate file and named that file here.
+    SectionsNotInline [(Text, Value)]
+  deriving (Eq, Show)
+
+-- | A human-readable rendering of a 'MigrationError'.
+renderMigrationError :: MigrationError -> String
+renderMigrationError (SectionsNotInline sections) =
+  "the configuration is not held in one file: "
+    <> intercalate ", " (map describe sections)
+    <> ". A section holds its configuration object directly, so copy each of "
+    <> "those files' contents in under its section key and migrate again."
+ where
+  describe (name, String path) = T.unpack name <> " names the file " <> show (T.unpack path)
+  describe (name, _) = T.unpack name <> " is not an object"
 
 -- | The field renames introduced in the current key-naming series, as
 -- @(old, new)@. The parser only accepts the new names; @migrate@ rewrites the
@@ -291,15 +322,18 @@ tracingObsoleteKeys =
 
 -- | The structural reshape into the envelope. A value that is not a
 -- JSON\/YAML object is returned unchanged (with no warnings).
-reshape :: Value -> (Value, [ConfigWarning])
-reshape (Object top) =
-  ( Object $
-      KM.insert "$schema" schemaValue $
-        KM.insert "Version" version $
-          withMinNodeVersion $
-            KM.singleton "Configuration" (Object configuration)
-  , collisionWarnings
-  )
+reshape :: Value -> Either MigrationError (Value, [ConfigWarning])
+reshape (Object top)
+  | not (null notInline) = Left (SectionsNotInline notInline)
+  | otherwise =
+      Right
+        ( Object $
+            KM.insert "$schema" schemaValue $
+              KM.insert "Version" version $
+                withMinNodeVersion $
+                  KM.singleton "Configuration" (Object configuration)
+        , collisionWarnings
+        )
  where
   declared = KM.lookup "Version" top
   -- Write the current format version. A document declaring a newer one is left
@@ -336,6 +370,15 @@ reshape (Object top) =
   collisionWarnings =
     [EnvelopeKeyCollision (K.toText k) | k <- KM.keys siblings, k `KM.member` envelopeBody]
 
+  -- A section that does not hold an object cannot be migrated: the values it
+  -- stands for are in another file, which migrate does not read.
+  notInline =
+    [ (K.toText k, v)
+    | (k, v) <- KM.toList body
+    , K.toText k `elem` sectionNames
+    , not (isObject v)
+    ]
+
   -- Group each body key under its component section. A flat property key nests
   -- under the section that owns it; a flat trace-dispatcher key nests (verbatim)
   -- under HermodTracing; a top-level @ApplicationName@ is collapsed into
@@ -344,7 +387,8 @@ reshape (Object top) =
   -- an obsolete iohk-monitoring key is dropped; a section key, an existing
   -- HermodTracing or any unrecognised key stays at the Configuration level as-is.
   -- A mixed input (a section object plus some of its flat keys, or HermodTracing
-  -- alongside flat tracing keys) is deep-merged.
+  -- alongside flat tracing keys) is deep-merged. Every section present holds an
+  -- object (checked above), so nesting never has to merge into a non-object.
   configuration = KM.foldrWithKey place KM.empty body
   place k v
     | key `elem` tracingObsoleteKeys = id
@@ -356,24 +400,24 @@ reshape (Object top) =
     key = K.toText k
     keepFlat = KM.insertWith mergeValues k v
     -- Nest @v@ under @section@ using @targetKey@ (the original key, except a
-    -- top-level @ApplicationName@ is nested as @TraceOptionNodeName@), unless the
-    -- section is already present as a non-object — a path to a sub-file. Merging an
-    -- inline key into a file reference would silently drop the key (a file path is
-    -- not an object, so 'mergeValues' would keep the path and lose the value), so
-    -- in that case the key is kept flat at the Configuration level instead, where
-    -- it surfaces as an unrecognised-key warning on the next parse rather than
-    -- being lost. When the section is absent (a purely flat document) or an inline
-    -- object, the key nests as normal.
-    nestUnderAs section targetKey = case KM.lookup (K.fromText section) body of
-      Just v' | not (isObject v') -> keepFlat
-      _ -> KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton targetKey v))
-    isObject Object{} = True
-    isObject _ = False
-reshape v = (v, [])
+    -- top-level @ApplicationName@ is nested as @TraceOptionNodeName@).
+    nestUnderAs section targetKey =
+      KM.insertWith mergeValues (K.fromText section) (Object (KM.singleton targetKey v))
+reshape v = Right (v, [])
+
+-- | Whether a value is a JSON object.
+isObject :: Value -> Bool
+isObject Object{} = True
+isObject _ = False
 
 -- | Top-level keys that belong to the envelope, not to the configuration body.
 envelopeAnnotations :: [Text]
 envelopeAnnotations = ["$schema", "Version", "MinNodeVersion", "Configuration"]
+
+-- | The name of every component section, so a section holding something other
+-- than its configuration object can be reported.
+sectionNames :: [Text]
+sectionNames = map fst componentPropertyNames
 
 -- | Each component property name mapped to the section that owns it. Every
 -- property belongs to exactly one component (see 'componentPropertyNames').

@@ -12,7 +12,7 @@
 -- under @cabal test@, Nix and a source distribution alike. Unlike the files the
 -- library itself needs, which are compiled into it (see
 -- "Cardano.Configuration.Embedded"), the fixtures are read as files: most of
--- them are fed to the file pipeline, which resolves sub-file references
+-- them are fed to the file pipeline, which resolves the genesis paths they name
 -- relative to the file's own directory.
 --
 -- The cases form a tasty 'TestTree' of @tasty-hunit@ assertions; 'defaultMain'
@@ -23,7 +23,7 @@ import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
 import Cardano.Configuration.CliArgs (CliArgs, grpcEndpointCLI, parseCliArgs)
 import Cardano.Configuration.File
-import Cardano.Configuration.File.Migrate (migrate)
+import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Storage
   ( LedgerDbBackendSelector (..)
   , LedgerDbConfiguration (..)
@@ -117,14 +117,13 @@ cases =
           IO (Either String (LocalConnectionsConfig StrictMaybe))
       )
   , parseCase "test/examples/legacy-fullconfig.json"
-  , parseCase "test/examples/split.json"
-  , parseCase "test/examples/split-all.json"
+  , parseCase "test/examples/all-sections.json"
   , tracingCase
   , tracingDefaultParityCase
-  , misplacedKeyCase
+  , unrecognisedKeyCase
   , migrationWarningCase
   , migrationErrorCase
-  , splitSubfileSchemaCase
+  , componentSchemaPropertyCase
   , formatVersionCase
   , formatVersionCompatibilityCase
   , migrateCase
@@ -138,7 +137,7 @@ cases =
   , migrateEnvelopeCollisionCase
   , migrateEnvelopedRenameCase
   , migrateRenameCollisionCase
-  , subfilePathConfinementCase
+  , sectionNotInlineCase
   , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
@@ -183,6 +182,12 @@ cases =
   , byronGenesisDecodeCase
   ]
 
+-- | 'migrate' on a document that is expected to migrate cleanly. Every input
+-- below is one, so a rejection is a test failure; 'sectionNotInlineCase' covers
+-- the rejecting path.
+migrated :: Value -> (Value, [ConfigWarning])
+migrated = either (error . renderMigrationError) id . migrate
+
 -- | Fail the assertion with the message when one is present, otherwise pass.
 expectOk :: Maybe String -> Assertion
 expectOk = maybe (pure ()) assertFailure
@@ -206,7 +211,7 @@ decodeCase label act =
       Left err -> assertFailure err
       Right v -> () <$ evaluate (length (show v))
 
--- | Parse a full configuration file (exercising sub-files).
+-- | Parse a full configuration file through the whole pipeline.
 parseCase :: FilePath -> TestTree
 parseCase fp =
   testCase fp $ do
@@ -216,51 +221,41 @@ parseCase fp =
       Left (e :: SomeException) -> Just (show e)
       Right _ -> Nothing
 
--- | A section sub-file path must be a relative path that resolves to a file
--- within the configuration directory. An absolute path (@\/etc\/passwd@) and one
--- that climbs out of the directory with @..@ are both rejected as invalid paths,
--- so a configuration cannot pull in arbitrary files.
-subfilePathConfinementCase :: TestTree
-subfilePathConfinementCase =
-  testCase "section sub-file paths are confined to the config directory (no absolute, no escaping)" $ do
-    absolute <- rejectionMessage "test/examples/subfile-absolute.json"
-    escaping <- rejectionMessage "test/examples/subfile-escapes.json"
-    expectOk $ case (absolute, escaping) of
-      (Just a, Just e)
-        | "invalid configuration file path" `isInfixOf` a
-        , "invalid configuration file path" `isInfixOf` e ->
-            Nothing
-      _ ->
-        Just ("expected both paths rejected as invalid, got " <> show (absolute, escaping))
- where
-  -- The error message if parsing was rejected, or 'Nothing' if it wrongly
-  -- succeeded.
-  rejectionMessage fp = do
-    path <- getDataFileName fp
+-- | A configuration is held in one file, so a section that names a separate
+-- file instead of holding its configuration object is rejected, naming the
+-- section and telling the user to copy the contents in.
+sectionNotInlineCase :: TestTree
+sectionNotInlineCase =
+  testCase "a section naming a separate file is rejected" $ do
+    path <- getDataFileName "test/examples/section-not-inline.json"
     res <- try (parseConfigurationFiles path)
-    pure $ case res of
-      Left (e :: SomeException) -> Just (show e)
-      Right _ -> Nothing
+    expectOk $ case res of
+      Right _ -> Just "expected a section naming a separate file to be rejected"
+      Left (e :: SomeException)
+        | "StorageConfig" `isInfixOf` show e
+        , "one file" `isInfixOf` show e ->
+            Nothing
+        | otherwise -> Just ("unexpected rejection message: " <> show e)
 
--- | A component property placed flat under @Configuration@ (here a
--- @DijkstraGenesisFile@ alongside the @TestingConfig@ section that owns it) is not
--- resolved into that section: it is an unrecognised key. Parsing still succeeds
--- (the component is read from its section) and an 'UnrecognisedKeys' warning names
--- the misplaced key.
-misplacedKeyCase :: TestTree
-misplacedKeyCase =
-  testCase "test/examples/shadow.json (a misplaced component key is unrecognised, still parses)" $ do
-    path <- getDataFileName "test/examples/shadow.json"
+-- | A key at the @Configuration@ level that no parser recognises (here the
+-- typo @DijsktraGenesisFile@) belongs to no section, so migration leaves it
+-- where it is. Parsing still succeeds and an 'UnrecognisedKeys' warning names
+-- it. A key that /is/ a component property is a different matter: migration
+-- groups it under the section that owns it (see 'migrateCase').
+unrecognisedKeyCase :: TestTree
+unrecognisedKeyCase =
+  testCase "test/examples/unrecognised-key.json (an unknown key warns, still parses)" $ do
+    path <- getDataFileName "test/examples/unrecognised-key.json"
     res <- try (parseConfigurationFiles path)
     expectOk $ case res of
       Left (e :: SomeException) -> Just (show e)
       Right (_, warnings)
-        | any mentionsDijkstra warnings -> Nothing
+        | any mentionsTypo warnings -> Nothing
         | otherwise ->
-            Just ("expected an UnrecognisedKeys warning for DijkstraGenesisFile, got " <> show warnings)
+            Just ("expected an UnrecognisedKeys warning for DijsktraGenesisFile, got " <> show warnings)
  where
-  mentionsDijkstra (UnrecognisedKeys ks) = "DijkstraGenesisFile" `elem` ks
-  mentionsDijkstra _ = False
+  mentionsTypo (UnrecognisedKeys ks) = "DijsktraGenesisFile" `elem` ks
+  mentionsTypo _ = False
 
 -- | Every document is migrated before parsing, and the two warnings that
 -- reports split by cause. A document at an older format version yields
@@ -315,13 +310,13 @@ migrationErrorCase =
       Left (_ :: SomeException) -> Nothing
       Right _ -> Just "expected a parse error for a document whose migration is unparseable"
 
--- | Each per-component split sub-file declares a @$schema@ pointing to that
+-- | Each per-component fixture declares a @$schema@ pointing to that
 -- component's schema, and the component schema in turn declares a @$schema@
 -- property — so the annotation is recognised. Guards both the fixtures and the
 -- schema generation.
-splitSubfileSchemaCase :: TestTree
-splitSubfileSchemaCase =
-  testCase "split sub-files declare $schema; component schemas have the property" $ do
+componentSchemaPropertyCase :: TestTree
+componentSchemaPropertyCase =
+  testCase "component documents declare $schema; component schemas have the property" $ do
     results <- mapM check pairs
     expectOk (case [m | Just m <- results] of [] -> Nothing; (m : _) -> Just m)
  where
@@ -383,7 +378,7 @@ migrateCase =
     res <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
-      Right raw -> case fst (migrate raw) of
+      Right raw -> case fst (migrated raw) of
         m@(Object top)
           | not (all (`KM.member` top) (map K.fromString envelopeKeys)) ->
               Just ("missing envelope keys; got " <> show (KM.keys top))
@@ -397,7 +392,7 @@ migrateCase =
                     Just "StorageConfig.LedgerDB not grouped"
                 | KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg ->
                     Just "removed key MaxKnownMajorProtocolVersion survived (should be dropped)"
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
         _ -> Just "migrate did not produce an object"
@@ -438,7 +433,7 @@ formatVersionCompatibilityCase =
                 | "99" `isInfixOf` show e -> Nothing
                 | otherwise -> Just ("rejected, but without naming the version: " <> show e)
  where
-  upgraded v = case fst (migrate v) of
+  upgraded v = case fst (migrated v) of
     Object o ->
       KM.lookup (K.fromString "Version") o == Just (Number (fromIntegral currentFormatVersion))
         && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
@@ -458,7 +453,7 @@ migrateRenameCase =
     res <- decodeData "test/examples/legacy-renamed-fields.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
-      Right raw -> case fst (migrate raw) of
+      Right raw -> case fst (migrated raw) of
         m@(Object top)
           | any (`elem` removed) (allKeys m) ->
               Just ("a removed key survived; keys: " <> show (allKeys m))
@@ -480,7 +475,7 @@ migrateRenameCase =
                 -- A genuinely-unrecognised key (a typo) is kept, not dropped.
                 | not (KM.member (K.fromString "SomeUnrecognisedKey") cfg) ->
                     Just "a genuinely-unrecognised key was dropped (should be kept)"
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
         _ -> Just "migrate did not produce an object"
@@ -528,7 +523,7 @@ migrateTracingCase =
   testCase
     "migrate gathers trace-dispatcher keys verbatim under HermodTracing and drops obsolete logging keys"
     $ expectOk
-    $ case fst (migrate legacyTracing) of
+    $ case fst (migrated legacyTracing) of
       m@(Object top)
         | any (`elem` obsolete) (allKeys m) ->
             Just ("an obsolete logging key survived; keys: " <> show (allKeys m))
@@ -540,7 +535,7 @@ migrateTracingCase =
                 -- The trace-dispatcher keys moved into HermodTracing, not left flat.
                 | any (\k -> KM.member (K.fromString k) cfg) tracingKeys ->
                     Just "a trace-dispatcher key was left flat under Configuration"
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "HermodTracing was not created as an object"
             _ -> Just "Configuration is not an object"
@@ -591,7 +586,7 @@ migrateApplicationNameCase =
   testCase
     "migrate collapses top-level ApplicationName to HermodTracing.TraceOptionNodeName, drops ApplicationVersion"
     $ expectOk
-    $ case fst (migrate legacyByron) of
+    $ case fst (migrated legacyByron) of
       m@(Object top)
         | "ApplicationVersion" `elem` allKeys m -> Just "ApplicationVersion survived"
         | "ApplicationName" `elem` allKeys m -> Just "top-level ApplicationName was not collapsed"
@@ -600,7 +595,7 @@ migrateApplicationNameCase =
               Just (Object h) -> case KM.lookup (K.fromString "TraceOptionNodeName") h of
                 Just (String n)
                   | n /= T.pack "cardano-sl" -> Just ("TraceOptionNodeName has wrong value: " <> show n)
-                  | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                  | fst (migrated m) /= m -> Just "migrate is not idempotent"
                   | otherwise -> Nothing
                 _ -> Just "HermodTracing.TraceOptionNodeName is missing"
               _ -> Just "HermodTracing was not created as an object"
@@ -627,7 +622,7 @@ migrateApplicationNameCase =
 migrateLedgerDbSnapshotsCase :: TestTree
 migrateLedgerDbSnapshotsCase =
   testCase "migrate gathers flat LedgerDB snapshot options into LedgerDB.Snapshots" $
-    expectOk $ case fst (migrate legacyLedgerDB) of
+    expectOk $ case fst (migrated legacyLedgerDB) of
       m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
         Just (Object ldb)
           | any (\k -> KM.member (K.fromString k) ldb) snapOpts ->
@@ -638,7 +633,7 @@ migrateLedgerDbSnapshotsCase =
               Just (Object snaps)
                 | not (all (\k -> KM.member (K.fromString k) snaps) snapOpts) ->
                     Just ("LedgerDB.Snapshots is missing a moved key; has: " <> show (KM.keys snaps))
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "LedgerDB.Snapshots was not created as an object"
         _ -> Just "Configuration.StorageConfig.LedgerDB not found"
@@ -668,7 +663,7 @@ migrateLedgerDbSnapshotsCase =
 migrateLedgerDbBackendCase :: TestTree
 migrateLedgerDbBackendCase =
   testCase "migrate folds the flat V2LSM backend into Backend.LSM" $
-    expectOk $ case fst (migrate legacyLedgerDB) of
+    expectOk $ case fst (migrated legacyLedgerDB) of
       m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
         Just (Object ldb)
           | any (\k -> KM.member (K.fromString k) ldb) ["LSMDatabasePath", "LSMExportPath"] ->
@@ -678,7 +673,7 @@ migrateLedgerDbBackendCase =
                 Just (Object lsm)
                   | KM.lookup (K.fromString "DatabasePath") lsm == Just (String (T.pack "lsm"))
                       && KM.lookup (K.fromString "ExportPath") lsm == Just (String (T.pack "lsm-export")) ->
-                      if fst (migrate m) == m then Nothing else Just "migrate is not idempotent"
+                      if fst (migrated m) == m then Nothing else Just "migrate is not idempotent"
                   | otherwise -> Just ("Backend.LSM has wrong contents: " <> show (KM.toList lsm))
                 _ -> Just "Backend.LSM was not created as an object"
               other -> Just ("Backend was not folded into an object: " <> show other)
@@ -728,7 +723,7 @@ backendRoundTripCase =
 migrateSiblingCase :: TestTree
 migrateSiblingCase =
   testCase "migrate keeps a top-level sibling of the Configuration envelope (regroups, not drops)" $
-    expectOk $ case migrate input of
+    expectOk $ case migrated input of
       (Object top, warnings)
         | not (null warnings) -> Just ("expected no warnings, got " <> show warnings)
         | otherwise -> case KM.lookup (K.fromString "Configuration") top of
@@ -744,7 +739,7 @@ migrateSiblingCase =
   input =
     obj
       [ ("Version", Number 1)
-      , ("Configuration", obj [("StorageConfig", String (T.pack "storage.json"))])
+      , ("Configuration", obj [("StorageConfig", obj [("DatabasePath", String (T.pack "db"))])])
       , ("ByronGenesisFile", String (T.pack "byron.json"))
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
@@ -759,7 +754,7 @@ migrateEnvelopeCollisionCase =
   testCase
     "migrate resolves a sibling/Configuration collision in favour of Configuration (with a warning)"
     $ expectOk
-    $ case migrate input of
+    $ case migrated input of
       (Object top, warnings)
         | EnvelopeKeyCollision (T.pack "MempoolConfig") `notElem` warnings ->
             Just ("expected an EnvelopeKeyCollision for MempoolConfig, got " <> show warnings)
@@ -795,7 +790,7 @@ migrateEnvelopedRenameCase =
   testCase "migrate renames inside an envelope, and repins $schema only on an upgrade" $
     expectOk (firstProblem [renamed, upgradedRepins, currentKeepsPin])
  where
-  renamed = case migrate (envelope 1) of
+  renamed = case migrated (envelope 1) of
     (m@(Object top), _)
       | "EnableRpc" `elem` allKeys m -> Just "the old name EnableRpc survived the rename"
       | otherwise -> case KM.lookup (K.fromString "Configuration") top of
@@ -815,7 +810,7 @@ migrateEnvelopedRenameCase =
           ( "a document already at the current version lost its pinned $schema: "
               <> show (schemaOf (envelope currentFormatVersion))
           )
-  schemaOf v = case fst (migrate v) of
+  schemaOf v = case fst (migrated v) of
     Object top -> KM.lookup (K.fromString "$schema") top
     _ -> Nothing
   pinnedSchema = String (T.pack "https://example.com/pinned/config.schema.json")
@@ -841,7 +836,7 @@ migrateEnvelopedRenameCase =
 migrateRenameCollisionCase :: TestTree
 migrateRenameCollisionCase =
   testCase "migrate keeps the current name on an old/new rename collision (with a warning)" $
-    expectOk $ case migrate input of
+    expectOk $ case migrated input of
       (Object top, warnings)
         | expectedWarning `notElem` warnings ->
             Just ("expected a RenamedKeyCollision warning, got " <> show warnings)
@@ -888,7 +883,7 @@ minNodeVersionCase =
   testCase "MinNodeVersion is read at the top level (enveloped and legacy), or absent" $ do
     enveloped <- parsedMinNodeVersion "test/examples/min-node-version.json"
     legacy <- parsedMinNodeVersion "test/examples/min-node-version-legacy.json"
-    absent <- parsedMinNodeVersion "test/examples/split.json"
+    absent <- parsedMinNodeVersion "test/examples/all-sections.json"
     expectOk $
       if enveloped == SJust (T.pack "10.5.0")
         && legacy == SJust (T.pack "9.1.0")

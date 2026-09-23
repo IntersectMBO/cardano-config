@@ -70,7 +70,7 @@ import Cardano.Configuration.File.Merge
   , sectionUserLayer
   , splitEnvelope
   )
-import Cardano.Configuration.File.Migrate (migrate)
+import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Network
 import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
@@ -123,8 +123,7 @@ import System.FilePath (takeDirectory, (</>))
 -- | The configuration from the files, parsed with 'parseConfigurationFiles'
 type NodeConfigurationFromFile = NodeConfigurationFromFileF Identity
 
--- | The configuration from the files, initially maybe pointing to sub-files and
--- finally fully parsed.
+-- | The fully parsed configuration, as read from the configuration file.
 data NodeConfigurationFromFileF f
   = NodeConfigurationFromFileV1
   { minNodeVersion :: StrictMaybe T.Text
@@ -196,9 +195,12 @@ componentDefaults =
       (\name -> fmap (name,) <$> loadBaseDefault (T.unpack name))
       (map fst componentPropertyNames)
 
--- | Parse the configuration file and any sub-files referenced from it, together
--- with any non-fatal 'ConfigWarning's (unrecognised keys, shadowed keys, use of
--- the legacy single-file form).
+-- | Parse the configuration file, together with any non-fatal
+-- 'ConfigWarning's (unrecognised keys, or a document that had to be migrated).
+--
+-- The whole configuration is held in that one file, apart from the genesis
+-- files and the optional @HermodTracing@ file, which are read from the paths it
+-- gives.
 --
 -- The configuration may be given in JSON or YAML. Failures are thrown as a
 -- 'ConfigurationParsingError', identifying the offending file, section and
@@ -233,8 +235,14 @@ parseConfigurationFiles cfgFile = do
             <> show currentFormatVersion
             <> ", so upgrade cardano-config to read it."
         )
-  let (mainValue, migrateWarnings) = migrate rawValue
-      migrationWarnings =
+  -- A document migrate cannot reshape — one whose sections name separate files
+  -- rather than holding their configuration — is rejected here, naming them.
+  (mainValue, migrateWarnings) <- case migrate rawValue of
+    Left err ->
+      throwIO $
+        ConfigurationParsingError (SJust cfgFile) SNothing [] (renderMigrationError err)
+    Right ok -> pure ok
+  let migrationWarnings =
         -- An outdated version is reported on its own. migrate always rewrites
         -- such a document, so the generic warning would only repeat it.
         [ MigratedToCurrentFormat
@@ -252,14 +260,10 @@ parseConfigurationFiles cfgFile = do
   pure (config, warnings <> parseWarnings)
 
 -- | Parse a configuration object at the current format version, reading each
--- component either
--- inline or from its referenced sub-file, together with the warnings that only
--- the parsed configuration can reveal (an ignored experimental genesis).
---
--- Version 2 has the same document shape, so it is read by this same path. See
--- the dispatch in 'parseConfigurationFiles'.
+-- component from its inline section, together with the warnings that only the
+-- parsed configuration can reveal (an ignored experimental genesis).
 parseConfigurationBody ::
-  -- | The directory sub-file paths are resolved against.
+  -- | The directory the genesis and tracing paths are resolved against.
   FilePath ->
   -- | The optional top-level @MinNodeVersion@ annotation.
   Maybe T.Text ->
@@ -267,17 +271,17 @@ parseConfigurationBody ::
   Value ->
   IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationBody root minNodeVer configValue = do
-  storage <- parseSection root configValue "StorageConfig"
-  consensus <- parseSection root configValue "ConsensusConfig"
-  protocol <- parseSection root configValue "ProtocolConfig"
-  network <- parseSection root configValue "NetworkConfig"
+  storage <- parseSection configValue "StorageConfig"
+  consensus <- parseSection configValue "ConsensusConfig"
+  protocol <- parseSection configValue "ProtocolConfig"
+  network <- parseSection configValue "NetworkConfig"
   -- The user's network layer on its own (no base defaults), so resolution can
   -- distinguish a user-set field from a base default (see 'withRoleDefaults').
   networkUser <-
-    sectionUserLayer root configValue "NetworkConfig" >>= runCodec Nothing "NetworkConfig"
-  localConnections <- parseSection root configValue "LocalConnectionsConfig"
-  testing <- parseSection root configValue "TestingConfig"
-  mempool <- parseSection root configValue "MempoolConfig"
+    sectionUserLayer configValue "NetworkConfig" >>= runCodec Nothing "NetworkConfig"
+  localConnections <- parseSection configValue "LocalConnectionsConfig"
+  testing <- parseSection configValue "TestingConfig"
+  mempool <- parseSection configValue "MempoolConfig"
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
   -- 'TraceConfig' — reading the referenced file, or the inline object directly.

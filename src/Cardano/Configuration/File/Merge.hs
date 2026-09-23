@@ -1,13 +1,15 @@
--- | The JSON layering engine: reading files, deep-merging configuration sources
--- and running a component's codec. This module knows nothing about which keys
--- the parsers recognise (that is "Cardano.Configuration.File.Lint") nor about the
--- overall orchestration (that is "Cardano.Configuration.File").
+-- | The JSON layering engine: splitting the envelope, deep-merging a section's
+-- base default with the user's object and running a component's codec. The
+-- configuration is one file, so the only files read here are the configuration
+-- itself and the @defaults\/@ compiled into the binary. This module knows
+-- nothing about which keys the parsers recognise (that is
+-- "Cardano.Configuration.File.Lint") nor about the overall orchestration (that
+-- is "Cardano.Configuration.File").
 module Cardano.Configuration.File.Merge
   ( decodeValueFile
   , decodeValueBytes
   , runCodec
   , mergeValues
-  , loadSectionSource
   , loadBaseDefault
   , sectionUserLayer
   , parseSection
@@ -25,14 +27,11 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (JSONPathElement (..), iparseEither)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger)
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
-import System.Directory (canonicalizePath, doesFileExist)
-import System.FilePath (isAbsolute, splitDirectories, (</>))
 
 -- | Read and decode a YAML\/JSON file into a 'Value', reporting syntax errors as
 -- a 'ConfigurationParsingError' that names the file and section.
@@ -70,7 +69,7 @@ decodeValueBytes section fp bytes =
 -- 'ConfigurationParsingError' carrying the file, section and JSON path.
 runCodec ::
   FromJSON a =>
-  -- | The sub-file the value came from, if any.
+  -- | The file the value came from, if any.
   Maybe FilePath ->
   -- | The section being parsed, for error reporting.
   String ->
@@ -90,61 +89,6 @@ mergeValues :: Value -> Value -> Value
 mergeValues (Object earlier) (Object later) = Object (KM.unionWith mergeValues earlier later)
 mergeValues _ later = later
 
--- | Resolve a single section source — a path to a sub-file (a string) or an
--- inline object — to its 'Value'.
-loadSectionSource :: FilePath -> String -> Value -> IO Value
-loadSectionSource root section src =
-  case src of
-    String path -> do
-      fp <- resolveSectionPath root section (T.unpack path)
-      exists <- doesFileExist fp
-      if exists
-        then decodeValueFile (Just section) fp
-        else
-          throwIO $
-            ConfigurationParsingError
-              (SJust fp)
-              (SJust section)
-              [Key (K.fromString section)]
-              "the referenced configuration file does not exist"
-    Object _ -> pure src
-    _ ->
-      throwIO $
-        ConfigurationParsingError
-          SNothing
-          (SJust section)
-          [Key (K.fromString section)]
-          "expected a path to a configuration file (a string) or an inline object"
-
--- | Resolve a section sub-file path against the configuration directory,
--- confining it to that directory's subtree. The path must be relative, and its
--- real (symlink- and @..@-resolved) location must stay within the configuration
--- directory: a path that is absolute, climbs out with @..@, or is a symlink
--- pointing outside is rejected. This stops a configuration from pulling in
--- arbitrary files such as @\/etc\/passwd@. A symlink that stays inside the
--- subtree is allowed.
-resolveSectionPath :: FilePath -> String -> String -> IO FilePath
-resolveSectionPath root section path
-  | isAbsolute path = reject "must be a relative path, not an absolute one"
-  | otherwise = do
-      -- 'canonicalizePath' resolves @..@ segments and follows symlinks, so the
-      -- containment check below sees the file's real location, not the textual
-      -- path. The root is canonicalized too, so the comparison is between two
-      -- fully resolved paths.
-      canonRoot <- canonicalizePath root
-      canonTarget <- canonicalizePath (root </> path)
-      if splitDirectories canonRoot `isPrefixOf` splitDirectories canonTarget
-        then pure canonTarget
-        else reject "must resolve to a file within the configuration directory"
- where
-  reject why =
-    throwIO $
-      ConfigurationParsingError
-        (SJust path)
-        (SJust section)
-        [Key (K.fromString section)]
-        ("invalid configuration file path: it " <> why)
-
 -- | The always-applied base default for a section, read from the
 -- @defaults\/\<Section\>.json@ embedded into the binary (see
 -- "Cardano.Configuration.Embedded"), if one ships for it.
@@ -156,41 +100,51 @@ loadBaseDefault section =
  where
   name = section <> ".json"
 
--- | The configuration layer the user supplied for a section: an inline object,
--- or a referenced sub-file. A component is read only from its own section key; a
--- section that is absent contributes no user layer (so the component takes its
--- base defaults). Component keys placed flat under @Configuration@ are /not/
--- resolved into their section — they are left unrecognised (see
+-- | The configuration layer the user supplied for a section: the inline object
+-- given under the section key. A component is read only from its own section
+-- key; a section that is absent contributes no user layer (so the component
+-- takes its base defaults). Component keys placed flat under @Configuration@ are
+-- /not/ resolved into their section — they are left unrecognised (see
 -- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-enveloped documents,
 -- where the keys are flat, are migrated (grouped into sections) before reaching
 -- here.
-sectionUserLayer :: FilePath -> Value -> String -> IO Value
-sectionUserLayer root configValue section =
+--
+-- The whole configuration lives in one file. A section whose value is anything
+-- other than an object — a path to a separate file, as older configurations
+-- wrote it — is rejected here.
+sectionUserLayer :: Value -> String -> IO Value
+sectionUserLayer configValue section =
   case configValue of
     Object o ->
       case KM.lookup (K.fromString section) o of
         Nothing -> pure (Object KM.empty)
-        Just source -> loadSectionSource root section source
+        Just (Object user) -> pure (Object user)
+        Just _ ->
+          throwIO $
+            ConfigurationParsingError
+              SNothing
+              (SJust section)
+              [Key (K.fromString section)]
+              ( "expected an inline configuration object. A path to a separate file is no "
+                  <> "longer accepted: copy that file's contents in here."
+              )
     _ ->
       throwIO $
         ConfigurationParsingError SNothing SNothing [] "expected the configuration to be a JSON/YAML object"
 
 -- | Parse a single component. The package's base default for the section is
 -- always read as the bottom layer; the user's layer (see 'sectionUserLayer') is
--- deep-merged on top. A path to a missing file is an explicit error.
+-- deep-merged on top.
 parseSection ::
   FromJSON a =>
-  -- | The directory the main file lives in, against which sub-file paths are
-  -- resolved.
-  FilePath ->
   -- | The (unwrapped) configuration object.
   Value ->
   -- | The section name.
   String ->
   IO a
-parseSection root configValue section = do
+parseSection configValue section = do
   base <- loadBaseDefault section
-  user <- sectionUserLayer root configValue section
+  user <- sectionUserLayer configValue section
   let withBase = maybe user (`mergeValues` user) base
   runCodec Nothing section withBase
 

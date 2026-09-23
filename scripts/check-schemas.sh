@@ -18,8 +18,7 @@ cd "$(dirname "$0")/.."
 # first, but the schema documents the current form alone. Fixtures that exist
 # to be rejected are left out too.
 CANONICAL_EXAMPLES=(
-  split
-  split-all
+  all-sections
   version1
   injection
   dijkstra-gated-off

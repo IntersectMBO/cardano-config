@@ -24,9 +24,10 @@ import qualified Data.Text as T
 -- to @stderr@; another consumer might log them through its own tracer, or treat
 -- them as errors).
 data ConfigWarning
-  = -- | Top-level keys that no parser recognises: typos, or a component property
-    -- placed flat under @Configuration@ instead of under its section. They are
-    -- ignored (not resolved into a section).
+  = -- | Keys at the @Configuration@ level that no parser recognises — typos,
+    -- and keys of a component this library does not know. They are ignored. A
+    -- key that is a component property is not one of these: migration groups it
+    -- under the section that owns it before the check runs.
     UnrecognisedKeys [String]
   | -- | The document was not in the current canonical format, so migrating it (see
     -- @Cardano.Configuration.File.Migrate.migrate@) changed it before parsing —
@@ -104,17 +105,16 @@ renderConfigWarning = \case
 --
 -- With the parser accepting only the enveloped format (a document that is not is
 -- migrated first, which groups every component under its section), the only key
--- warning left is for keys that none of the parsers recognise — typos, or a
--- component property placed flat under @Configuration@ rather than under its
--- section. There is no longer any \"shadowed\" or \"legacy single-file\" handling:
--- a misplaced key is simply unrecognised, not resolved.
+-- warning left is for keys that none of the parsers recognise: typos, and keys
+-- of a component this library does not know.
 configWarnings :: Value -> [ConfigWarning]
 configWarnings = checkUnknownKeys
 
 -- | Top-level keys that none of the parsers recognise. Only the section keys, the
 -- tracing keys and the envelope annotations are recognised at the @Configuration@
--- level; a component's own property names are recognised only under its section,
--- so one placed flat here is reported (and ignored, not resolved).
+-- level. A component's own property names are recognised only under its section,
+-- and migration has already moved any of them found here, so what is left is a
+-- name no part of this library claims.
 checkUnknownKeys :: Value -> [ConfigWarning]
 checkUnknownKeys = \case
   Object o ->
