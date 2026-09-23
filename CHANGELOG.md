@@ -59,6 +59,18 @@ The split-file form is gone, so those sections hold their objects now (below).
   `Cardano.Configuration.Commands.ConfigForm` renames its constructors to
   `CurrentForm` and `LegacyFlatForm`.
 
+* The configuration schema describes the envelope and only the envelope. It
+  used to put the section keys at the *top* level, beside `Version`, and
+  declare `Configuration` as a bare `{"type": "object"}` — so it validated a
+  shape nothing recommends and let anything at all through inside the envelope.
+  A document with a partial mempool timeout set validated against it. The
+  sections now sit under `Configuration`, where the parser reads them, and
+  `Version` and `Configuration` are required, so a legacy document fails
+  validation as the README has always said it should.
+
+  This is a change to what validates, and it rejects documents the `v2`
+  schema accepted, but every one of those was already rejected at parse time.
+
 * `NodeConfigurationFromFile` is a plain record. It was
   `NodeConfigurationFromFileF Identity`, where the `f` parameter staged a
   component that might still be a sub-file reference against one already read;

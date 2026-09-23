@@ -256,17 +256,15 @@ configurationSchemas :: [(Text, Value)]
 configurationSchemas = [(name, withSchemaProp name (component name s)) | (name, s) <- rawComponentSchemas]
 
 -- | The JSON Schema of the whole configuration — the current form, and the one
--- the @schema@ subcommand prints by default: each component is given inline
--- under its section key (e.g. @StorageConfig@), all in one document.
+-- the @schema@ subcommand prints: the @{ $schema, Version, MinNodeVersion,
+-- Configuration }@ envelope, with each component inline under its section key
+-- inside @Configuration@, all in one document.
 --
--- The whole document may additionally be wrapped in a @{ Version, Configuration
--- }@ envelope. Tracing is not a section; it is just the top-level
--- @HermodTracing@ key, whose contents are neither parsed nor described here.
---
--- Keeping this form free of the flat top-level keys (which live in
--- 'legacyFlatConfigSchema') is what lets it drop the per-component
--- \"section key /xor/ top-level keys\" exclusivity rules entirely, so it is much
--- simpler than a schema covering both forms at once.
+-- The sections sit inside @Configuration@ and nowhere else, so this schema
+-- describes the current form and only that: a legacy document, whose component
+-- keys sit at the top level, fails it (see 'legacyFlatConfigSchema'), which is
+-- what @migrate@ is for. Tracing is not a section; it is the @HermodTracing@
+-- key beside them, whose contents are neither parsed nor described here.
 configSchema :: Value
 configSchema = configSchemaFrom rawComponentSchemas
 
@@ -279,19 +277,36 @@ configSchemaFrom components =
     object
       [ "$comment" .= configDescription
       , "type" .= ("object" :: Text)
-      , "properties" .= Object (sectionProps <> hermodTracingProps <> envelopeProps)
+      , -- A document in the current form states its version and holds its
+        -- configuration under Configuration. Without Version it is version 1,
+        -- and without Configuration its sections are somewhere this schema does
+        -- not describe: either way it is a legacy document for migrate, not a
+        -- current one. $schema and MinNodeVersion stay optional, being
+        -- annotations the parser is happy without.
+        "required" .= (["Version", "Configuration"] :: [Text])
+      , "properties" .= Object envelopeProps
       ]
  where
-  -- Each component's own schema, inline under its section key. 'publish' adds
-  -- the title, as it does for every other property here.
-  sectionProps = KM.fromList [(K.fromText name, raw) | (name, raw) <- components]
   envelopeProps =
     KM.fromList
       [ ("$schema", schemaRef)
       , ("Version", versionRef)
       , ("MinNodeVersion", minNodeVersionRef)
-      , ("Configuration", configurationRef)
+      , ("Configuration", configurationBody)
       ]
+  -- The configuration itself: every section, plus the lone HermodTracing key.
+  -- 'publish' gives each one its title, as it does for every other property.
+  configurationBody =
+    object
+      [ "$comment"
+          .= ( "The configuration itself: each component given inline under its section key,"
+                 <> " plus the HermodTracing key." ::
+                 Text
+             )
+      , "type" .= ("object" :: Text)
+      , "properties" .= Object (sectionProps <> hermodTracingProps)
+      ]
+  sectionProps = KM.fromList [(K.fromText name, raw) | (name, raw) <- components]
 
 -- | The JSON Schema of the whole configuration in the /legacy flat/ form:
 -- every component reads its keys directly from the top-level object, so all keys
@@ -325,8 +340,8 @@ configDescription :: Text
 configDescription =
   T.unwords
     [ "The cardano-node configuration, held in one file."
-    , "Each component is given inline under its section key (e.g. StorageConfig)."
-    , "The whole document may also be wrapped in a { Version, Configuration } envelope."
+    , "The document is the { $schema, Version, MinNodeVersion, Configuration } envelope,"
+    , "and Configuration gives each component inline under its section key (e.g. StorageConfig)."
     , "The mandatory genesis files are supplied through the ProtocolConfig section."
     , "For the older form with every key at the top level, see config.legacy-flat.schema.json."
     ]
@@ -369,17 +384,6 @@ minNodeVersionRef =
     , "$comment"
         .= ( "The minimum cardano-node version expected to run this configuration."
                <> " A top-level annotation (a sibling of Version), recorded for a consumer to check." ::
-               Text
-           )
-    ]
-
-configurationRef :: Value
-configurationRef =
-  object
-    [ "type" .= ("object" :: Text)
-    , "$comment"
-        .= ( "When using the { Version, Configuration } envelope, the configuration object goes here"
-               <> " (the same shape as this schema)." ::
                Text
            )
     ]
