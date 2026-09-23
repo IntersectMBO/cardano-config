@@ -38,7 +38,6 @@ module Cardano.Configuration.Commands
   , resolveCommand
 
     -- * Schema
-  , ConfigForm (..)
   , schemaOptionsParser
   , runSchemaCommand
   , schemaCommand
@@ -60,7 +59,6 @@ import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJ
 import Cardano.Configuration.Schema
   ( configSchemaWithDefaults
   , currentFormatVersion
-  , legacyFlatConfigSchemaWithDefaults
   )
 import Control.Exception (displayException, fromException, throwIO)
 import Control.Exception.Safe (handleAny)
@@ -138,26 +136,9 @@ withGenesesFlag =
 
 -- Schema ----------------------------------------------------------------------
 
--- | Which form of the whole-configuration schema to print.
-data ConfigForm
-  = -- | The current form: the envelope, with each component inline under its
-    -- section key inside @Configuration@.
-    CurrentForm
-  | -- | The legacy flat form (all keys flat at the top level).
-    LegacyFlatForm
-
--- | Parser for 'ConfigForm'.
-schemaOptionsParser :: Parser ConfigForm
-schemaOptionsParser =
-  flag
-    CurrentForm
-    LegacyFlatForm
-    ( long "legacy-flat"
-        <> help
-          ( "Dump the legacy flat schema (every key flat at the top level). "
-              <> "Prefer the default schema for new configurations."
-          )
-    )
+-- | The @schema@ command takes no options: there is one schema.
+schemaOptionsParser :: Parser ()
+schemaOptionsParser = pure ()
 
 -- | The @schema@ subcommand, as an 'hsubparser' entry.
 schemaCommand :: Mod CommandFields (IO ())
@@ -171,12 +152,9 @@ schemaCommand =
         )
     )
 
--- | Print the configuration JSON Schema, in the requested form.
-runSchemaCommand :: ConfigForm -> IO ()
-runSchemaCommand form =
-  dump $ case form of
-    CurrentForm -> configSchemaWithDefaults componentDefaults
-    LegacyFlatForm -> legacyFlatConfigSchemaWithDefaults componentDefaults
+-- | Print the configuration JSON Schema.
+runSchemaCommand :: () -> IO ()
+runSchemaCommand () = dump (configSchemaWithDefaults componentDefaults)
 
 -- | How to validate a configuration against the schema, shown under
 -- @cardano-config schema --help@.

@@ -14,13 +14,11 @@ perSystem  @IntersectMBO/cardano-node-sre
 flake.lock @IntersectMBO/cardano-node-sre
 
 # Whole directories (the specific rules below override these for individual
-# files). Both schemas (config.schema.json, config.legacy-flat.schema.json)
-# are covered here, and so are the two default configurations: each holds
-# every component's defaults in one document, so no component team can own its
-# own file any more. Every team owns both.
+# files). The schema and the two default configurations are covered here. Each
+# default holds every component's defaults in one document, so no component
+# team can own its own file any more. Every team owns both.
 defaults/ @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers @IntersectMBO/performance-and-tracing
 schemas/  @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers
-variants/ @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers
 
 # Ledger
 src/Cardano/Configuration/Genesis.hs  @IntersectMBO/cardano-ledger

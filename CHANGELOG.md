@@ -32,9 +32,7 @@ The split-file form is gone, so those sections hold their objects now (below).
   the parser will not read.
 
   `migrate` therefore returns `Either MigrationError (Value, [ConfigWarning])`
-  rather than the pair, with `renderMigrationError` for the message. The files
-  under `variants/` stay in the repository as templates to copy from, but a
-  configuration can no longer point at one.
+  rather than the pair, with `renderMigrationError` for the message.
 
   In the library, `Cardano.Configuration.File.Merge` loses `loadSectionSource`
   and the containment check that kept a sub-file inside the configuration
@@ -48,16 +46,22 @@ The split-file form is gone, so those sections hold their objects now (below).
   under the section that owns it in every case.
 
 * The whole-configuration schema describes each section as the component's own
-  schema, instead of "a file path or that schema". The flat legacy form is no
-  longer called "one-file", since one file is what every configuration is now:
-  `schema --legacy-one-file` becomes `schema --legacy-flat`, writing
-  `schemas/config.legacy-flat.schema.json`. In the library,
-  `splitConfigSchema`/`splitConfigSchemaWithDefaults` become
-  `configSchema`/`configSchemaWithDefaults`, and
-  `legacyOneFileConfigSchema`/`legacyOneFileConfigSchemaWithDefaults` become
-  `legacyFlatConfigSchema`/`legacyFlatConfigSchemaWithDefaults`.
-  `Cardano.Configuration.Commands.ConfigForm` renames its constructors to
-  `CurrentForm` and `LegacyFlatForm`.
+  schema, instead of "a file path or that schema". In the library,
+  `splitConfigSchema` and `splitConfigSchemaWithDefaults` become `configSchema`
+  and `configSchemaWithDefaults`.
+
+* There is one schema. The legacy single-file schema is gone, with it
+  `schema --legacy-one-file`, `schemas/config.legacy-one-file.schema.json`,
+  `legacyOneFileConfigSchema`, `legacyOneFileConfigSchemaWithDefaults` and
+  `Cardano.Configuration.Commands.ConfigForm`. It described a form that
+  `migrate` exists to convert away from, so nothing needed it.
+  `cardano-config schema` now takes no options, and `schemaOptionsParser` has
+  type `Parser ()`.
+
+* The `variants/` directory is gone. Its files held per-network sections to
+  copy by hand. Nothing read them, and with the split-file form removed a
+  configuration could not point at one either. Copy the genesis names for your
+  network out of a working configuration instead.
 
 * The package ships two default configurations instead of one file per
   component: `defaults/config.blockproducer.json` and
@@ -101,8 +105,8 @@ The split-file form is gone, so those sections hold their objects now (below).
   document.
   `configurationSchemas`, `configurationSchemasWithDefaults` and the seven
   `storageSchema`-style values go with them, and `componentDefaults` is now a
-  pure value rather than an `IO` action. The `$schema` lines in `variants/` and
-  in the per-component test fixtures, which pointed at those URLs, are removed.
+  pure value rather than an `IO` action. The `$schema` lines in the
+  per-component test fixtures, which pointed at those URLs, are removed.
 
 * The configuration schema describes the envelope and only the envelope. It
   used to put the section keys at the *top* level, beside `Version`, and

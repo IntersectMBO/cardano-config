@@ -45,7 +45,6 @@ import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJ
 import Cardano.Configuration.Schema
   ( configSchemaWithDefaults
   , currentFormatVersion
-  , legacyFlatConfigSchemaWithDefaults
   , packageFormatVersion
   , schemaId
   )
@@ -1344,13 +1343,6 @@ schemaConstraintsCase =
     , ("TestingConfig", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
     , ("TestingConfig", "the experimental-eras requirement", hasIfThen)
     , ("StorageConfig", "the non-zero SnapshotInterval", hasMinimum "SnapshotInterval" 1)
-    , -- The legacy form puts every component's keys in one flat space, so it
-      -- carries every component's rules at the top level.
-
-      ( "config.legacy-flat"
-      , "every component's rules, flat"
-      , \v -> hasDependencies (grpcKeys <> mempoolTimeoutKeys <> dijkstraKeys) v && hasIfThen v
-      )
     ]
   grpcKeys =
     [ "GrpcSocketPath"
@@ -1361,12 +1353,9 @@ schemaConstraintsCase =
     ]
   mempoolTimeoutKeys = ["MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity"]
   dijkstraKeys = ["DijkstraGenesisFile", "DijkstraGenesisHash"]
-  -- A component's rules are stated on its section of the whole-configuration
-  -- schema; the legacy flat form states them all at its top level.
+  -- A component's rules are stated on its section of the configuration schema.
   check (name, what, holds) = do
-    res <- case name of
-      "config.legacy-flat" -> decodeData "schemas/config.legacy-flat.schema.json"
-      _ -> fmap (>>= sectionOf name) (decodeData "schemas/config.schema.json")
+    res <- fmap (>>= sectionOf name) (decodeData "schemas/config.schema.json")
     pure $ case res :: Either String Value of
       Left err -> Just (name <> ": " <> err)
       Right v
@@ -1797,11 +1786,7 @@ schemaTests :: TestTree
 schemaTests =
   testGroup
     "schemas"
-    [ schemaTest "schemas/config.schema.json" (configSchemaWithDefaults componentDefaults)
-    , schemaTest
-        "schemas/config.legacy-flat.schema.json"
-        (legacyFlatConfigSchemaWithDefaults componentDefaults)
-    ]
+    [schemaTest "schemas/config.schema.json" (configSchemaWithDefaults componentDefaults)]
 
 -- | Assert that a committed schema file equals the given derived schema.
 schemaTest :: FilePath -> Value -> TestTree

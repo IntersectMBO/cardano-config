@@ -26,13 +26,11 @@
 module Cardano.Configuration.Schema
   ( -- * Whole configuration
     configSchema
-  , legacyFlatConfigSchema
   , recognisedKeys
   , componentPropertyNames
 
     -- * Default values
   , configSchemaWithDefaults
-  , legacyFlatConfigSchemaWithDefaults
 
     -- * Versioning
   , currentFormatVersion
@@ -103,8 +101,8 @@ rawComponentSchemas =
 -- \"Enabling gRPC needs somewhere to listen\" does not: a @--socket-path@ can
 -- satisfy it, and a validator sees only the file.
 --
--- Each entry holds at most a @dependencies@ object and an @allOf@ array, the two
--- forms that merge cleanly in the flat legacy key space (see 'mergeConstraints').
+-- Each entry holds at most a @dependencies@ object and an @allOf@ array (see
+-- 'mergeConstraints').
 --
 -- These state /what validates/, so they are frozen with the format version (see
 -- 'currentFormatVersion').
@@ -203,12 +201,6 @@ withConstraints :: Text -> Value -> Value
 withConstraints name (Object o) = Object (mergeConstraints (componentConstraints name) o)
 withConstraints _ v = v
 
--- | Every component's constraints in one set, for the flat legacy form, where
--- the keys they speak about all sit at the top level.
-allComponentConstraints :: KM.KeyMap Value
-allComponentConstraints =
-  foldr (mergeConstraints . componentConstraints . fst) KM.empty rawComponentSchemas
-
 -- | Tracing is not a component/section of its own; it contributes exactly one
 -- top-level key, @HermodTracing@, which the node's tracing system reads (and
 -- which @cardano-config@ neither parses nor describes further). We take that
@@ -224,8 +216,7 @@ hermodTracingProps = properties rawTracingSchema
 --
 -- The sections sit inside @Configuration@ and nowhere else, so this schema
 -- describes the current form and only that: a legacy document, whose component
--- keys sit at the top level, fails it (see 'legacyFlatConfigSchema'), which is
--- what @migrate@ is for. Tracing is not a section; it is the @HermodTracing@
+-- keys sit at the top level, fails it, which is what @migrate@ is for. Tracing is not a section; it is the @HermodTracing@
 -- key beside them, whose contents are neither parsed nor described here.
 configSchema :: Value
 configSchema = configSchemaFrom rawComponentSchemas
@@ -273,34 +264,6 @@ configSchemaFrom components =
       ]
   sectionProps = KM.fromList [(K.fromText name, raw) | (name, raw) <- components]
 
--- | The JSON Schema of the whole configuration in the /legacy flat/ form:
--- every component reads its keys directly from the top-level object, so all keys
--- appear flat at the top level. New configurations should prefer the current
--- form ('configSchema'); this form is retained for compatibility and is printed
--- only under @schema --legacy-flat@.
---
--- The lone top-level @HermodTracing@ key may appear here too. The legacy form
--- predates the @{ Version, Configuration }@ envelope, so it does not offer it;
--- use the current form for an enveloped configuration.
-legacyFlatConfigSchema :: Value
-legacyFlatConfigSchema =
-  publish
-    "Cardano node configuration (legacy flat form)"
-    "config.legacy-flat.schema.json"
-    $ Object
-    $ mergeConstraints allComponentConstraints
-    $ KM.fromList
-      [ "$comment" .= legacyDescription
-      , "type" .= ("object" :: Text)
-      , "properties" .= Object singleFileProps
-      ]
- where
-  -- Every component's keys, flat at the top level, plus the lone top-level
-  -- HermodTracing key and the optional top-level MinNodeVersion annotation.
-  singleFileProps =
-    KM.insert "MinNodeVersion" minNodeVersionRef $
-      foldr (KM.union . properties) hermodTracingProps (map snd rawComponentSchemas)
-
 configDescription :: Text
 configDescription =
   T.unwords
@@ -308,18 +271,6 @@ configDescription =
     , "The document is the { $schema, Version, MinNodeVersion, Configuration } envelope,"
     , "and Configuration gives each component inline under its section key (e.g. StorageConfig)."
     , "The mandatory genesis files are supplied through the ProtocolConfig section."
-    , "For the older form with every key at the top level, see config.legacy-flat.schema.json."
-    ]
-
-legacyDescription :: Text
-legacyDescription =
-  T.unwords
-    [ "The cardano-node configuration (legacy flat form)."
-    , "Every component's keys are given directly at the top level."
-    , "New configurations should prefer the current form (config.schema.json);"
-    , "this form is retained for compatibility and predates the { Version, Configuration } envelope."
-    , "Mandatory keys: ByronGenesisFile, ShelleyGenesisFile, AlonzoGenesisFile,"
-    , "ConwayGenesisFile."
     ]
 
 versionRef :: Value
@@ -632,13 +583,6 @@ configSchemaWithDefaults defs =
         [ (name, maybe raw (`withDefaults` raw) (Map.lookup name defsMap))
         | (name, raw) <- rawComponentSchemas
         ]
-
--- | 'legacyFlatConfigSchema' with the @default@ of every key filled in from
--- the per-component defaults. Components share a flat top-level key space, so
--- their defaults are merged into one overlay.
-legacyFlatConfigSchemaWithDefaults :: [(Text, Value)] -> Value
-legacyFlatConfigSchemaWithDefaults defs =
-  withDefaults (foldr (deepMerge . snd) (Object KM.empty) defs) legacyFlatConfigSchema
 
 -- | Fill in the @default@ keywords of a schema from a defaults object (a config
 -- object keyed by the configuration keys). Each value is placed at

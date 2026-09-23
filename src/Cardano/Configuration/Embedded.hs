@@ -19,11 +19,9 @@
 -- Neither file names a genesis, so neither is a configuration you can run: the
 -- genesis keys are network-specific and deliberately absent from the defaults.
 --
--- The other JSON the repository ships is not needed here: @schemas\/@ holds
--- committed /outputs/, regenerated from the codecs by
--- "Cardano.Configuration.Schema" and only compared against by the test suite,
--- and @variants\/@ holds per-network sections to copy into a configuration by
--- hand.
+-- The other JSON the repository ships is not needed here: @schemas\/@ holds a
+-- committed /output/, regenerated from the codecs by
+-- "Cardano.Configuration.Schema" and only compared against by the test suite.
 --
 -- The files stay committed to the repository (and listed in
 -- @extra-source-files@, so they reach a source distribution): they are the

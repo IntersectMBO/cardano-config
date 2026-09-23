@@ -29,7 +29,6 @@ extra-source-files:
   defaults/**/*.json
   schemas/*.json
   test/examples/**/*.json
-  variants/**/*.json
 
 source-repository head
   type: git

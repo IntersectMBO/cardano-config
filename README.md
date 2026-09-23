@@ -53,13 +53,9 @@ library acts on it.
 Declare the `$schema`, and pin it to the `vN` tag of the format version you
 write for. Editors and validators use it to find the schema.
 
-### What stays a path
+### Other referenced JSON files
 
-A section holds its configuration object. It cannot hold a path to another
-file. If you have a configuration that names files there, copy the contents of
-each file in under its section key.
-
-Three kinds of path remain, because the tools read those files themselves:
+Some fields reference other JSON files:
 
 - the four genesis files, under `ProtocolConfig`
 - the experimental genesis file, under `TestingConfig`
@@ -75,8 +71,7 @@ Eight keys have no default. Parsing fails when one is absent:
 - `ConwayGenesisFile` and `ConwayGenesisHash`
 
 These values differ per network, so the defaults do not name them. Write them
-into `ProtocolConfig` yourself, or copy them from
-`variants/ProtocolConfig/<network>.json`.
+into `ProtocolConfig` yourself.
 
 ## Defaults and layering
 
@@ -110,64 +105,24 @@ the command line. `parseConfigurationFiles` returns what your file said, with
 nothing filled in. It reads the genesis files your file names, and makes sure
 that every section parses.
 
-The files under [`variants/`](variants/) hold per-network values, such as the
-mainnet genesis names. They are templates to copy from. A configuration cannot
-point at one.
-
 `cardano-config` is where these defaults live, but each component's defaults
-belong to the team that implements the component. No automated check compares
-them against those teams. The CODEOWNERS entry on `defaults/` covers that.
+belong to the team that implements the component.
 
 ## Porting an older configuration
 
-Run `cardano-config migrate` to bring an older file up to the current format.
-It reads `-` as standard input, so you can fetch and convert in one step:
+Run `cardano-config migrate` to bring an older file up to the current format:
 
 ```console
 $ cardano-config migrate old-config.json > config.json
-$ curl -sL <url-of-old-config> | cardano-config migrate - > config.json
 ```
 
-`migrate` reshapes the document into the envelope and prints it as JSON. It
-writes `$schema` and `Version`, carries `MinNodeVersion` through, and groups
-each component's keys under its section. It also brings key names up to date,
-because the parser rejects the old ones. It rewrites the keys that changed
-name:
+It reshapes the document into the envelope, brings the key names up to date
+and drops the keys that no longer exist. It keeps your values as you wrote
+them, and fills in no defaults. Run `cardano-config resolve --config <file>`
+afterwards to make sure that the result parses.
 
-- `hardLimit`, `softLimit` and `delay` become `HardLimit`, `SoftLimit` and
-  `Delay`
-- the `Rpc*` keys become `Grpc*`, such as `EnableRpc` to `EnableGrpc`
-- `TargetNumberOf*` becomes `DeadlineTargetNumberOf*`
-
-It drops the keys that no longer exist: `PBftSignatureThreshold`, the
-`LastKnownBlockVersion-Major`, `-Minor` and `-Alt` trio, `ApplicationVersion`,
-`EnableP2P`, `Protocol`, and `MaxKnownMajorProtocolVersion`.
-
-It also reshapes three groups that older files wrote flat:
-
-- the `LedgerDB` snapshot keys, such as `SnapshotInterval`, move into a nested
-  `LedgerDB.Snapshots` object
-- a `V2LSM` backend and its `LSMDatabasePath` and `LSMExportPath` become the
-  tagged form, `Backend: { "LSM": ... }`
-- the flat tracing keys, such as `TraceOptions`, gather into an inline
-  `HermodTracing` object, and a top-level `ApplicationName` becomes
-  `HermodTracing.TraceOptionNodeName`
-
-It drops the keys of the old logging system that nothing reads now, such as
-`setupScribes` and `minSeverity`.
-
-`migrate` keeps a key it does not recognize, such as a typo, so that you lose
-nothing. That key stays unrecognized, so it raises a warning on the next
-parse. Remove it by hand for a configuration that parses without warnings.
-
-`migrate` does not fill in defaults and does not read genesis files. Run
-`cardano-config resolve --config <file>` afterwards to make sure that the
-result parses.
-
-`migrate` refuses two documents. It refuses a document at a newer format
-version than this program writes, because migration never goes backwards. It
-refuses a document whose sections name other files, because reading those
-files is what `migrate` does not do.
+[`MIGRATION.md`](MIGRATION.md) lists every change `migrate` makes, key by key,
+so that you can audit the result.
 
 ## Format versions and schemas
 
@@ -184,14 +139,12 @@ the published schema address immutable:
 https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json
 ```
 
-Two schemas live under [`schemas/`](schemas/). `config.schema.json` describes
-the format above. `config.legacy-flat.schema.json` describes the old form,
-where every key sits at the top level. Print either one with `cardano-config
-schema` or `cardano-config schema --legacy-flat`. Regenerate the committed
-files with `scripts/gen-schemas.sh`.
+One schema lives under [`schemas/`](schemas/). `config.schema.json` describes
+the format above. Print it with `cardano-config schema`. Regenerate the
+committed file with `scripts/gen-schemas.sh`.
 
-Both schemas are draft-07 and self-contained, so any standard validator reads
-them. To make sure that a configuration is valid, use
+The schema is draft-07 and self-contained, so any standard validator reads
+it. To make sure that a configuration is valid, use
 [`ajv`](https://github.com/ajv-validator/ajv-cli):
 
 ```console
@@ -242,56 +195,30 @@ An unknown key inside a section is ignored without a warning.
 
 ## The gRPC endpoint
 
-The gRPC server listens on exactly one endpoint. By default that is a unix
-socket. It is `GrpcSocketPath`, or `rpc.sock` beside the node socket when you
-give no path.
+The schema describes the `Grpc*` keys of `LocalConnectionsConfig`, one by one,
+along with the rules that tie them together. Four facts about the endpoint do
+not fit in a schema, so they are here.
 
-Set `GrpcListenPort` for HTTP/2 over TCP instead. Add a certificate and its
-private key for HTTP/2 over TLS:
+The server listens on exactly one endpoint. The keys are alternatives, not a
+set of independent settings, which is why `GrpcSocketPath` excludes the TCP
+keys.
 
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
-  "Version": 2,
-  "Configuration": {
-    "LocalConnectionsConfig": {
-      "SocketPath": "node.socket",
-      "EnableGrpc": true,
-      "GrpcListenAddress": "0.0.0.0",
-      "GrpcListenPort": 3001,
-      "GrpcTlsCertificateFile": "tls/server.pem",
-      "GrpcTlsPrivateKeyFile": "tls/server.key",
-      "GrpcTlsChainCertificateFiles": ["tls/intermediate.pem"]
-    }
-  }
-}
-```
+Without a `GrpcSocketPath`, the endpoint is a unix socket at `rpc.sock`,
+beside the node socket. The consumer derives that path, so no default names
+it.
 
-`GrpcListenAddress` is optional and defaults to `127.0.0.1`, so a port alone
-keeps the endpoint on loopback. The chain certificates are optional too.
+`GrpcListenAddress` defaults to `127.0.0.1`. A port alone keeps the endpoint
+on loopback.
 
 Enabling gRPC needs a node socket path, from the file or from
 `--socket-path`. The server serves every request over the node-to-client
-socket, whichever endpoint it listens on.
+socket, whichever endpoint it listens on. A validator cannot see this rule,
+because the command line satisfies it too, so `resolve` reports it.
 
-The parser rejects the combinations that describe no single endpoint:
-
-- `GrpcSocketPath` next to any of the TCP keys
-- an address or a TLS credential without a port
-- a certificate without its private key, or a private key without its
-  certificate
-
-The command line offers the same choices, where `--grpc-socket-path` and
-`--grpc-listen-port` also exclude each other:
-
-```console
-$ cardano-node run --grpc-enable --grpc-listen-address 0.0.0.0 --grpc-listen-port 3001 \
-    --grpc-tls-certificate tls/server.pem --grpc-tls-private-key tls/server.key \
-    --grpc-tls-chain-certificate tls/intermediate.pem ...
-```
-
-A command-line endpoint replaces the endpoint in the file whole. It does not
-merge into it, because the two describe one choice.
+On the command line, `--grpc-socket-path` and `--grpc-listen-port` exclude
+each other in the same way. A command-line endpoint replaces the endpoint in
+the file whole. It does not merge into it, because the two describe one
+choice.
 
 ## Tracing
 

@@ -11,6 +11,5 @@ run() { cabal run -v0 cardano-config -- schema "$@"; }
 
 mkdir -p schemas
 run > schemas/config.schema.json
-run --legacy-flat > schemas/config.legacy-flat.schema.json
 
-echo "Wrote schemas/config.schema.json and schemas/config.legacy-flat.schema.json."
+echo "Wrote schemas/config.schema.json."
