@@ -1,4 +1,5 @@
 {
+  "$schema": "file:///home/javier/code/cardano/cardano-config/schemas/config.schema.json",
     "Version": 2,
     "Configuration": {
         "ConsensusConfig": {

@@ -82,6 +82,10 @@ The split-file form is gone, so those sections hold their objects now (below).
   required: the geneses, the tracing configuration and the injection root. A
   section that does not parse is still reported while the file is read.
 
+  `Cardano.Configuration.File.Merge` swaps `loadBaseDefault` for
+  `defaultConfiguration :: BlockProducerOrRelay -> Value`, and gains
+  `decodeSection`, the pure section reader resolution uses.
+
   The layering it replaces was `base < role < user` with the role slotted in
   between (`withRoleDefaults`), which is why the user's layer had to be carried
   separately. `withRoleDefaults`, `networkRoleDefaults`,
@@ -91,9 +95,10 @@ The split-file form is gone, so those sections hold their objects now (below).
   field the base set, so folding it in layers identically.
 
 * The per-component schemas are gone: `schemas/<Component>.schema.json`, the
-  `schema <COMPONENT>` argument and `schema --list`. Each was byte-identical
-  to that section of `config.schema.json` plus an `$id`, and with the
-  split-file form removed nothing writes a standalone component document.
+  `schema <COMPONENT>` argument and `schema --list`. Each was that section of
+  `config.schema.json` and nothing else, bar its own `$id` and `$schema`, and
+  with the split-file form removed nothing writes a standalone component
+  document.
   `configurationSchemas`, `configurationSchemasWithDefaults` and the seven
   `storageSchema`-style values go with them, and `componentDefaults` is now a
   pure value rather than an `IO` action. The `$schema` lines in `variants/` and
@@ -108,17 +113,19 @@ The split-file form is gone, so those sections hold their objects now (below).
   `Version` and `Configuration` are required, so a legacy document fails
   validation as the README has always said it should.
 
-  This is a change to what validates, and it rejects documents the `v2`
-  schema accepted, but every one of those was already rejected at parse time.
+  This is a change to what validates. The cross-field rules it now reaches
+  reject only documents the parser already rejected, but requiring the
+  envelope rejects one it accepts: a legacy document still parses, because
+  `migrate` rewrites it first, and fails validation all the same. That split
+  is deliberate — the schema documents the current form alone.
 
-* `NodeConfigurationFromFile` is a plain record. It was
-  `NodeConfigurationFromFileF Identity`, where the `f` parameter staged a
-  component that might still be a sub-file reference against one already read;
-  with no sub-files there is one stage. Each field now holds its component
-  directly, so a consumer drops the `runIdentity` around
-  `storageConfiguration`, `protocolConfiguration` and the rest. The type
-  synonym and `NodeConfigurationFromFileF` are gone, and the constructor is
-  `NodeConfigurationFromFile`, not `NodeConfigurationFromFileV1`.
+* `NodeConfigurationFromFile` is a plain record: `NodeConfigurationFromFileF`
+  and its `Identity` type synonym are gone, and the constructor is
+  `NodeConfigurationFromFile`, not `NodeConfigurationFromFileV1`. The `f`
+  parameter staged a component that might still be a sub-file reference
+  against one already read, so with no sub-files it had one stage and nothing
+  left to say. The component fields it wrapped are gone as well (above), so
+  there is no `runIdentity` to drop — there are fields to stop reading.
 
 * `Cardano.Configuration.File.Merge.runCodec` loses its `Maybe FilePath`
   argument and `decodeValueFile` loses its `Maybe String` section argument.
@@ -235,9 +242,10 @@ The split-file form is gone, so those sections hold their objects now (below).
   `EnableRpc`/`RpcSocketPath` pair it already handled.
 
   The schemas gain the new keys, and `migrate` now stamps `Version: 2` on the
-  documents it reshapes. An existing `Version`, like an existing `$schema`, is
-  carried through untouched, so a document pinned to an earlier version stays
-  pinned.
+  documents it reshapes, replacing an older one (see the breaking change
+  above). A `Version` *newer* than 2 is left alone, because migration never
+  goes backwards, and a `$schema` is kept only on a document whose version
+  migration did not move.
 
 ### Changed
 
