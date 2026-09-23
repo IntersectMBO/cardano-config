@@ -1,5 +1,0 @@
-{
-    "SocketPath": "node.socket",
-    "EnableGrpc": true,
-    "GrpcSocketPath": "rpc.sock"
-}

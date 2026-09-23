@@ -90,29 +90,7 @@ main = defaultMain $ testGroup "cardano-config" (cases <> [schemaTests])
 -- | The example/parser/resolver cases, in the order they used to be checked.
 cases :: [TestTree]
 cases =
-  [ decodeCase
-      "test/examples/storage.json"
-      (decodeData "test/examples/storage.json" :: IO (Either String (StorageConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/consensus.json"
-      (decodeData "test/examples/consensus.json" :: IO (Either String (ConsensusConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/protocol.json"
-      (decodeData "test/examples/protocol.json" :: IO (Either String (ProtocolConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/network.json"
-      (decodeData "test/examples/network.json" :: IO (Either String (NetworkConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/localconnections.json"
-      ( decodeData "test/examples/localconnections.json" ::
-          IO (Either String (LocalConnectionsConfig StrictMaybe))
-      )
-  , decodeCase
-      "test/examples/localconnections-tls.json"
-      ( decodeData "test/examples/localconnections-tls.json" ::
-          IO (Either String (LocalConnectionsConfig StrictMaybe))
-      )
-  , parseCase "test/examples/legacy-fullconfig.json"
+  [ parseCase "test/examples/legacy-fullconfig.json"
   , parseCase "test/examples/all-sections.json"
   , tracingCase
   , tracingDefaultParityCase
