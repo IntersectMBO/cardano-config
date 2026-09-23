@@ -9,14 +9,55 @@ no longer be published under it. `cardano-config-2.x.x.x` parses every format
 version up to and including 2 and writes 2. A version-1 document still parses,
 because `migrate` upgrades it to version 2 before the parser sees it.
 
-What validates changes in one direction: the schemas now state the cross-field
-rules the parser enforces (below), so a validator rejects documents `v1`
-accepted. Every one of those was already rejected at parse time, so no working
-configuration stops working. The new keys themselves are additive: the sections
-do not set `additionalProperties: false`, so a configuration carrying them
-already validated against `v1`.
+The schemas now state the cross-field rules the parser enforces (below), so a
+validator rejects documents `v1` accepted. Every one of those was already
+rejected at parse time. The new keys themselves are additive: the sections do
+not set `additionalProperties: false`, so a configuration carrying them already
+validated against `v1`.
+
+One working configuration does stop working: one whose sections name sub-files.
+The split-file form is gone, so those sections hold their objects now (below).
 
 ### Breaking changes
+
+* A configuration is held in one file. A section key (`StorageConfig`,
+  `ProtocolConfig`, …) took either an inline object or a path to a sub-file the
+  parser read and layered in; it now takes the inline object alone. A section
+  holding anything else is rejected, naming the section. The genesis files and
+  the `HermodTracing` file are unaffected: those are still paths.
+
+  To port a split configuration, copy each sub-file's contents in under its
+  section key. `migrate` cannot do it for you — reading those files is exactly
+  what it does not do — so it refuses such a document instead of writing one
+  the parser will not read.
+
+  `migrate` therefore returns `Either MigrationError (Value, [ConfigWarning])`
+  rather than the pair, with `renderMigrationError` for the message. The files
+  under `variants/` stay in the repository as templates to copy from, but a
+  configuration can no longer point at one.
+
+  In the library, `Cardano.Configuration.File.Merge` loses `loadSectionSource`
+  and the containment check that kept a sub-file inside the configuration
+  directory, and `parseSection` and `sectionUserLayer` no longer take a root
+  directory.
+
+* An `UnrecognisedKeys` warning now reports only a name no parser claims (a
+  typo, or a key of an unknown component). It used to also cover a component
+  property left flat under `Configuration` when that component's section was a
+  sub-file path; with no sub-file paths left, `migrate` groups such a property
+  under the section that owns it in every case.
+
+* The whole-configuration schema describes each section as the component's own
+  schema, instead of "a file path or that schema". The flat legacy form is no
+  longer called "one-file", since one file is what every configuration is now:
+  `schema --legacy-one-file` becomes `schema --legacy-flat`, writing
+  `schemas/config.legacy-flat.schema.json`. In the library,
+  `splitConfigSchema`/`splitConfigSchemaWithDefaults` become
+  `configSchema`/`configSchemaWithDefaults`, and
+  `legacyOneFileConfigSchema`/`legacyOneFileConfigSchemaWithDefaults` become
+  `legacyFlatConfigSchema`/`legacyFlatConfigSchemaWithDefaults`.
+  `Cardano.Configuration.Commands.ConfigForm` renames its constructors to
+  `CurrentForm` and `LegacyFlatForm`.
 
 * `migrate` writes the current format version instead of carrying an older one
   through, so a legacy or a version-1 document comes out at version 2 with the

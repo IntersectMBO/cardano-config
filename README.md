@@ -15,10 +15,10 @@ The bundled `cardano-config` executable exposes the same via its `resolve`,
 
 ## Recommended format
 
-A configuration is a single JSON/YAML object. The recommended form is the
-**versioned envelope**: `$schema` (the URL of the schema the file follows),
-`Version` and `MinNodeVersion` at the top level, with the components grouped
-under `Configuration`, each given inline or as a path to a split sub-file:
+A configuration is **one** JSON/YAML object, in one file. The recommended form
+is the **versioned envelope**: `$schema` (the URL of the schema the file
+follows), `Version` and `MinNodeVersion` at the top level, with the components
+grouped under `Configuration`, each given inline:
 
 ```json
 {
@@ -26,22 +26,35 @@ under `Configuration`, each given inline or as a path to a split sub-file:
   "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
-    "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",
+    "ProtocolConfig": {
+      "RequiresNetworkMagic": "RequiresNoMagic",
+      "ByronGenesisFile": "mainnet-byron-genesis.json",
+      "ByronGenesisHash": "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
+      "ShelleyGenesisFile": "mainnet-shelley-genesis.json",
+      "ShelleyGenesisHash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81",
+      "AlonzoGenesisFile": "mainnet-alonzo-genesis.json",
+      "AlonzoGenesisHash": "7e94a15f55d1e82d10f09203fa1d40f8eede58fd8066542cf6566008068ed874",
+      "ConwayGenesisFile": "mainnet-conway-genesis.json",
+      "ConwayGenesisHash": "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62",
+      "CheckpointsFile": "mainnet-checkpoints.json",
+      "CheckpointsFileHash": "3e6dee5bae7acc6d870187e72674b37c929be8c66e62a552cf6a876b1af31ade"
+    },
     "StorageConfig": { "LedgerDB": { "Backend": "V2InMemory" } }
   }
 }
 ```
+
+A section holds its configuration object directly. A path to a separate file
+holding that section is rejected, and `migrate` refuses such a document rather
+than produce one the parser will not read, so copy each of those files'
+contents in under its section key. The genesis files and the `HermodTracing`
+file are the exceptions: those stay paths, because the node reads them itself.
 
 Other shapes still parse: a document missing any of those envelope keys, or the
 legacy flat form with the component keys at the top level, is brought into the
 envelope by `migrate` before it is parsed (see [Schema versioning](#schema-versioning)),
 which raises a single non-fatal `MigratedToCurrentFormat` warning. See
 [Warnings](#warnings).
-
-A component split out into its own sub-file may declare its own `$schema`
-pointing to that component's schema (e.g. a `StorageConfig` sub-file uses `schemas/StorageConfig.schema.json`),
-so editors and validators pick up the right schema for the sub-file. The key is
-an annotation: the parser accepts and ignores it.
 
 ### Schema versioning
 
@@ -86,9 +99,8 @@ likewise), `TargetNumberOf*` →
 (`PBftSignatureThreshold`, `LastKnownBlockVersion-Major`/`-Minor`/`-Alt`, now
 supplied by consensus defaults; the vestigial `Protocol`; and
 `MaxKnownMajorProtocolVersion`, a dead key the node never read). Apart from that
-it preserves the values as written and does not fill in defaults, inline
-referenced sub-files, or read genesis files; follow it with `resolve` to check
-the result.
+it preserves the values as written and does not fill in defaults or read
+genesis files; follow it with `resolve` to check the result.
 
 A genuinely unrecognised key (a typo, say) is **kept** rather than silently
 dropped, so nothing is lost - but it remains unrecognised and so still surfaces
@@ -97,15 +109,18 @@ a warning-free config.
 
 (To port by hand instead: group the component keys under their sections inside
 `Configuration` and add the `Version` / `MinNodeVersion` envelope. `cardano-config
-schema` documents the recommended form; `--legacy-one-file` documents the flat
+schema` documents the recommended form; `--legacy-flat` documents the flat
 form.)
 
 ## Defaults and layering
 
 Every component ships a **default file** under [`defaults/`](defaults/), with the
 network overlays under [`variants/`](variants/) and the `NetworkConfig` role
-overlays under [`defaults/NetworkConfig/`](defaults/NetworkConfig/). For each
-component the layering, from lowest to highest precedence, is:
+overlays under [`defaults/NetworkConfig/`](defaults/NetworkConfig/). The files
+under `variants/` are templates to copy from: a configuration cannot point at
+one, so paste the contents of `variants/ProtocolConfig/mainnet.json` under your
+`ProtocolConfig` key. For each component the layering, from lowest to highest
+precedence, is:
 
 1. the package's base default (`defaults/<Component>.json`), always applied;
 2. for the `Network` component only, a **role layer** chosen automatically from
@@ -113,9 +128,7 @@ component the layering, from lowest to highest precedence, is:
    (`defaults/NetworkConfig/{blockproducer,relay}.json`)
    fills the deadline peer targets and `PeerSharing` when the configuration leaves
    them unset (so it sits *below* the file value);
-3. the component's value in the configuration file (an inline object or a sub-file
-   path, including any `variants/<Component>/*` overlay the configuration
-   references explicitly);
+3. the component's inline object in the configuration file;
 4. the matching CLI flag, where one exists.
 
 `cardano-config` is the *origin* of these default files, but each is ultimately
@@ -138,7 +151,7 @@ executable prints to stderr, prefixed with `Warning: `.
 | `MigratedToCurrentFormat` | The document is at the current version, but `migrate` still changed it before parsing, because it was not in the envelope, or used a pre-rename field name, or carried an obsolete key. An outdated version reports the warning above instead of this one. |
 | `RenamedKeyCollision old new` | Both the old and the current name of a renamed field are present at the same level. The current name wins; the other value is dropped. |
 | `EnvelopeKeyCollision key` | A key appears both as a top-level sibling of `Configuration` and inside it. The one inside `Configuration` wins. |
-| `UnrecognisedKeys keys` | Keys at the `Configuration` level that no parser recognises: typos, or a component property left flat instead of under its section. They are ignored, not resolved into a section. |
+| `UnrecognisedKeys keys` | Keys at the `Configuration` level that no parser recognises: a typo, or a key of some component this library does not know. They are ignored. A key that *is* a component property is not one of these: `migrate` groups it under the section that owns it. |
 | `ExperimentalGenesisIgnored file` | A `DijkstraGenesisFile` is named while `ExperimentalHardForksEnabled` is off, so the file is ignored - neither read nor hash-checked. |
 
 `resolveConfiguration` adds:
@@ -153,8 +166,9 @@ warning.
 
 ## Cookbook: I want to ...
 
-The JSON snippets below use the recommended envelope form; the complete ones can
-be passed straight to `--config` (a few show just the relevant fragment).
+The JSON snippets below use the recommended envelope form. Some show only the
+section under discussion: a configuration you can pass to `--config` also needs
+a `ProtocolConfig` naming the four genesis files, as the first one does.
 
 ### ... define a config for running a relay node on mainnet with the default configuration
 
@@ -164,16 +178,31 @@ be passed straight to `--config` (a few show just the relevant fragment).
   "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
-    "ProtocolConfig": "variants/ProtocolConfig/mainnet.json"
+    "ProtocolConfig": {
+      "RequiresNetworkMagic": "RequiresNoMagic",
+      "ByronGenesisFile": "mainnet-byron-genesis.json",
+      "ByronGenesisHash": "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
+      "ShelleyGenesisFile": "mainnet-shelley-genesis.json",
+      "ShelleyGenesisHash": "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81",
+      "AlonzoGenesisFile": "mainnet-alonzo-genesis.json",
+      "AlonzoGenesisHash": "7e94a15f55d1e82d10f09203fa1d40f8eede58fd8066542cf6566008068ed874",
+      "ConwayGenesisFile": "mainnet-conway-genesis.json",
+      "ConwayGenesisHash": "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62",
+      "CheckpointsFile": "mainnet-checkpoints.json",
+      "CheckpointsFileHash": "3e6dee5bae7acc6d870187e72674b37c929be8c66e62a552cf6a876b1af31ade"
+    }
   }
 }
 ```
 
+That `ProtocolConfig` object is the contents of
+[`variants/ProtocolConfig/mainnet.json`](variants/ProtocolConfig/mainnet.json),
+minus its `$schema` line. The other networks have their own file to copy from.
+
 ### ... override options in a component
 
-A component is a single source: an inline object, or a string path to a sub-file.
-Give it the keys you want set, and the component's base default (and, for
-`NetworkConfig`, the credential-derived role layer) fills the rest:
+Give the section the keys you want set, and the component's base default (and,
+for `NetworkConfig`, the credential-derived role layer) fills the rest:
 
 ```json
 {
@@ -181,8 +210,7 @@ Give it the keys you want set, and the component's base default (and, for
   "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
-    "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",
-    "NetworkConfig": { "TargetNumberOfRootPeers": 100 }
+    "NetworkConfig": { "DeadlineTargetNumberOfRootPeers": 100 }
   }
 }
 ```
@@ -200,7 +228,6 @@ a certificate and its private key makes that HTTP/2 over TLS:
   "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
-    "ProtocolConfig": "variants/ProtocolConfig/mainnet.json",
     "LocalConnectionsConfig": {
       "EnableGrpc": true,
       "GrpcListenAddress": "0.0.0.0",
@@ -319,8 +346,8 @@ Only **eight** keys are mandatory (no default; parsing fails if absent):
 - `ConwayGenesisFile` + `ConwayGenesisHash`
 
 These are network-specific, so they are deliberately not in the base defaults;
-supply them directly or by referencing a `variants/ProtocolConfig/<network>.json`
-file.
+write them into `ProtocolConfig` yourself, or copy them from
+`variants/ProtocolConfig/<network>.json`.
 
 ## Genesis initial-data injection
 
