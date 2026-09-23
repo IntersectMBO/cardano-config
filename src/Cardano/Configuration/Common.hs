@@ -219,7 +219,9 @@ grpcEndpointFieldsCodec =
     <*> optionalFieldWithStrict
       "GrpcTlsPrivateKeyFile"
       filePathCodec
-      "Path of the private key matching GrpcTlsCertificateFile (PEM)"
+      ( "Path of the private key matching GrpcTlsCertificateFile (PEM). Requires "
+          <> "GrpcTlsCertificateFile and GrpcListenPort"
+      )
       .= fTlsPrivateKeyFile
     <*> optionalFieldWithStrict
       "GrpcTlsChainCertificateFiles"

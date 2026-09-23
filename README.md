@@ -273,6 +273,10 @@ a certificate and its private key makes that HTTP/2 over TLS:
 }
 ```
 
+Enabling gRPC also needs a node socket path, from the file or from
+`--socket-path`: the server serves every request over the node-to-client
+socket, whichever endpoint it listens on.
+
 `GrpcListenAddress` is optional and defaults to `127.0.0.1`, so a port alone
 keeps the endpoint on loopback; the chain certificates are optional too. The
 combinations that describe no single endpoint are rejected as the file is
@@ -320,7 +324,7 @@ This checks the structure and the cross-field rules a single file can state (see
 [Warnings](#warnings) for what the parser adds), section by section inside
 `Configuration`. It does not check genesis
 hashes, nor the rules that span the file, the command line and the defaults -
-"enabling gRPC needs somewhere to listen" is satisfied by a `--socket-path` the
+"enabling gRPC needs a node socket path" is satisfied by a `--socket-path` the
 file never mentions - so `resolve` is still the final check.
 
 A legacy document is expected to *fail* validation: it still parses, because

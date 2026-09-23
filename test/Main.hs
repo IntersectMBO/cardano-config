@@ -143,6 +143,7 @@ cases =
   , grpcEndpointRejectionCase
   , grpcEndpointCliCase
   , grpcEnabledEndpointCheckCase
+  , boundedDecimalOnlyCase
   , roleSelectionCase
   , rolePrecedenceCase
   , defaultConfigParityCase
@@ -1257,26 +1258,37 @@ grpcEndpointCliCase =
     Nothing -> Nothing
     Just cli -> Just (label <> ": was accepted, as " <> show (grpcEndpointCLI cli))
 
--- | Enabling the gRPC server needs somewhere for it to listen: an endpoint of
--- its own, or a node socket path to derive the default @rpc.sock@ from. A
--- listen port counts, so @--grpc-enable --grpc-listen-port@ needs no node
--- socket. @--grpc-enable@ alone, with neither, is a resolution error.
+-- | Enabling the gRPC server requires a node socket path, whichever endpoint it
+-- listens on. The server serves every request over the node-to-client socket,
+-- so a TCP listener changes where it listens, not whether it needs that
+-- socket: @cardano-node@\'s @makeRpcConfig@ refuses @EnableGrpc@ without
+-- @SocketPath@ in every case, and this check has to agree or the configuration
+-- resolves here and dies at startup.
+--
+-- So @--grpc-enable@ alone is a resolution error, and so is
+-- @--grpc-enable --grpc-listen-port 3001@. With a node socket path both are
+-- accepted, and the endpoint itself stays unset when none was asked for, so
+-- the consumer derives @rpc.sock@ beside the node socket.
 grpcEnabledEndpointCheckCase :: TestTree
 grpcEnabledEndpointCheckCase =
-  testCase "enabling gRPC requires an endpoint or a node socket path" $ do
+  testCase "enabling gRPC requires a node socket path, whatever it listens on" $ do
     path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     let resolveWith args = case cliArgs ("--config" : path : args) of
           Nothing -> Left ("could not build CLI arguments: " <> show args)
           Just cli -> either (Left . show) (Right . fst) (resolveConfiguration cli cfg)
+        socket = ["--socket-path", "node.socket"]
     expectOk $ case ( resolveWith ["--grpc-enable"]
                     , resolveWith ["--grpc-enable", "--grpc-listen-port", "3001"]
-                    , resolveWith ["--grpc-enable", "--socket-path", "node.socket"]
+                    , resolveWith (["--grpc-enable", "--grpc-listen-port", "3001"] <> socket)
+                    , resolveWith (["--grpc-enable"] <> socket)
                     ) of
-      (Right _, _, _) -> Just "gRPC enabled with nothing to listen on was accepted"
-      (_, Left err, _) -> Just ("gRPC enabled on a listen port was rejected: " <> err)
-      (_, _, Left err) -> Just ("gRPC enabled with a node socket path was rejected: " <> err)
-      (Left _, Right onPort, Right onSocket)
+      (Right _, _, _, _) -> Just "gRPC enabled with no node socket path was accepted"
+      (_, Right _, _, _) ->
+        Just "gRPC enabled on a listen port with no node socket path was accepted"
+      (_, _, Left err, _) -> Just ("gRPC on a listen port with a node socket was rejected: " <> err)
+      (_, _, _, Left err) -> Just ("gRPC with a node socket path was rejected: " <> err)
+      (Left _, Left _, Right onPort, Right onSocket)
         | grpcEndpoint (C.localConnectionsConfig onPort)
             /= SJust (GrpcEndpointHttp defaultGrpcListenAddress 3001) ->
             Just
@@ -1285,6 +1297,35 @@ grpcEnabledEndpointCheckCase =
         | isSJust (grpcEndpoint (C.localConnectionsConfig onSocket)) ->
             Just ("a node socket path invented an endpoint: " <> show (C.localConnectionsConfig onSocket))
         | otherwise -> Nothing
+
+-- | The numeric options take plain decimal only. @readEither@ on its own also
+-- accepts Haskell\'s hexadecimal and octal literals and surrounding whitespace,
+-- so @--grpc-listen-port 0x1F1@ used to bind port 497 quietly, and @0o17@ port
+-- 15. @cardano-node@ rejects both, and so does every use of @bounded@ now.
+boundedDecimalOnlyCase :: TestTree
+boundedDecimalOnlyCase =
+  testCase "numeric options take decimal only (no hex, octal or padding)" $
+    expectOk (firstProblem (map check inputs))
+ where
+  -- (argument, the port it must resolve to, or Nothing if it must be refused)
+  inputs =
+    [ ("3001", Just 3001)
+    , ("0x1F1", Nothing)
+    , ("0o17", Nothing)
+    , (" 12 ", Nothing)
+    , ("12x", Nothing)
+    , ("", Nothing)
+    , ("-1", Nothing) -- read, then refused by the lower bound
+    , ("99999", Nothing) -- refused by the upper bound, as before
+    ]
+  check (arg, expected) =
+    case (grpcEndpointCLI <$> cliArgs ["--config", "c.json", "--grpc-listen-port", arg], expected) of
+      (Nothing, Nothing) -> Nothing
+      (Nothing, Just p) -> Just (show arg <> ": was refused, expected port " <> show p)
+      (Just got, Nothing) -> Just (show arg <> ": was accepted as " <> show got)
+      (Just got, Just p)
+        | got == SJust (GrpcEndpointHttp defaultGrpcListenAddress p) -> Nothing
+        | otherwise -> Just (show arg <> ": parsed to " <> show got <> ", expected port " <> show p)
 
 -- | The cross-field rules the parser enforces are stated in the schemas too, so
 -- a validator rejects the documents the parser rejects. This pins that they are

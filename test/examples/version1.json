@@ -16,7 +16,8 @@
     },
     "LocalConnectionsConfig": {
       "EnableGrpc": true,
-      "GrpcSocketPath": "rpc.sock"
+      "GrpcSocketPath": "rpc.sock",
+      "SocketPath": "node.socket"
     }
   }
 }

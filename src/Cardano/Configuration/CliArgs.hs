@@ -55,8 +55,9 @@ module Cardano.Configuration.CliArgs
 
 import Cardano.Configuration.Common
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe)
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Data.Bifunctor (second)
+import Data.Char (isDigit)
 import Data.IP (IP, IPv4, IPv6)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -613,14 +614,31 @@ parseShutdownOn =
           ]
     ]
 
--- | An 'option' reader that parses an integer and rejects values outside the
--- target type's bounds, rather than silently wrapping (as @fromIntegral <$> auto@
--- would). The string argument names the value in the error message.
+-- | An 'option' reader that parses a decimal integer and rejects values outside
+-- the target type's bounds, rather than silently wrapping (as
+-- @fromIntegral <$> auto@ would). The string argument names the value in the
+-- error message.
+--
+-- Only plain decimal is accepted: an optional @-@ and then digits. 'readEither'
+-- alone would also take Haskell's other integer literals and surrounding
+-- whitespace, so @--port 0x1F1@ would bind port 497 and @--port 0o17@ port 15,
+-- quietly, rather than being refused. @cardano-node@ refuses both — its
+-- @parsePortNumber@ filters on 'isDigit' before reading — and an operator who
+-- writes @0x1F1@ has made a mistake whichever tool reads it.
+--
+-- A leading @-@ is read and then caught by the lower-bound check below, so an
+-- unsigned target reports the bound rather than a parse failure.
 bounded :: forall a. (Bounded a, Integral a, Show a) => String -> ReadM a
 bounded t = eitherReader $ \s -> do
+  unless (isDecimal s) $ Left $ t <> " must be a decimal number, but was: " <> s
   i <- readEither @Integer s
   when (i < fromIntegral (minBound @a)) $ Left $ t <> " must not be less than " <> show (minBound @a)
   when (i > fromIntegral (maxBound @a)) $
     Left $
       t <> " must not be greater than " <> show (maxBound @a)
   pure (fromIntegral i)
+ where
+  isDecimal = \case
+    '-' : digits -> allDigits digits
+    digits -> allDigits digits
+  allDigits ds = not (null ds) && all isDigit ds

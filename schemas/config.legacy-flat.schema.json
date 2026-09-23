@@ -353,7 +353,7 @@
             "type": "array"
         },
         "GrpcTlsPrivateKeyFile": {
-            "description": "Path of the private key matching GrpcTlsCertificateFile (PEM)",
+            "description": "Path of the private key matching GrpcTlsCertificateFile (PEM). Requires GrpcTlsCertificateFile and GrpcListenPort",
             "format": "path",
             "title": "GrpcTlsPrivateKeyFile",
             "type": "string"

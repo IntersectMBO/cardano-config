@@ -198,10 +198,19 @@ The split-file form is gone, so those sections hold their objects now (below).
   `parseGrpcTlsFiles`), as are `GrpcEndpoint`, `GrpcTlsFiles` and
   `defaultGrpcListenAddress`.
 
-* The consistency check on enabling gRPC now accepts an endpoint of any kind: a
-  gRPC socket path, a listen port, or a node socket path. A configuration that
-  enables gRPC on a listen port and names no node socket used to be rejected.
-  It now resolves, and the check's `checkDescription` text changed with it.
+* The consistency check on enabling gRPC now requires a node socket path,
+  whatever the gRPC server listens on. The server serves every request over
+  the node-to-client socket, so a TCP listener changes where it listens, not
+  whether it needs that socket, and `cardano-node`'s `makeRpcConfig` refuses
+  `EnableGrpc` without a socket path in every case.
+
+  The old check accepted `EnableGrpc` with a `GrpcSocketPath` and no
+  `SocketPath`, which `cardano-node` then rejected at startup; extending it to
+  the new TCP and TLS listeners would have widened that gap. Requiring the
+  socket path closes both. A configuration that enables gRPC and names no node
+  socket path now fails to resolve, and the check's `checkDescription` says
+  why. `test/examples/version1.json` was one such configuration and gains a
+  `SocketPath`.
 
 * `experimentalGenesisConfig` (on both `NodeConfigurationFromFile` and
   `NodeConfiguration`) is now gated on the `ExperimentalHardForksEnabled`
@@ -238,6 +247,14 @@ The split-file form is gone, so those sections hold their objects now (below).
   combinations where the two disagree are now unreachable, so a consumer that
   used to handle four has two.
 
+* The numeric command-line options take plain decimal only. They read through
+  `readEither`, which also accepts Haskell's hexadecimal and octal literals and
+  surrounding whitespace, so `--grpc-listen-port 0x1F1` bound port 497 and
+  `0o17` bound port 15, quietly. `cardano-node` rejects both (its
+  `parsePortNumber` filters on `isDigit` first). This affects every option
+  using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
+  `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
+
 ### Added
 
 * `migrate` rewrites the remaining `Rpc*` key names to their `Grpc*` form:
@@ -266,7 +283,7 @@ The split-file form is gone, so those sections hold their objects now (below).
   - `SnapshotInterval` is `minimum: 1`, not the 0 its `Word64` would allow
 
   Only rules whose inputs all come from the configuration file are stated.
-  "Enabling gRPC needs somewhere to listen" is not: a `--socket-path` on the
+  "Enabling gRPC needs a node socket path" is not: a `--socket-path` on the
   command line satisfies it, and a validator sees only the file.
   `MinDelay <= MaxDelay` remains parser-only, because JSON Schema cannot compare
   two properties.

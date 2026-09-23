@@ -242,13 +242,12 @@ defaultConfigChecks :: [ConfigCheck]
 defaultConfigChecks =
   [ ConfigCheck
       CheckError
-      ( "Enabling the gRPC endpoint requires a gRPC endpoint (a socket path or a listen port), or a "
-          <> "node socket path to derive the default socket from"
+      ( "Enabling the gRPC endpoint requires a node socket path: the gRPC server serves every "
+          <> "request over the node-to-client socket, so it needs one whichever endpoint it listens on"
       )
       ( \nc ->
           let lcc = localConnectionsConfig nc
            in not (runIdentity (File.enableGrpc lcc))
-                || isSJust (File.grpcEndpoint lcc)
                 || isSJust (File.socketPath lcc)
       )
   , ConfigCheck
