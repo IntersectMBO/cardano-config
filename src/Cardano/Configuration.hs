@@ -46,6 +46,8 @@ module Cardano.Configuration
   , File.DiffusionMode (..)
   , File.PeerSharing (..)
   , File.AcceptedConnectionsLimit (..)
+  , File.AcceptedConnectionsLimitConfig (..)
+  , File.acceptedConnectionsLimitOf
   , File.LocalConnectionsConfig (..)
   , File.GrpcEndpoint (..)
   , File.GrpcTlsFiles (..)

@@ -132,6 +132,7 @@ cases =
   , roleSelectionCase
   , rolePrecedenceCase
   , peerTargetsRejectedCase
+  , partialNestedObjectCase
   , defaultConfigParityCase
   , mempoolAllUnsetCase
   , mempoolAllSetCase
@@ -1044,6 +1045,33 @@ rolePrecedenceCase =
                 && deadlineTargetOfKnownPeers n == SJust 100 -- unset in file, block-producer default
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
+
+-- | A configuration that states part of a nested object takes the rest of that
+-- object's fields from the defaults, because the merge recurses rather than
+-- replacing the object whole. Here only @HardLimit@ is set, so @SoftLimit@ and
+-- @Delay@ stay at the shipped 384 and 5.
+--
+-- @AcceptedConnectionsLimit@ is the one place this can be observed: it is the
+-- only defaulted nested object whose sub-keys are values in their own right.
+-- @LedgerDB@ is the other nested object default and already reads every
+-- sub-key optionally; the remaining nested objects sit under a default that is
+-- a string (@DatabasePath@, @Backend@), which an object replaces whole, so
+-- there is nothing there to inherit.
+partialNestedObjectCase :: TestTree
+partialNestedObjectCase =
+  testCase "a partly stated AcceptedConnectionsLimit keeps the defaults for the rest" $ do
+    path <- getDataFileName "test/examples/partial-accepted-connections-limit.json"
+    (cfg, _) <- parseConfigurationFiles path
+    expectOk $ case cliArgs [] of
+      Nothing -> Just "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Just ("resolve failed: " <> show e)
+        Right (nc, _) ->
+          let limits = acceptedConnectionsLimitOf (C.networkConfiguration nc)
+              expected = AcceptedConnectionsLimit 1000 384 5
+           in if limits == expected
+                then Nothing
+                else Just ("unexpected limits: " <> show limits <> " /= " <> show expected)
 
 -- | A peer target set ouroboros-network will not accept is rejected at
 -- resolution, naming the group it is in. Its governor only asserts

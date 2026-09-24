@@ -6,6 +6,8 @@ module Cardano.Configuration.File.Network
   , ResponderCoreAffinityPolicy (..)
   , TxSubmissionLogicVersion (..)
   , AcceptedConnectionsLimit (..)
+  , AcceptedConnectionsLimitConfig (..)
+  , acceptedConnectionsLimitOf
   , LocalConnectionsConfig (..)
   , GrpcEndpoint (..)
   , GrpcTlsFiles (..)
@@ -36,11 +38,12 @@ import Cardano.Configuration.Common
   , filePathCodec
   , grpcEndpointObjectCodec
   )
-import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybe, strictMaybeToMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Time.Clock (DiffTime)
+import Data.Word (Word32)
 import GHC.Generics (Generic)
 import Ouroboros.Network.DiffusionMode (DiffusionMode (..))
 import Ouroboros.Network.PeerSelection.Governor.Types (PeerSelectionTargets (..))
@@ -86,17 +89,58 @@ instance HasCodec ResponderCoreAffinityPolicy where
 txSubmissionLogicVersionCodec :: JSONCodec TxSubmissionLogicVersion
 txSubmissionLogicVersionCodec = shownBoundedEnumCodec
 
--- | Limits on the number of accepted connections.
-acceptedConnectionsLimitCodec :: JSONCodec AcceptedConnectionsLimit
-acceptedConnectionsLimitCodec =
-  object "AcceptedConnectionsLimit" $
-    AcceptedConnectionsLimit
-      <$> requiredField "HardLimit" "Hard limit on the number of connections"
-        .= acceptedConnectionsHardLimit
-      <*> requiredField "SoftLimit" "Soft limit on the number of connections"
-        .= acceptedConnectionsSoftLimit
-      <*> requiredFieldWith "Delay" diffTimeCodec "Delay, in seconds, applied once the soft limit is reached"
-        .= acceptedConnectionsDelay
+-- | Limits on the number of accepted connections, one limit per field, so a
+-- configuration can set one and take the rest from the defaults.
+-- 'acceptedConnectionsLimitOf' reads the resolved form as
+-- @ouroboros-network@'s 'AcceptedConnectionsLimit'.
+data AcceptedConnectionsLimitConfig f = AcceptedConnectionsLimitConfig
+  { hardLimit :: f Word32
+  , softLimit :: f Word32
+  , delayOnSoftLimit :: f DiffTime
+  }
+  deriving Generic
+
+deriving instance Show (AcceptedConnectionsLimitConfig StrictMaybe)
+deriving instance Show (AcceptedConnectionsLimitConfig Identity)
+
+-- | The three limits of the resolved configuration, as @ouroboros-network@
+-- takes them.
+acceptedConnectionsLimitOf :: NetworkConfiguration Identity -> AcceptedConnectionsLimit
+acceptedConnectionsLimitOf c =
+  AcceptedConnectionsLimit
+    { acceptedConnectionsHardLimit = runIdentity (hardLimit l)
+    , acceptedConnectionsSoftLimit = runIdentity (softLimit l)
+    , acceptedConnectionsDelay = runIdentity (delayOnSoftLimit l)
+    }
+ where
+  l = acceptedConnectionsLimit c
+
+-- | The @AcceptedConnectionsLimit@ key. An absent key and an object that sets
+-- none of the three are the same thing, and are written back as an absent key.
+acceptedConnectionsLimitField :: JSONObjectCodec (AcceptedConnectionsLimitConfig StrictMaybe)
+acceptedConnectionsLimitField =
+  dimapCodec (strictMaybe noLimits id) present $
+    optionalFieldWithStrict
+      "AcceptedConnectionsLimit"
+      limitsCodec
+      "Limits on accepted connections"
+ where
+  noLimits = AcceptedConnectionsLimitConfig SNothing SNothing SNothing
+  present l = case (hardLimit l, softLimit l, delayOnSoftLimit l) of
+    (SNothing, SNothing, SNothing) -> SNothing
+    _ -> SJust l
+  limitsCodec =
+    object "AcceptedConnectionsLimit" $
+      AcceptedConnectionsLimitConfig
+        <$> optionalFieldStrict "HardLimit" "Hard limit on the number of connections"
+          .= hardLimit
+        <*> optionalFieldStrict "SoftLimit" "Soft limit on the number of connections"
+          .= softLimit
+        <*> optionalFieldWithStrict
+          "Delay"
+          diffTimeCodec
+          "Delay, in seconds, applied once the soft limit is reached"
+          .= delayOnSoftLimit
 
 -- | Options related to networking. Fields that have an always-applied default
 -- (see @defaults\/Network.json@) carry the @f@ parameter; the deadline peer
@@ -110,7 +154,7 @@ data NetworkConfiguration f = NetworkConfiguration
   , timeWaitTimeout :: f DiffTime
   , egressPollInterval :: f DiffTime
   , chainSyncIdleTimeout :: f DiffTime
-  , acceptedConnectionsLimit :: f AcceptedConnectionsLimit
+  , acceptedConnectionsLimit :: AcceptedConnectionsLimitConfig f
   , deadlineTargetOfRootPeers :: StrictMaybe Int
   , deadlineTargetOfKnownPeers :: StrictMaybe Int
   , deadlineTargetOfEstablishedPeers :: StrictMaybe Int
@@ -168,10 +212,7 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
           .= egressPollInterval
         <*> optionalFieldWithStrict "ChainSyncIdleTimeout" diffTimeCodec "ChainSync idle timeout, in seconds"
           .= chainSyncIdleTimeout
-        <*> optionalFieldWithStrict
-          "AcceptedConnectionsLimit"
-          acceptedConnectionsLimitCodec
-          "Limits on accepted connections"
+        <*> acceptedConnectionsLimitField
           .= acceptedConnectionsLimit
         <*> optionalFieldStrict "DeadlineTargetNumberOfRootPeers" "Deadline target of root peers"
           .= deadlineTargetOfRootPeers
@@ -230,6 +271,18 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
           "Tx-submission initial delay, in seconds"
           .= txSubmissionInitDelay
 
+-- | Resolve the three accepted-connection limits, each of which the base
+-- defaults always supply. A limit is named with its key path, so the error says
+-- which sub-key of the object is missing rather than naming the object.
+finalizeAcceptedConnectionsLimit ::
+  AcceptedConnectionsLimitConfig StrictMaybe ->
+  Either ErrorMessage (AcceptedConnectionsLimitConfig Identity)
+finalizeAcceptedConnectionsLimit l =
+  AcceptedConnectionsLimitConfig
+    <$> requireField "AcceptedConnectionsLimit.HardLimit" (hardLimit l)
+    <*> requireField "AcceptedConnectionsLimit.SoftLimit" (softLimit l)
+    <*> requireField "AcceptedConnectionsLimit.Delay" (delayOnSoftLimit l)
+
 -- | Resolve a partial network configuration, taking the defaulted fields from
 -- the (always-applied) base defaults.
 finalizeNetwork ::
@@ -242,7 +295,7 @@ finalizeNetwork c = do
   timeWait <- requireField "TimeWaitTimeout" (timeWaitTimeout c)
   egress <- requireField "EgressPollInterval" (egressPollInterval c)
   chainSyncIdle <- requireField "ChainSyncIdleTimeout" (chainSyncIdleTimeout c)
-  acceptedLimit <- requireField "AcceptedConnectionsLimit" (acceptedConnectionsLimit c)
+  acceptedLimit <- finalizeAcceptedConnectionsLimit (acceptedConnectionsLimit c)
   syncRoot <- requireField "SyncTargetNumberOfRootPeers" (syncTargetOfRootPeers c)
   syncKnown <- requireField "SyncTargetNumberOfKnownPeers" (syncTargetOfKnownPeers c)
   syncEstablished <-

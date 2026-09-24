@@ -278,6 +278,18 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* A configuration that sets part of `AcceptedConnectionsLimit` now takes the
+  rest from the defaults, as it already did for every other nested object.
+  `{ "AcceptedConnectionsLimit": { "HardLimit": 1000 } }` was rejected with
+  `key "SoftLimit" not found`; it now resolves with the default `SoftLimit` and
+  `Delay`. The three sub-keys are no longer `required` in the schema.
+
+  `NetworkConfiguration`'s `acceptedConnectionsLimit` is an
+  `AcceptedConnectionsLimitConfig f`, carrying the `f` parameter on each limit
+  rather than on the object. `acceptedConnectionsLimitOf` reads a resolved
+  configuration's three limits as `ouroboros-network`'s
+  `AcceptedConnectionsLimit`.
+
 * `DiffusionMode`, `AcceptedConnectionsLimit` and `TxSubmissionLogicVersion` are
   now `ouroboros-network`'s types, re-exported under the same names, and
   `peerSharing` is its `PeerSharing` rather than a `Bool`. Code matching on

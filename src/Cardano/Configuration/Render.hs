@@ -89,6 +89,17 @@ nodeConfigurationToJSON geneses nc =
 j :: Identity a -> StrictMaybe a
 j = SJust . runIdentity
 
+-- | The same, for the accepted-connection limits, which carry the @f@ parameter
+-- on each of their three fields rather than on the object.
+weakenAcceptedConnectionsLimit ::
+  File.AcceptedConnectionsLimitConfig Identity -> File.AcceptedConnectionsLimitConfig StrictMaybe
+weakenAcceptedConnectionsLimit l =
+  File.AcceptedConnectionsLimitConfig
+    { File.hardLimit = j (File.hardLimit l)
+    , File.softLimit = j (File.softLimit l)
+    , File.delayOnSoftLimit = j (File.delayOnSoftLimit l)
+    }
+
 weakenStorage :: File.StorageConfiguration Identity -> File.StorageConfiguration StrictMaybe
 weakenStorage s =
   File.StorageConfiguration
@@ -121,7 +132,7 @@ weakenNetwork n =
     , File.timeWaitTimeout = j (File.timeWaitTimeout n)
     , File.egressPollInterval = j (File.egressPollInterval n)
     , File.chainSyncIdleTimeout = j (File.chainSyncIdleTimeout n)
-    , File.acceptedConnectionsLimit = j (File.acceptedConnectionsLimit n)
+    , File.acceptedConnectionsLimit = weakenAcceptedConnectionsLimit (File.acceptedConnectionsLimit n)
     , File.deadlineTargetOfRootPeers = File.deadlineTargetOfRootPeers n
     , File.deadlineTargetOfKnownPeers = File.deadlineTargetOfKnownPeers n
     , File.deadlineTargetOfEstablishedPeers = File.deadlineTargetOfEstablishedPeers n

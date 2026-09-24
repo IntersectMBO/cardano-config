@@ -284,11 +284,6 @@
                                     "type": "integer"
                                 }
                             },
-                            "required": [
-                                "Delay",
-                                "SoftLimit",
-                                "HardLimit"
-                            ],
                             "title": "AcceptedConnectionsLimit",
                             "type": "object"
                         },

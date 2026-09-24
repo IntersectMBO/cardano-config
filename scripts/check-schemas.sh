@@ -23,6 +23,7 @@ CANONICAL_EXAMPLES=(
   injection
   dijkstra-gated-off
   min-node-version
+  partial-accepted-connections-limit
 )
 
 # --strict=false: the schemas carry annotations (title, and the "path" format)
