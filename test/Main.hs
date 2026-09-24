@@ -128,6 +128,7 @@ cases =
   , grpcEndpointCase
   , grpcEndpointRejectionCase
   , grpcEndpointCliCase
+  , grpcTlsDowngradeCase
   , grpcEnabledEndpointCheckCase
   , boundedDecimalOnlyCase
   , roleSelectionCase
@@ -1311,6 +1312,44 @@ grpcEndpointRejectionCase =
       | expectedMessage `isInfixOf` err -> Nothing
       | otherwise ->
           Just (label <> ": rejected, but not for " <> show expectedMessage <> ": " <> err)
+
+-- | A command-line endpoint replaces the configuration file's whole, so a flag
+-- meaning only to move the port also drops the file's TLS credentials. That is
+-- reported as a 'ConsistencyWarning' rather than silently accepted.
+--
+-- The resolution still succeeds: replacing the endpoint is what the flags are
+-- for, and the warning says what was lost. Passing the TLS flags alongside
+-- keeps TLS and raises nothing, and so does passing no endpoint flag at all.
+grpcTlsDowngradeCase :: TestTree
+grpcTlsDowngradeCase =
+  testCase "replacing a TLS gRPC endpoint from the command line warns" $ do
+    path <- getDataFileName "test/examples/grpc-tls-listener.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let resolveWith args = case cliArgs args of
+          Nothing -> Left "could not build CLI arguments"
+          Just cli -> case resolveConfiguration cli cfg of
+            Left e -> Left ("resolve failed: " <> show e)
+            Right (_, ws) -> Right [w | w <- map renderConfigWarning ws, "plaintext" `isInfixOf` w]
+        movedPort = resolveWith ["--grpc-listen-port", "4001"]
+        keptTls =
+          resolveWith
+            [ "--grpc-listen-port"
+            , "4001"
+            , "--grpc-tls-certificate"
+            , "tls/server.pem"
+            , "--grpc-tls-private-key"
+            , "tls/server.key"
+            ]
+        untouched = resolveWith []
+    expectOk $ case (movedPort, keptTls, untouched) of
+      (Left e, _, _) -> Just e
+      (_, Left e, _) -> Just e
+      (_, _, Left e) -> Just e
+      (Right dropped, Right kept, Right none)
+        | length dropped /= 1 -> Just ("moving the port did not warn once: " <> show dropped)
+        | not (null kept) -> Just ("keeping TLS still warned: " <> show kept)
+        | not (null none) -> Just ("no endpoint flag still warned: " <> show none)
+        | otherwise -> Nothing
 
 -- | The same endpoint, from the command line: the unix-socket flag and the TCP
 -- ones are alternatives, so giving both fails the parse, as does an address or

@@ -278,6 +278,12 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* `resolve` warns when a command-line gRPC endpoint replaces a TLS endpoint
+  from the configuration file with one that does not serve TLS. The endpoint is
+  replaced whole, so `--grpc-listen-port` on its own drops the file's
+  certificate and private key and leaves the server listening in plaintext. The
+  configuration still resolves; the warning says what was lost.
+
 * A `Version` below 1 is rejected, naming it. `1` is the lowest format version
   there has ever been, so `0` or a negative number names no format; both were
   read as legacy documents and quietly migrated. The schema already declared

@@ -427,13 +427,14 @@ resolveConfigurationWith checks cli file = do
   mempool <- section "MempoolConfig" >>= finalize . File.finalizeMempool
   -- Local connections additionally take CLI overrides before being finalized.
   lcc <- section "LocalConnectionsConfig"
-  let lccWithCli =
+  let cliGrpcEndpoint = CLI.grpcEndpointCLI cli
+      lccWithCli =
         lcc
           { File.socketPath = CLI.socketPath cli <|> File.socketPath lcc
           , File.enableGrpc = CLI.enableGrpcCLI cli <|> File.enableGrpc lcc
           , -- The endpoint is one choice, so a command-line endpoint replaces the
             -- file's endpoint whole rather than merging into it.
-            File.grpcEndpoint = CLI.grpcEndpointCLI cli <|> File.grpcEndpoint lcc
+            File.grpcEndpoint = cliGrpcEndpoint <|> File.grpcEndpoint lcc
           }
   localConnections <- finalize $ File.finalizeLocalConnections lccWithCli
   -- Storage, consensus and the non-producing flag take their value from the CLI
@@ -483,11 +484,41 @@ resolveConfigurationWith checks cli file = do
         }
   pure
     ( resolved{storageConfiguration = File.resolveSnapshotOptions (storageConfiguration resolved)}
-    , warnings
+    , grpcTlsDowngradeWarning (File.grpcEndpoint lcc) cliGrpcEndpoint <> warnings
     )
  where
   finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
   require name = strictMaybe (Left (name <> " has no value and no base default")) Right
+
+-- | The gRPC endpoint is one choice, so a command-line endpoint replaces the
+-- configuration file's whole rather than merging into it. A flag that means
+-- only to move the port therefore also drops the file's TLS credentials, and
+-- the server listens in plaintext instead. The operator did not ask for that in
+-- so many words, so it is reported.
+--
+-- This cannot be a 'ConfigCheck': by the time there is a 'NodeConfiguration' to
+-- check, the file's endpoint has been replaced and the downgrade is no longer
+-- visible. It is raised where both endpoints are still in hand.
+grpcTlsDowngradeWarning ::
+  -- | The endpoint the configuration file states.
+  StrictMaybe File.GrpcEndpoint ->
+  -- | The endpoint the command line states, which replaces it.
+  StrictMaybe File.GrpcEndpoint ->
+  [File.ConfigWarning]
+grpcTlsDowngradeWarning fileEndpoint cliEndpoint = case (fileEndpoint, cliEndpoint) of
+  (SJust File.GrpcEndpointHttps{}, SJust replacement)
+    | not (servesTls replacement) ->
+        [ File.ConsistencyWarning $
+            "the command line replaces the gRPC endpoint the configuration file sets, and the "
+              <> "file's endpoint served TLS while the command line's does not, so the certificate "
+              <> "and private key are dropped and the server listens in plaintext. Pass "
+              <> "--grpc-tls-certificate and --grpc-tls-private-key alongside the endpoint flags "
+              <> "to keep TLS"
+        ]
+  _ -> []
+ where
+  servesTls File.GrpcEndpointHttps{} = True
+  servesTls _ = False
 
 -- | Derive the node's role from its credentials: it is a block producer iff
 -- /any/ block-forging credential was supplied, otherwise a relay. This matches

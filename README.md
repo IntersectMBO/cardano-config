@@ -220,6 +220,12 @@ each other in the same way. A command-line endpoint replaces the endpoint in
 the file whole. It does not merge into it, because the two describe one
 choice.
 
+Replacing the endpoint drops the file's TLS credentials with it. If the file
+configures a TLS listener and you pass only `--grpc-listen-port`, the server
+listens in plaintext on the new port. `resolve` warns when this happens. To
+move the port and keep TLS, pass `--grpc-tls-certificate` and
+`--grpc-tls-private-key` as well.
+
 ## Tracing
 
 The node's tracing system owns the tracing configuration. That system is
