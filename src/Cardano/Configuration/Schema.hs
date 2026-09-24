@@ -185,8 +185,7 @@ ifThen :: Value -> Value -> Value
 ifThen c t = object ["if" .= c, "then" .= t]
 
 -- | Merge two constraint sets: @dependencies@ objects union key by key, @allOf@
--- arrays concatenate. Used to attach a component's rules to its schema, and to
--- combine every component's in the flat legacy form.
+-- arrays concatenate. Used to attach a component's rules to its schema.
 mergeConstraints :: KM.KeyMap Value -> KM.KeyMap Value -> KM.KeyMap Value
 mergeConstraints = KM.unionWith merge
  where
@@ -194,9 +193,8 @@ mergeConstraints = KM.unionWith merge
   merge (Array a) (Array b) = Array (a <> b)
   merge a _ = a
 
--- | Attach a component's cross-field constraints to its schema, so every
--- rendering of that component carries them: its own schema file, and its
--- section of the whole-configuration schema.
+-- | Attach a component's cross-field constraints to its schema, so the
+-- component's section of the whole-configuration schema carries them.
 withConstraints :: Text -> Value -> Value
 withConstraints name (Object o) = Object (mergeConstraints (componentConstraints name) o)
 withConstraints _ v = v

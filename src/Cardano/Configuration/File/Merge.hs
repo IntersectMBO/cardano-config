@@ -139,8 +139,9 @@ roleIndependentDefaults =
 
 -- | The configuration layer the user supplied for a section: the inline object
 -- given under the section key. A component is read only from its own section
--- key; a section that is absent contributes no user layer (so the component
--- takes its base defaults). Component keys placed flat under @Configuration@ are
+-- key; a section that is absent contributes an empty layer, so every field of
+-- the component is unset (the defaults come in at resolution, not here).
+-- Component keys placed flat under @Configuration@ are
 -- /not/ resolved into their section — they are left unrecognised (see
 -- 'Cardano.Configuration.File.Lint.checkUnknownKeys'). Non-enveloped documents,
 -- where the keys are flat, are migrated (grouped into sections) before reaching
@@ -201,10 +202,12 @@ decodeSection configValue section =
 
 -- | Split the optional configuration envelope @{ \"Version\": N,
 -- \"MinNodeVersion\": \"x.y.z\", \"Configuration\": {..} }@ into the version, the
--- optional minimum node version and the configuration object. A document that is
--- not wrapped in an envelope is treated as the legacy version-1 format, in which
--- the configuration keys sit at the top level (and the optional flat @Version@
--- and @MinNodeVersion@ keys may still appear there).
+-- optional minimum node version and the configuration object. A document with
+-- no @Configuration@ key falls back to taking the whole value as the
+-- configuration, reading the optional flat @Version@ and @MinNodeVersion@ from
+-- it. Reading a configuration never takes that path, because @migrate@
+-- envelopes the document first; it is there for a caller that splits a document
+-- of its own.
 --
 -- @MinNodeVersion@ is a top-level annotation (sibling of @Version@), not a
 -- configuration component: it records the lowest @cardano-node@ version expected

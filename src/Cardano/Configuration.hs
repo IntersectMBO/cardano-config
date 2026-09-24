@@ -463,9 +463,20 @@ resolveConfigurationWith checks cli file = do
           }
   localConnections <- finalize $ File.finalizeLocalConnections lccWithCli
   -- Storage, consensus and the non-producing flag take their value from the CLI
-  -- or from the merge above (whose bottom layer supplies the default). A
-  -- missing value is a resolution error, not a hard-coded fallback, so the
-  -- defaults live solely in the defaults/ files.
+  -- or from the merge above (whose bottom layer supplies the default). For
+  -- these a missing value is a resolution error rather than a hard-coded
+  -- fallback, so what they default to is in defaults/ and nowhere else.
+  --
+  -- Three fields elsewhere do fall back in code, because their default cannot
+  -- be written in defaults/: the LSM database path (the Backend default is a
+  -- string, which an LSM object replaces whole), the coupled mempool timeouts
+  -- (supplying them would stop "all set or all unset" ever firing) and the gRPC
+  -- listen address (it needs a port beside it, and it also applies to an
+  -- endpoint built from the command line alone). The schema still states each:
+  -- the listen address as a @default@ taken from 'File.defaultGrpcListenAddress'
+  -- itself, the other two in their descriptions, JSON Schema having no way to
+  -- write a default of three coupled values or one that applies under a single
+  -- backend.
   sc <- section "StorageConfig"
   pc <- section "ProtocolConfig"
   consensus <- section "ConsensusConfig"
