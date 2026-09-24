@@ -9,14 +9,24 @@ no longer be published under it. `cardano-config-2.x.x.x` parses every format
 version up to and including 2 and writes 2. A version-1 document still parses,
 because `migrate` upgrades it to version 2 before the parser sees it.
 
-The schemas now state the cross-field rules the parser enforces (below), so a
-validator rejects documents `v1` accepted. Every one of those was already
-rejected at parse time. The new keys themselves are additive: the sections do
-not set `additionalProperties: false`, so a configuration carrying them already
-validated against `v1`.
+The schemas now state the cross-field rules this library enforces (below), so a
+validator rejects documents `v1` accepted. Three of those rules only move a
+rejection the library already made: the gRPC endpoint exclusions and the
+genesis file/hash pairing are enforced by the codecs while the file is read,
+and the coupled mempool timeouts at resolution. The fourth, requiring a
+Dijkstra genesis when `ExperimentalHardForksEnabled` is set, is new since `v1`
+and rejects a document 1.1.0.0 accepted. The new keys themselves are additive:
+the sections do not set `additionalProperties: false`, so a configuration
+carrying them already validated against `v1`.
 
-One working configuration does stop working: one whose sections name sub-files.
-The split-file form is gone, so those sections hold their objects now (below).
+Three working configurations stop working. One whose sections name sub-files:
+the split-file form is gone, so those sections hold their objects now (below).
+One that sets `EnableGrpc` without a `SocketPath`: the gRPC server serves every
+request over the node-to-client socket, so it needs one whichever endpoint it
+listens on. One that sets `ExperimentalHardForksEnabled` without a
+`DijkstraGenesisFile`: enabling the experimental eras requires the genesis to
+run them from. The last two are consistency checks added after `v1`, and both
+are reported at resolution, saying what is missing.
 
 ### Breaking changes
 
@@ -55,8 +65,9 @@ The split-file form is gone, so those sections hold their objects now (below).
   `legacyOneFileConfigSchema`, `legacyOneFileConfigSchemaWithDefaults` and
   `Cardano.Configuration.Commands.ConfigForm`. It described a form that
   `migrate` exists to convert away from, so nothing needed it.
-  `cardano-config schema` now takes no options, and `schemaOptionsParser` has
-  type `Parser ()`.
+  `cardano-config schema` now takes no options: `SchemaOptions` is gone,
+  `schemaOptionsParser` has type `Parser ()` and `runSchemaCommand` takes
+  `()`.
 
 * The `variants/` directory is gone. Its files held per-network sections to
   copy by hand. Nothing read them, and with the split-file form removed a
@@ -370,6 +381,10 @@ The split-file form is gone, so those sections hold their objects now (below).
   it to what `trace-dispatcher` falls back to, so it cannot drift.
 
 ### Added
+
+* `Cardano.Configuration.CliArgs` exports `parseNodeHostIPAddress`, which reads
+  the IPv4 or IPv6 address the `--host-addr` and `--host-ipv6-addr` options
+  take.
 
 * `migrate` rewrites the remaining `Rpc*` key names to their `Grpc*` form:
   `RpcListenAddress`, `RpcListenPort`, `RpcTlsCertificateFile`,
