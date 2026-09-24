@@ -56,6 +56,7 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (foldM)
 import Data.Aeson
   ( FromJSON
   , Object
@@ -134,6 +135,7 @@ cases =
   , peerTargetsRejectedCase
   , partialNestedObjectCase
   , defaultConfigParityCase
+  , experimentalHardForksDefaultCase
   , mempoolAllUnsetCase
   , mempoolAllSetCase
   , mempoolMixedCase
@@ -1152,6 +1154,28 @@ defaultConfigParityCase =
     Just (Object cfg) -> Right cfg
     _ -> Left "a default configuration has no Configuration object"
   body _ = Left "a default configuration is not an object"
+
+-- | Neither shipped default enables the experimental hard forks. The flag gates
+-- eras a network is not ready to run, and it is the bottom layer of every
+-- resolution, so a default that turned it on would turn them on for every node
+-- that does not say otherwise.
+experimentalHardForksDefaultCase :: TestTree
+experimentalHardForksDefaultCase =
+  testCase "the default configurations leave ExperimentalHardForksEnabled off" $
+    mapM_ check ["defaults/config.blockproducer.json", "defaults/config.relay.json"]
+ where
+  check fp = do
+    path <- getDataFileName fp
+    committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
+    expectOk $ case committed of
+      Left e -> Just ("could not read " <> fp <> ": " <> e)
+      Right v -> case lookupPath ["Configuration", "TestingConfig", "ExperimentalHardForksEnabled"] v of
+        Just (Bool False) -> Nothing
+        other -> Just (fp <> " sets ExperimentalHardForksEnabled to " <> show other)
+  lookupPath keys v = foldM step v keys
+   where
+    step (Object o) k = KM.lookup (K.fromString k) o
+    step _ _ = Nothing
 
 -- | All three mempool timeouts unset resolves to the coupled default (1, 1.5, 5).
 mempoolAllUnsetCase :: TestTree
