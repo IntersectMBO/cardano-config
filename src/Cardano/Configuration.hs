@@ -44,6 +44,7 @@ module Cardano.Configuration
     -- ** Network
   , File.NetworkConfiguration (..)
   , File.DiffusionMode (..)
+  , File.PeerSharing (..)
   , File.AcceptedConnectionsLimit (..)
   , File.LocalConnectionsConfig (..)
   , File.GrpcEndpoint (..)

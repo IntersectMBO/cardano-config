@@ -2,6 +2,7 @@
 module Cardano.Configuration.File.Network
   ( NetworkConfiguration (..)
   , DiffusionMode (..)
+  , PeerSharing (..)
   , ResponderCoreAffinityPolicy (..)
   , TxSubmissionLogicVersion (..)
   , AcceptedConnectionsLimit (..)
@@ -38,22 +39,33 @@ import Cardano.Configuration.Common
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Time.Clock (DiffTime)
-import Data.Word
 import GHC.Generics (Generic)
+import Ouroboros.Network.DiffusionMode (DiffusionMode (..))
 import Ouroboros.Network.PeerSelection.Governor.Types (PeerSelectionTargets (..))
+import Ouroboros.Network.PeerSelection.PeerSharing (PeerSharing (..))
+import Ouroboros.Network.Server.RateLimiting (AcceptedConnectionsLimit (..))
+import Ouroboros.Network.TxSubmission.Inbound.V2.Types (TxSubmissionLogicVersion (..))
 
 -- | Whether the node runs as an initiator only, or as both an initiator and a
 -- responder. Enumerated so the schema lists the valid values and typos are
 -- caught at parse time.
-data DiffusionMode
-  = InitiatorOnly
-  | InitiatorAndResponder
-  deriving (Generic, Show, Eq, Enum, Bounded)
-  deriving (FromJSON, ToJSON) via (Autodocodec DiffusionMode)
+diffusionModeCodec :: JSONCodec DiffusionMode
+diffusionModeCodec =
+  stringConstCodec
+    ( (InitiatorOnlyDiffusionMode, "InitiatorOnly")
+        :| [(InitiatorAndResponderDiffusionMode, "InitiatorAndResponder")]
+    )
 
-instance HasCodec DiffusionMode where
-  codec = shownBoundedEnumCodec
+-- | Whether the node takes part in peer sharing, written as a boolean.
+peerSharingCodec :: JSONCodec PeerSharing
+peerSharingCodec = dimapCodec toPeerSharing fromPeerSharing boolCodec
+ where
+  toPeerSharing enabled = if enabled then PeerSharingEnabled else PeerSharingDisabled
+  fromPeerSharing = \case
+    PeerSharingEnabled -> True
+    PeerSharingDisabled -> False
 
 -- | Whether mux responders are pinned to a CPU core. Enumerated (rather than a
 -- free 'String') so the schema lists the valid values and typos are caught at
@@ -69,38 +81,22 @@ data ResponderCoreAffinityPolicy
 instance HasCodec ResponderCoreAffinityPolicy where
   codec = shownBoundedEnumCodec
 
--- | Which tx-submission inbound logic the node runs. Enumerated (rather than a
--- free 'String') so the schema lists the valid values and typos are caught at
--- parse time. The spellings match @ouroboros-network@'s
--- @TxSubmissionLogicVersion@ constructors, which is what consumes this value.
-data TxSubmissionLogicVersion
-  = TxSubmissionLogicV1
-  | TxSubmissionLogicV2
-  deriving (Generic, Show, Eq, Enum, Bounded)
-  deriving (FromJSON, ToJSON) via (Autodocodec TxSubmissionLogicVersion)
-
-instance HasCodec TxSubmissionLogicVersion where
-  codec = shownBoundedEnumCodec
+-- | Which tx-submission inbound logic the node runs. Enumerated so the schema
+-- lists the valid values and typos are caught at parse time.
+txSubmissionLogicVersionCodec :: JSONCodec TxSubmissionLogicVersion
+txSubmissionLogicVersionCodec = shownBoundedEnumCodec
 
 -- | Limits on the number of accepted connections.
-data AcceptedConnectionsLimit = AcceptedConnectionsLimit
-  { hardLimit :: Word32
-  , softLimit :: Word32
-  , delayOnSoftLimit :: DiffTime
-  }
-  deriving (Generic, Show)
-  deriving (FromJSON, ToJSON) via (Autodocodec AcceptedConnectionsLimit)
-
-instance HasCodec AcceptedConnectionsLimit where
-  codec =
-    object "AcceptedConnectionsLimit" $
-      AcceptedConnectionsLimit
-        <$> requiredField "HardLimit" "Hard limit on the number of connections"
-          .= hardLimit
-        <*> requiredField "SoftLimit" "Soft limit on the number of connections"
-          .= softLimit
-        <*> requiredFieldWith "Delay" diffTimeCodec "Delay, in seconds, applied once the soft limit is reached"
-          .= delayOnSoftLimit
+acceptedConnectionsLimitCodec :: JSONCodec AcceptedConnectionsLimit
+acceptedConnectionsLimitCodec =
+  object "AcceptedConnectionsLimit" $
+    AcceptedConnectionsLimit
+      <$> requiredField "HardLimit" "Hard limit on the number of connections"
+        .= acceptedConnectionsHardLimit
+      <*> requiredField "SoftLimit" "Soft limit on the number of connections"
+        .= acceptedConnectionsSoftLimit
+      <*> requiredFieldWith "Delay" diffTimeCodec "Delay, in seconds, applied once the soft limit is reached"
+        .= acceptedConnectionsDelay
 
 -- | Options related to networking. Fields that have an always-applied default
 -- (see @defaults\/Network.json@) carry the @f@ parameter; the deadline peer
@@ -130,7 +126,7 @@ data NetworkConfiguration f = NetworkConfiguration
   , syncTargetOfEstablishedBigLedgerPeers :: f Int
   , syncTargetOfActiveBigLedgerPeers :: f Int
   , minBigLedgerPeersForTrustedState :: f Int
-  , peerSharing :: StrictMaybe Bool
+  , peerSharing :: StrictMaybe PeerSharing
   , responderCoreAffinityPolicy :: f ResponderCoreAffinityPolicy
   , experimentalProtocolsEnabled :: f Bool
   , txSubmissionLogicVersion :: f TxSubmissionLogicVersion
@@ -155,7 +151,10 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
   codec =
     object "NetworkConfiguration" $
       NetworkConfiguration
-        <$> optionalFieldStrict "DiffusionMode" "Initiator-only or initiator-and-responder"
+        <$> optionalFieldWithStrict
+          "DiffusionMode"
+          diffusionModeCodec
+          "Initiator-only or initiator-and-responder"
           .= diffusionMode
         <*> optionalFieldStrict "MaxConcurrencyBulkSync" "Bulk-sync block-fetch concurrency"
           .= maxConcurrencyBulkSync
@@ -169,7 +168,10 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
           .= egressPollInterval
         <*> optionalFieldWithStrict "ChainSyncIdleTimeout" diffTimeCodec "ChainSync idle timeout, in seconds"
           .= chainSyncIdleTimeout
-        <*> optionalFieldStrict "AcceptedConnectionsLimit" "Limits on accepted connections"
+        <*> optionalFieldWithStrict
+          "AcceptedConnectionsLimit"
+          acceptedConnectionsLimitCodec
+          "Limits on accepted connections"
           .= acceptedConnectionsLimit
         <*> optionalFieldStrict "DeadlineTargetNumberOfRootPeers" "Deadline target of root peers"
           .= deadlineTargetOfRootPeers
@@ -211,12 +213,16 @@ instance HasCodec (NetworkConfiguration StrictMaybe) where
           .= syncTargetOfActiveBigLedgerPeers
         <*> optionalFieldStrict "MinBigLedgerPeersForTrustedState" "Minimum big ledger peers for trusted state"
           .= minBigLedgerPeersForTrustedState
-        <*> optionalFieldStrict "PeerSharing" "Whether to enable peer sharing" .= peerSharing
+        <*> optionalFieldWithStrict "PeerSharing" peerSharingCodec "Whether to enable peer sharing"
+          .= peerSharing
         <*> optionalFieldStrict "ResponderCoreAffinityPolicy" "Whether responders are pinned to a core"
           .= responderCoreAffinityPolicy
         <*> optionalFieldStrict "ExperimentalProtocolsEnabled" "Enable experimental network protocols"
           .= experimentalProtocolsEnabled
-        <*> optionalFieldStrict "TxSubmissionLogicVersion" "Which tx-submission inbound logic to run"
+        <*> optionalFieldWithStrict
+          "TxSubmissionLogicVersion"
+          txSubmissionLogicVersionCodec
+          "Which tx-submission inbound logic to run"
           .= txSubmissionLogicVersion
         <*> optionalFieldWithStrict
           "TxSubmissionInitDelay"

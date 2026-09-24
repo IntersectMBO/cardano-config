@@ -26,6 +26,7 @@ module Cardano.Configuration.File
   , ProtocolConfiguration (..)
   , NetworkConfiguration (..)
   , DiffusionMode (..)
+  , PeerSharing (..)
   , AcceptedConnectionsLimit (..)
   , LocalConnectionsConfig (..)
   , GrpcEndpoint (..)

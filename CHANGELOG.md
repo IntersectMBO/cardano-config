@@ -278,6 +278,18 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* `DiffusionMode`, `AcceptedConnectionsLimit` and `TxSubmissionLogicVersion` are
+  now `ouroboros-network`'s types, re-exported under the same names, and
+  `peerSharing` is its `PeerSharing` rather than a `Bool`. Code matching on
+  `InitiatorOnly` or `InitiatorAndResponder` must use
+  `InitiatorOnlyDiffusionMode` and `InitiatorAndResponderDiffusionMode`; code
+  reading `hardLimit`, `softLimit` or `delayOnSoftLimit` must use
+  `acceptedConnectionsHardLimit`, `acceptedConnectionsSoftLimit` and
+  `acceptedConnectionsDelay`; code reading `peerSharing` gets
+  `PeerSharingEnabled` or `PeerSharingDisabled` in place of `True` or `False`.
+
+  No configuration file changes, and the schema is unchanged.
+
 * The peer selection targets are checked at resolution, and a set
   `ouroboros-network` will not accept is now rejected. The check calls that
   library's own `sanePeerSelectionTargets`, so the two cannot disagree: each of
@@ -293,7 +305,6 @@ The split-file form is gone, so those sections hold their objects now (below).
   node starts and runs peer selection on targets that logic is written assuming
   cannot occur. A configuration the node ran correctly before is unaffected.
 
-  This adds `ouroboros-network` to the library's dependencies.
   `Cardano.Configuration.File.Network` gains `deadlinePeerSelectionTargets` and
   `syncPeerSelectionTargets`, which build that library's `PeerSelectionTargets`
   from a resolved configuration. The deadline one returns `Maybe`: those seven

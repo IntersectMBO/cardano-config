@@ -991,8 +991,9 @@ genesisRenderCase =
 
 -- | The networking role defaults are chosen by credential presence: a credential
 -- (here a VRF key) yields the block-producer targets (root 100, known 100,
--- PeerSharing off); no credential yields the relay targets (root 60, known 150,
--- PeerSharing on). These values are the node's @defaultDeadlineTargets@ oracle.
+-- PeerSharing disabled); no credential yields the relay targets (root 60, known
+-- 150, PeerSharing enabled). These values are the node's
+-- @defaultDeadlineTargets@ oracle.
 roleSelectionCase :: TestTree
 roleSelectionCase =
   testCase "network role defaults selected from credential presence" $ do
@@ -1009,10 +1010,10 @@ roleSelectionCase =
                 ok =
                   deadlineTargetOfRootPeers bn == SJust 100
                     && deadlineTargetOfKnownPeers bn == SJust 100
-                    && peerSharing bn == SJust False
+                    && peerSharing bn == SJust PeerSharingDisabled
                     && deadlineTargetOfRootPeers rn == SJust 60
                     && deadlineTargetOfKnownPeers rn == SJust 150
-                    && peerSharing rn == SJust True
+                    && peerSharing rn == SJust PeerSharingEnabled
              in if ok
                   then Nothing
                   else Just "resolved role targets do not match the expected block-producer/relay values"
@@ -1038,7 +1039,7 @@ rolePrecedenceCase =
         Left e -> Just ("resolve failed: " <> show e)
         Right (nc, _) ->
           let n = C.networkConfiguration nc
-           in if peerSharing n == SJust True -- file wins over block-producer's False
+           in if peerSharing n == SJust PeerSharingEnabled -- file wins over the producer's Disabled
                 && deadlineTargetOfRootPeers n == SJust 99 -- file wins over 100
                 && deadlineTargetOfKnownPeers n == SJust 100 -- unset in file, block-producer default
                 then Nothing
