@@ -278,6 +278,28 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* The peer selection targets are checked at resolution, and a set
+  `ouroboros-network` will not accept is now rejected. The check calls that
+  library's own `sanePeerSelectionTargets`, so the two cannot disagree: each of
+  the active, established and known targets must be no greater than the next,
+  the root target no greater than the known target, the same order must hold
+  among the three big ledger peer targets, none may be negative, and the
+  active, established and known targets are capped at 100, 1000 and 10000. The
+  `Deadline` and `Sync` groups are checked separately, so the failure names
+  which seven fields are meant.
+
+  The node does not reject such a set itself. Its peer selection governor
+  states the invariant as an assertion, which `-O` compiles out, so a release
+  node starts and runs peer selection on targets that logic is written assuming
+  cannot occur. A configuration the node ran correctly before is unaffected.
+
+  This adds `ouroboros-network` to the library's dependencies.
+  `Cardano.Configuration.File.Network` gains `deadlinePeerSelectionTargets` and
+  `syncPeerSelectionTargets`, which build that library's `PeerSelectionTargets`
+  from a resolved configuration. The deadline one returns `Maybe`: those seven
+  targets have no always-applied default, and a configuration stating only some
+  of them describes no target set, so it is passed on unchecked.
+
 * `cardano-config` no longer supplies tracing defaults. Tracing belongs to
   `trace-dispatcher`, which falls back on its own for whatever a configuration
   leaves unset, so `HermodTracing` is now handed to it as written, with no

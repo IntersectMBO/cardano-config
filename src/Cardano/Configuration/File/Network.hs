@@ -12,6 +12,10 @@ module Cardano.Configuration.File.Network
   , finalizeNetwork
   , finalizeLocalConnections
 
+    -- * Peer selection targets
+  , deadlinePeerSelectionTargets
+  , syncPeerSelectionTargets
+
     -- * Role
   , BlockProducerOrRelay (..)
   ) where
@@ -31,12 +35,13 @@ import Cardano.Configuration.Common
   , filePathCodec
   , grpcEndpointObjectCodec
   )
-import Cardano.Ledger.BaseTypes (StrictMaybe (..))
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
 import Data.Word
 import GHC.Generics (Generic)
+import Ouroboros.Network.PeerSelection.Governor.Types (PeerSelectionTargets (..))
 
 -- | Whether the node runs as an initiator only, or as both an initiator and a
 -- responder. Enumerated so the schema lists the valid values and typos are
@@ -280,6 +285,40 @@ finalizeNetwork c = do
       , txSubmissionLogicVersion = txLogic
       , txSubmissionInitDelay = txInitDelay
       }
+
+-- | The deadline peer selection targets as @ouroboros-network@ takes them, or
+-- 'Nothing' if the configuration does not set all seven.
+--
+-- The deadline targets are the one group of network fields with no
+-- always-applied default: they come from the role's default configuration, and
+-- a configuration may unset one. Seven targets that are only partly given do
+-- not describe a target set, so there is nothing to hand over and nothing to
+-- check (see 'Cardano.Configuration.defaultConfigChecks').
+deadlinePeerSelectionTargets :: NetworkConfiguration f -> Maybe PeerSelectionTargets
+deadlinePeerSelectionTargets c =
+  PeerSelectionTargets
+    <$> strictMaybeToMaybe (deadlineTargetOfRootPeers c)
+    <*> strictMaybeToMaybe (deadlineTargetOfKnownPeers c)
+    <*> strictMaybeToMaybe (deadlineTargetOfEstablishedPeers c)
+    <*> strictMaybeToMaybe (deadlineTargetOfActivePeers c)
+    <*> strictMaybeToMaybe (deadlineTargetOfKnownBigLedgerPeers c)
+    <*> strictMaybeToMaybe (deadlineTargetOfEstablishedBigLedgerPeers c)
+    <*> strictMaybeToMaybe (deadlineTargetOfActiveBigLedgerPeers c)
+
+-- | The sync peer selection targets as @ouroboros-network@ takes them. Every
+-- sync target has an always-applied default, so a resolved configuration always
+-- has all seven.
+syncPeerSelectionTargets :: NetworkConfiguration Identity -> PeerSelectionTargets
+syncPeerSelectionTargets c =
+  PeerSelectionTargets
+    { targetNumberOfRootPeers = runIdentity (syncTargetOfRootPeers c)
+    , targetNumberOfKnownPeers = runIdentity (syncTargetOfKnownPeers c)
+    , targetNumberOfEstablishedPeers = runIdentity (syncTargetOfEstablishedPeers c)
+    , targetNumberOfActivePeers = runIdentity (syncTargetOfActivePeers c)
+    , targetNumberOfKnownBigLedgerPeers = runIdentity (syncTargetOfKnownBigLedgerPeers c)
+    , targetNumberOfEstablishedBigLedgerPeers = runIdentity (syncTargetOfEstablishedBigLedgerPeers c)
+    , targetNumberOfActiveBigLedgerPeers = runIdentity (syncTargetOfActiveBigLedgerPeers c)
+    }
 
 -- | Whether the node is a block producer or a relay. Derived from whether the
 -- operator supplied block-forging credentials (see

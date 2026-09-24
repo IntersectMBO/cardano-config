@@ -131,6 +131,7 @@ cases =
   , boundedDecimalOnlyCase
   , roleSelectionCase
   , rolePrecedenceCase
+  , peerTargetsRejectedCase
   , defaultConfigParityCase
   , mempoolAllUnsetCase
   , mempoolAllSetCase
@@ -1021,6 +1022,11 @@ roleSelectionCase =
 -- when credentials are present (block producer). Here PeerSharing and
 -- TargetNumberOfRootPeers are set in the file; the remaining role fields still
 -- come from the (block-producer) role default.
+--
+-- The root target is 99 rather than some larger round number because the peer
+-- targets are checked against ouroboros-network's own predicate at resolution:
+-- root peers may not exceed known peers, which the block-producer default puts
+-- at 100 (see 'peerTargetsRejectedCase').
 rolePrecedenceCase :: TestTree
 rolePrecedenceCase =
   testCase "explicit file value overrides the role default" $ do
@@ -1033,10 +1039,47 @@ rolePrecedenceCase =
         Right (nc, _) ->
           let n = C.networkConfiguration nc
            in if peerSharing n == SJust True -- file wins over block-producer's False
-                && deadlineTargetOfRootPeers n == SJust 999 -- file wins over 100
+                && deadlineTargetOfRootPeers n == SJust 99 -- file wins over 100
                 && deadlineTargetOfKnownPeers n == SJust 100 -- unset in file, block-producer default
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
+
+-- | A peer target set ouroboros-network will not accept is rejected at
+-- resolution, naming the group it is in. Its governor only asserts
+-- 'sanePeerSelectionTargets', and @-O@ compiles assertions out, so without this
+-- check a release node starts on such a set and runs peer selection on it.
+--
+-- One fixture per group, each breaking the ordering the predicate requires: the
+-- deadline group asks for more active peers than established ones, the sync
+-- group for more established peers than known ones. Both also exceed the
+-- predicate's absolute caps, so neither depends on the role's other defaults.
+-- The same configuration without the offending field resolves, so what is being
+-- rejected is the target and not the fixture.
+peerTargetsRejectedCase :: TestTree
+peerTargetsRejectedCase =
+  testCase "a peer target set ouroboros-network rejects fails resolution" $ do
+    deadline <- resolveExample "test/examples/peer-targets-deadline-insane.json"
+    sync <- resolveExample "test/examples/peer-targets-sync-insane.json"
+    sane <- resolveExample "test/examples/role-precedence.json"
+    expectOk $ case (deadline, sync, sane) of
+      (Left dMsg, Left sMsg, Right ())
+        | "Deadline peer targets" `isInfixOf` dMsg
+        , "Sync peer targets" `isInfixOf` sMsg ->
+            Nothing
+        | otherwise ->
+            Just ("rejected, but not for the peer targets: " <> dMsg <> " / " <> sMsg)
+      (Right (), _, _) -> Just "an insane deadline target set resolved"
+      (_, Right (), _) -> Just "an insane sync target set resolved"
+      (_, _, Left e) -> Just ("the sane configuration was rejected too: " <> e)
+ where
+  resolveExample fp = do
+    path <- getDataFileName fp
+    (cfg, _) <- parseConfigurationFiles path
+    pure $ case cliArgs [] of
+      Nothing -> Left "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Left (show e)
+        Right _ -> Right ()
 
 -- | The two default configurations are one configuration in two roles: they
 -- must differ only in the @NetworkConfig@ fields that the role decides (the

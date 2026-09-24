@@ -155,6 +155,10 @@ import Data.IP
 import Data.List.NonEmpty (NonEmpty (..))
 import GHC.Stack (HasCallStack)
 import Network.Socket
+import Ouroboros.Network.PeerSelection.Governor.Types
+  ( PeerSelectionTargets
+  , sanePeerSelectionTargets
+  )
 import System.FS.API (SomeHasFS)
 import System.Posix.Types
 
@@ -268,7 +272,64 @@ defaultConfigChecks =
                     SJust (File.V2LSM _ exportPath) -> isSJust exportPath
                 _ -> True
       )
+  , peerSelectionTargetsCheck
+      "Deadline"
+      (File.deadlinePeerSelectionTargets . networkConfiguration)
+  , peerSelectionTargetsCheck
+      "Sync"
+      (Just . File.syncPeerSelectionTargets . networkConfiguration)
   ]
+
+-- | A peer selection target set must be one @ouroboros-network@ will accept.
+-- Its governor states 'sanePeerSelectionTargets' over the targets it is handed,
+-- but as a 'Control.Exception.assert', which @-O@ compiles out: a release node
+-- does not reject such a set, it runs peer selection on targets the governor's
+-- own logic assumes cannot occur. We reject it here instead, where the
+-- configuration is still in front of the operator.
+--
+-- The predicate is @ouroboros-network@'s own, so the two cannot disagree about
+-- what is acceptable. It answers only yes or no, so the description states the
+-- whole invariant rather than the clause that failed. The group name
+-- (@Deadline@ or @Sync@) prefixes the field names, so it says which seven
+-- fields are meant.
+--
+-- A group the configuration does not fully state is not checked: there is no
+-- target set to judge. That can only be the deadline group, whose targets have
+-- no always-applied default.
+peerSelectionTargetsCheck ::
+  -- | The prefix the group's field names carry: @Deadline@ or @Sync@.
+  String ->
+  -- | The group's targets, if the configuration states them all.
+  (NodeConfiguration -> Maybe PeerSelectionTargets) ->
+  ConfigCheck
+peerSelectionTargetsCheck group targets =
+  ConfigCheck CheckError description (maybe True sanePeerSelectionTargets . targets)
+ where
+  field name = group <> "TargetNumberOf" <> name
+  description =
+    "the "
+      <> group
+      <> " peer targets must be ones ouroboros-network accepts: each of "
+      <> field "ActivePeers"
+      <> ", "
+      <> field "EstablishedPeers"
+      <> " and "
+      <> field "KnownPeers"
+      <> " no greater than the next, "
+      <> field "RootPeers"
+      <> " no greater than "
+      <> field "KnownPeers"
+      <> ", the same order among "
+      <> field "ActiveBigLedgerPeers"
+      <> ", "
+      <> field "EstablishedBigLedgerPeers"
+      <> " and "
+      <> field "KnownBigLedgerPeers"
+      <> ", none of them negative, and the active, established and known "
+      <> "targets no greater than 100, 1000 and 10000 respectively (both the "
+      <> "peer and the big ledger peer group). The node does not reject these "
+      <> "itself: it runs peer selection on them, and its governor is written "
+      <> "assuming they hold"
 
 -- | The injectable genesis fields of a resolved configuration, with the source
 -- each one takes its data from. See "Cardano.Configuration.Genesis.Injection".
