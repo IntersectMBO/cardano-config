@@ -2,431 +2,249 @@
 
 ## Unreleased
 
-Schema format version 2, and so package version `2.0.0.0`: the configuration
-format gains keys (below), and the `v1` tag, cut alongside
-`cardano-config-1.1.0.0`, is immutable. The schemas that describe the format can
-no longer be published under it. `cardano-config-2.x.x.x` parses every format
-version up to and including 2 and writes 2. A version-1 document still parses,
-because `migrate` upgrades it to version 2 before the parser sees it.
+The configuration format moves to version 2, so the package version is
+`2.0.0.0`. A `cardano-config-2.x.x.x` reads every format version up to and
+including 2, and writes 2.
 
-The schemas now state the cross-field rules this library enforces (below), so a
-validator rejects documents `v1` accepted. Three of those rules only move a
-rejection the library already made: the gRPC endpoint exclusions and the
-genesis file/hash pairing are enforced by the codecs while the file is read,
-and the coupled mempool timeouts at resolution. The fourth, requiring a
-Dijkstra genesis when `ExperimentalHardForksEnabled` is set, is new since `v1`
-and rejects a document 1.1.0.0 accepted. The new keys themselves are additive:
-the sections do not set `additionalProperties: false`, so a configuration
-carrying them already validated against `v1`.
+Three changes shape the release. The configuration lives in one file. The
+package ships one complete default configuration per node role. The gRPC
+server can listen on a TCP port, with or without TLS.
 
-Three working configurations stop working. One whose sections name sub-files:
-the split-file form is gone, so those sections hold their objects now (below).
-One that sets `EnableGrpc` without a `SocketPath`: the gRPC server serves every
-request over the node-to-client socket, so it needs one whichever endpoint it
-listens on. One that sets `ExperimentalHardForksEnabled` without a
-`DijkstraGenesisFile`: enabling the experimental eras requires the genesis to
-run them from. The last two are consistency checks added after `v1`, and both
-are reported at resolution, saying what is missing.
+### Upgrading
 
-### Breaking changes
+Run `cardano-config migrate <file>`. The command rewrites the file to version
+2, renames the keys that changed name, and groups loose keys under the section
+that owns them. It prints a line to stderr pointing you at `resolve`.
 
-* A configuration is held in one file. A section key (`StorageConfig`,
-  `ProtocolConfig`, …) took either an inline object or a path to a sub-file the
-  parser read and layered in; it now takes the inline object alone. A section
-  holding anything else is rejected, naming the section. The genesis files and
-  the `HermodTracing` file are unaffected: those are still paths.
+Migration is a structural rewrite. It does not parse the result, so run
+`cardano-config resolve --config <file>` afterward to make sure that the file
+still loads.
 
-  To port a split configuration, copy each sub-file's contents in under its
-  section key. `migrate` cannot do it for you — reading those files is exactly
-  what it does not do — so it refuses such a document instead of writing one
-  the parser will not read.
+You do not have to migrate on disk. The parser migrates a version 1 document
+in memory before it reads it, and reports the migration as a warning.
 
-  `migrate` therefore returns `Either MigrationError (Value, [ConfigWarning])`
-  rather than the pair, with `renderMigrationError` for the message.
+Three configurations that worked with 1.1.0.0 now fail:
 
-  In the library, `Cardano.Configuration.File.Merge` loses `loadSectionSource`
-  and the containment check that kept a sub-file inside the configuration
-  directory, and `parseSection` and `sectionUserLayer` no longer take a root
-  directory.
+- One whose sections name separate files. Copy each sub-file's contents in
+  under its section key. `migrate` cannot do this for you, because reading
+  those files is what this release removes.
+- One that sets `EnableGrpc` without a `SocketPath`. The gRPC server serves
+  every request over the node-to-client socket, so it needs one whichever
+  endpoint it listens on.
+- One that sets `ExperimentalHardForksEnabled` without a
+  `DijkstraGenesisFile`. An experimental era needs a genesis to run from.
 
-* An `UnrecognisedKeys` warning now reports only a name no parser claims (a
-  typo, or a key of an unknown component). It used to also cover a component
-  property left flat under `Configuration` when that component's section was a
-  sub-file path; with no sub-file paths left, `migrate` groups such a property
-  under the section that owns it in every case.
+The last two are consistency checks added after `v1`. `resolve` reports both,
+and each message names what is missing.
 
-* The whole-configuration schema describes each section as the component's own
-  schema, instead of "a file path or that schema". In the library,
-  `splitConfigSchema` and `splitConfigSchemaWithDefaults` become `configSchema`
-  and `configSchemaWithDefaults`.
+### One file
 
-* There is one schema. The legacy single-file schema is gone, with it
-  `schema --legacy-one-file`, `schemas/config.legacy-one-file.schema.json`,
-  `legacyOneFileConfigSchema`, `legacyOneFileConfigSchemaWithDefaults` and
-  `Cardano.Configuration.Commands.ConfigForm`. It described a form that
-  `migrate` exists to convert away from, so nothing needed it.
-  `cardano-config schema` now takes no options: `SchemaOptions` is gone,
-  `schemaOptionsParser` has type `Parser ()` and `runSchemaCommand` takes
-  `()`.
+A section key such as `StorageConfig` or `ProtocolConfig` used to take either
+an inline object or a path to a separate file. It now takes the inline object
+alone. A section that holds anything else is rejected, and the error names the
+section. The genesis files and the `HermodTracing` file are unaffected,
+because those keys name files by design.
 
-* The `variants/` directory is gone. Its files held per-network sections to
-  copy by hand. Nothing read them, and with the split-file form removed a
-  configuration could not point at one either. Copy the genesis names for your
-  network out of a working configuration instead.
+A configuration is one envelope: `$schema`, `Version` and `Configuration`. The
+schema requires all three, because `migrate` writes all three.
+`MinNodeVersion` stays optional.
 
-* The package ships two default configurations instead of one file per
-  component: `defaults/config.blockproducer.json` and
-  `defaults/config.relay.json`. Each is a complete configuration in the
-  envelope, holding every component's defaults, and the two differ only in the
-  `NetworkConfig` deadline peer targets and `PeerSharing`. The seven
-  `defaults/<Component>.json` files, `defaults/HermodTracing.json` and
-  `defaults/NetworkConfig/{blockproducer,relay}.json` are gone. Because one
-  file now holds every component's defaults, no component team can own its own
-  defaults file: CODEOWNERS gives `defaults/` to all of them.
+`migrate` now writes the current format version rather than carrying an older
+one through. Because every document reaches the parser at version 2, there is
+one parse path instead of one per version.
 
-* The defaults are applied at resolution, not while the file is read. Which
-  ones apply depends on the node's role, and the role comes from the command
-  line, so the merge belongs where the command line is:
-  `resolveConfiguration` now picks the role's default configuration, merges
-  your configuration on top and reads each section from the result.
+### The shipped defaults
 
-  `parseConfigurationFiles` therefore returns what the file said, with nothing
-  filled in. `NodeConfigurationFromFile` keeps its seven parsed component
-  fields, but each now holds the file's own values rather than the file merged
-  over the defaults, so a field the file leaves unset is `SNothing`. It loses
-  `networkUserLayer`, which existed only to carry that same distinction, and
-  gains `userConfiguration :: Value`, the `Configuration` object as JSON.
+The package ships `defaults/config.blockproducer.json` and
+`defaults/config.relay.json`. Each is a complete configuration in the
+envelope. They replace the seven `defaults/<Component>.json` files,
+`defaults/HermodTracing.json` and the two `defaults/NetworkConfig/` files.
 
-  Resolution merges the role's defaults under that JSON and reads the
-  components from the result. The merge recurses into nested objects, so a
-  file that sets one field of `LedgerDB` keeps the defaults of the others.
-  Merging the typed components field by field would replace whole nested
-  objects instead, which is why the JSON is carried alongside.
+Resolution picks one file by whether the operator supplied block-forging
+credentials, then merges your configuration on top. The two differ only in the
+deadline peer targets and `PeerSharing`, which is what block producer and
+relay mean here. Neither names a genesis, so neither is a configuration you
+can run.
 
-  `Cardano.Configuration.File.Merge` swaps `loadBaseDefault` for
-  `defaultConfiguration :: BlockProducerOrRelay -> Value`, and gains
-  `decodeSection`, the pure section reader resolution uses.
+The defaults now apply at resolution rather than while the file is read.
+`parseConfigurationFiles` returns what the file states, with nothing filled
+in.
 
-  The layering it replaces was `base < role < user` with the role slotted in
-  between (`withRoleDefaults`), which is why the user's layer had to be carried
-  separately. `withRoleDefaults`, `networkRoleDefaults`,
-  `blockProducerRoleDefaults`, `relayRoleDefaults` and
-  `emptyNetworkConfiguration` are all gone; the role values live in the two
-  data files alone. The result is unchanged: the role overlay never touched a
-  field the base set, so folding it in layers identically.
+The `variants/` directory is gone. Its files held per-network sections to copy
+by hand, and nothing read them. Copy the genesis names for your network out of
+a working configuration instead.
 
-* The per-component schemas are gone: `schemas/<Component>.schema.json`, the
-  `schema <COMPONENT>` argument and `schema --list`. Each was that section of
-  `config.schema.json` and nothing else, bar its own `$id` and `$schema`, and
-  with the split-file form removed nothing writes a standalone component
-  document.
-  `configurationSchemas`, `configurationSchemasWithDefaults` and the seven
-  `storageSchema`-style values go with them, and `componentDefaults` is now a
-  pure value rather than an `IO` action. The `$schema` lines in the
-  per-component test fixtures, which pointed at those URLs, are removed.
+### The schema
 
-* The schema states every default the library applies. `GrpcListenAddress`
-  gains `default: "127.0.0.1"`, taken from `defaultGrpcListenAddress` itself so
-  the two cannot drift. It cannot come from the defaults files: a value there
-  reaches every configuration, and an address without a port is rejected, so
-  every configuration that sets no port would stop parsing.
+There is one schema, `schemas/config.schema.json`. The seven
+`schemas/<Component>.schema.json` files and the legacy single-file schema are
+gone, along with the Haskell values that built them. `cardano-config schema`
+takes no options now.
 
-  Two defaults stay in their descriptions rather than in a `default` keyword,
-  because JSON Schema cannot express either. The mempool timeouts are one
-  coupled default of three values, applied only when all three are unset, and
-  the LSM `DatabasePath` default of `"lsm"` applies only under the LSM
-  backend. `DatabasePath` is also the one property name that is not unique in
-  the configuration, so the by-name annotation could not reach it anyway.
+The schema describes the envelope and the sections inside `Configuration`. It
+used to put the section keys at the top level and declare `Configuration` as a
+bare object. That schema accepted documents the parser rejects, and rejected
+the canonical form.
 
-* The configuration schema describes the envelope and only the envelope. It
-  used to put the section keys at the *top* level, beside `Version`, and
-  declare `Configuration` as a bare `{"type": "object"}` — so it validated a
-  shape nothing recommends and let anything at all through inside the envelope.
-  A document with a partial mempool timeout set validated against it. The
-  sections now sit under `Configuration`, where the parser reads them, and
-  `$schema`, `Version` and `Configuration` are required, so a legacy document
-  fails validation as the README has always said it should. Those three are
-  exactly what `migrate` always writes: a document missing any of them is one
-  migration would change, which the parser already reports as
-  `OutdatedFormatVersion` or `MigratedToCurrentFormat`. `MinNodeVersion` stays
-  optional, because `migrate` never invents one.
+The schema states the cross-field rules this library enforces, so a validator
+now rejects documents `v1` accepted:
 
-  This is a change to what validates. The cross-field rules it now reaches
-  reject only documents the parser already rejected, but requiring the
-  envelope rejects one it accepts: a legacy document still parses, because
-  `migrate` rewrites it first, and fails validation all the same. That split
-  is deliberate — the schema documents the current form alone.
+- `GrpcSocketPath` excludes the TCP and TLS keys.
+- A TLS certificate and its private key go together, and both need a port.
+- The three mempool timeouts are all set or all unset.
+- A genesis file comes with its hash.
+- `ExperimentalHardForksEnabled` requires a Dijkstra genesis.
 
-* `NodeConfigurationFromFile` is a plain record: `NodeConfigurationFromFileF`
-  and its `Identity` type synonym are gone, and the constructor is
-  `NodeConfigurationFromFile`, not `NodeConfigurationFromFileV1`. The `f`
-  parameter staged a component that might still be a sub-file reference
-  against one already read, so with no sub-files it had one stage and nothing
-  left to say. The component fields it wrapped are gone as well (above), so
-  there is no `runIdentity` to drop — there are fields to stop reading.
+Only the last rejects a configuration 1.1.0.0 accepted. The others state what
+the parser already rejected, or govern keys that version 2 adds.
 
-* `Cardano.Configuration.File.Merge.runCodec` loses its `Maybe FilePath`
-  argument and `decodeValueFile` loses its `Maybe String` section argument.
-  Both only ever named a sub-file, so every caller passed `Nothing`.
+The schema also states every default the library applies. Most come from the
+two default configurations. `GrpcListenAddress` carries
+`default: "127.0.0.1"`, taken from the Haskell value so the two cannot drift.
+Two defaults stay in a description, because JSON Schema cannot express either:
+the three coupled mempool timeouts, and the LSM `DatabasePath` default of
+`"lsm"`.
 
-* `migrate` writes the current format version instead of carrying an older one
-  through, so a legacy or a version-1 document comes out at version 2 with the
-  matching `$schema`. A document already at the current version keeps a
-  `$schema` it pins. A document declaring a newer version is refused, both by
-  `migrate` and when read, because migration never goes backwards.
+### The gRPC endpoint
 
-  `parseConfigurationFiles` migrates before it parses, so this removes the
-  per-version dispatch: every document reaches one body parser, at the current
-  version. A new format version now costs one migration step, not one parse
-  path.
+The gRPC server used to listen only on a unix socket. It can now listen over
+HTTP/2 on a TCP port, with or without TLS. `LocalConnectionsConfig` gains five
+keys:
 
-* `ConfigWarning` gains `OutdatedFormatVersion declared current`, raised when a
-  document is at an older format version. It replaces `MigratedToCurrentFormat`
-  in that case, which now reports only a document already at the current
-  version that migration still had to change. Code matching exhaustively on
-  `ConfigWarning` has to account for it.
+- `GrpcListenAddress`
+- `GrpcListenPort`
+- `GrpcTlsCertificateFile`
+- `GrpcTlsPrivateKeyFile`
+- `GrpcTlsChainCertificateFiles`
 
-* The `migrate` subcommand prints a line to stderr telling you to check the
-  result with `resolve`. `migrate` itself still does not parse, resolve or
-  validate, so it stays a purely structural rewrite.
+The three listeners are one choice, so the keys exclude each other.
+`GrpcSocketPath` excludes the other five. An address or a TLS credential needs
+a port beside it. `GrpcListenAddress` defaults to `127.0.0.1`, which keeps a
+plaintext listener on the loopback interface.
 
-* The gRPC server can now listen over HTTP/2 on a TCP port, with or without
-  TLS, rather than only on a unix socket. This follows `cardano-node`'s
-  `RpcEndpoint`. `LocalConnectionsConfig` replaces its
-  `grpcSocketPath :: StrictMaybe FilePath` field with
-  `grpcEndpoint :: StrictMaybe GrpcEndpoint`, the choice among the three
-  listeners:
+The command line gains `--grpc-listen-address`, `--grpc-listen-port`,
+`--grpc-tls-certificate`, `--grpc-tls-private-key` and
+`--grpc-tls-chain-certificate`. A command-line endpoint replaces the endpoint
+in the file whole, because the two describe one choice.
 
-  ```haskell
-  data GrpcEndpoint
-    = GrpcEndpointUnixSocket FilePath
-    | GrpcEndpointHttp IP PortNumber
-    | GrpcEndpointHttps IP PortNumber GrpcTlsFiles
-  ```
+Replacing the endpoint drops the file's TLS credentials with it. If the file
+configures a TLS listener and you pass only `--grpc-listen-port`, the server
+listens in plaintext on the new port. `resolve` warns when this happens. To
+move the port and keep TLS, pass the two TLS flags as well.
 
-  It is one field rather than a group of independent ones, because the server
-  has exactly one listener. The combinations that describe none are now
-  unrepresentable in a resolved configuration. It stays a `StrictMaybe` once
-  resolved: unset, the consumer derives `rpc.sock` beside the node socket.
+`migrate` renames the older `Rpc*` spelling of all five keys to the `Grpc*`
+form.
 
-  In the configuration file the endpoint is written flat, under
-  `LocalConnectionsConfig`: the existing `GrpcSocketPath`, or the new
-  `GrpcListenPort`, with an optional `GrpcListenAddress` defaulting to
-  `127.0.0.1`. For TLS, add `GrpcTlsCertificateFile` and
-  `GrpcTlsPrivateKeyFile`, with optional `GrpcTlsChainCertificateFiles`. These
-  keys are folded into the endpoint as the section is parsed. The combinations
-  that describe no single listener are rejected there, naming the keys at
-  fault.
+### Tracing
 
-* `CliArgs` likewise replaces `grpcSocketPathCLI :: StrictMaybe FilePath` with
-  `grpcEndpointCLI :: StrictMaybe GrpcEndpoint`. It is parsed from the existing
-  `--grpc-socket-path` and the new `--grpc-listen-address`,
-  `--grpc-listen-port`, `--grpc-tls-certificate`, `--grpc-tls-private-key` and
-  (repeatable) `--grpc-tls-chain-certificate`, whose names and help text match
-  `cardano-node`'s. The unix-socket flag and the TCP ones are alternatives, so
-  giving both fails the parse. A command-line endpoint replaces the file's
-  endpoint whole rather than merging into it.
+`cardano-config` no longer supplies tracing defaults. Tracing belongs to
+`trace-dispatcher`, which falls back on its own for whatever a configuration
+leaves unset. The `HermodTracing` value reaches that library as written, with
+no default underneath it.
 
-  The individual parsers are exported as usual (`parseGrpcEndpoint`,
-  `parseGrpcSocketPath`, `parseGrpcListenAddress`, `parseGrpcListenPort`,
-  `parseGrpcTlsFiles`), as are `GrpcEndpoint`, `GrpcTlsFiles` and
-  `defaultGrpcListenAddress`.
+The old default set more than that fallback does. It added the `EKGBackend`
+backend and the `cardano.node.metrics.` metrics prefix, set per-tracer
+severities for `ChainDB`, `Mempool`, `Forge` and others, and added five rate
+limiters. None of them apply now. A node that wants them must state them under
+`HermodTracing`.
 
-* The consistency check on enabling gRPC now requires a node socket path,
-  whatever the gRPC server listens on. The server serves every request over
-  the node-to-client socket, so a TCP listener changes where it listens, not
-  whether it needs that socket, and `cardano-node`'s `makeRpcConfig` refuses
-  `EnableGrpc` without a socket path in every case.
+What remains is `trace-dispatcher`'s own fallback: `Notice` severity, `DNormal`
+detail and `Stdout MachineFormat` at the namespace root. The `HermodTracing`
+block in both default configurations states that fallback for a reader.
+Nothing applies it.
 
-  The old check accepted `EnableGrpc` with a `GrpcSocketPath` and no
-  `SocketPath`, which `cardano-node` then rejected at startup; extending it to
-  the new TCP and TLS listeners would have widened that gap. Requiring the
-  socket path closes both. A configuration that enables gRPC and names no node
-  socket path now fails to resolve, and the check's `checkDescription` says
-  why. `test/examples/version1.json` was one such configuration and gains a
-  `SocketPath`.
+### Stricter and looser parsing
 
-* `experimentalGenesisConfig` (on both `NodeConfigurationFromFile` and
-  `NodeConfiguration`) is now gated on the `ExperimentalHardForksEnabled`
-  testing flag: it is `SJust` only when the flag is on *and* a
-  `DijkstraGenesisFile` is named. With the flag off it is `SNothing` even if the
-  configuration names a file, and the file is not opened at all — not read, not
-  hash-checked.
+`AcceptedConnectionsLimit` accepts a partial object. A configuration that sets
+`HardLimit` alone takes `SoftLimit` and `Delay` from the defaults. All three
+used to be required together.
 
-  This follows `cardano-node`, which gates its whole Dijkstra
-  protocol-configuration block on the same flag and, with the flag off,
-  substitutes an empty Dijkstra genesis without ever looking at a file. Reading
-  it here would reject configurations the node accepts, and the field's old
-  meaning — "a file was named" — was not the question a consumer has to answer.
-  Every consumer had to re-derive "is there an experimental genesis in play?"
-  from the flag itself, and they disagreed on the answer; now the field states
-  it.
+A `Version` below 1 is rejected, naming it. Version 1 is the lowest that has
+ever existed, so `0` and a negative number name no format. Both used to be
+read as version 1 documents and migrated.
 
-  The price of not reading the file is that a stale `DijkstraGenesisHash`, or a
-  file that has since been moved away, goes unreported while the flag is off.
-  Nothing is said about the ignored file either, deliberately: turning the flag
-  on hard-forks the node onto an experimental era, which is coordinated across
-  a network, so no message here should read as a nudge towards doing it.
+The peer selection targets are checked with `ouroboros-network`'s own
+`sanePeerSelectionTargets`, one check for the `Deadline` group and one for the
+`Sync` group. The node does not reject a bad set itself, because it states the
+rule as an assertion that `-O` compiles out.
 
-* The converse is now an error: `finalizeTesting` — and so `resolveConfiguration`
-  — rejects `ExperimentalHardForksEnabled: true` without a `DijkstraGenesisFile`.
-  `cardano-node` makes that key mandatory inside the very block it parses only
-  when the flag is on, and enabling an era with no genesis to run it from is not
-  a configuration anyone meant to write. A configuration that set the flag and
-  named no genesis used to resolve; it now fails with a message naming both keys.
+The numeric command-line options take plain decimal only. `--grpc-listen-port
+0x1F1` used to bind port 497, and `0o17` used to bind port 15. This affects
+`--port`, `--grpc-listen-port`, `--shutdown-on-slot-synced` and
+`--shutdown-on-block-synced`.
 
-  Together with the gating above this makes the pair exact rather than
-  one-sided: on a resolved `NodeConfiguration`, `experimentalGenesisConfig` is
-  `SJust` if and only if `experimentalHardForksEnabled` is set. Both of the
-  combinations where the two disagree are now unreachable, so a consumer that
-  used to handle four has two.
+An `UnrecognisedKeys` warning reports only a name no parser claims, such as a
+typo. `migrate` groups a component property under the section that owns it in
+every case, so such a property is no longer reported.
 
-* The numeric command-line options take plain decimal only. They read through
-  `readEither`, which also accepts Haskell's hexadecimal and octal literals and
-  surrounding whitespace, so `--grpc-listen-port 0x1F1` bound port 497 and
-  `0o17` bound port 15, quietly. `cardano-node` rejects both (its
-  `parsePortNumber` filters on `isDigit` first). This affects every option
-  using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
-  `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
+`ConfigWarning` gains `OutdatedFormatVersion declared current`, raised when a
+document is at an older format version. `MigratedToCurrentFormat` now reports
+only a document already at the current version that migration still changed.
 
-* `ConfigResolutionError` has two constructors instead of one. A section that
-  cannot be decoded is `SectionDecodeError`, carrying the section and the
-  decode error; a failed consistency check is `ViolatedChecks`, carrying the
-  descriptions as before. The single constructor reported a decode failure as
-  though a check had been violated, which says the wrong thing about what went
-  wrong. `ConfigResolutionError` is no longer a newtype and the `violatedChecks`
-  field accessor is gone; match on the constructor instead.
+The `migrate` command used to print `ExitFailure 1` under a message it had
+already written. It no longer does.
 
-  The type now has a `displayException`, so `resolve` prints the violated
-  checks as a list rather than the derived `Show` of the error.
+### The Haskell API
 
-  A `SectionDecodeError` does not mean the configuration is wrong. Every
-  section is decoded from the configuration's own text at parse time, with the
-  codec resolution uses, so what is left to fail at resolution is the shipped
-  defaults or the merge itself.
+The networking types come from `ouroboros-network` instead of being declared
+here. `DiffusionMode`, `AcceptedConnectionsLimit` and
+`TxSubmissionLogicVersion` are that library's types, re-exported under the
+same names, and `peerSharing` holds its `PeerSharing` rather than a `Bool`.
+Configuration files are unaffected, because the codecs keep the spellings they
+had. Code that matches on the old constructors must change:
 
-* `resolve` warns when a command-line gRPC endpoint replaces a TLS endpoint
-  from the configuration file with one that does not serve TLS. The endpoint is
-  replaced whole, so `--grpc-listen-port` on its own drops the file's
-  certificate and private key and leaves the server listening in plaintext. The
-  configuration still resolves; the warning says what was lost.
-
-* A `Version` below 1 is rejected, naming it. `1` is the lowest format version
-  there has ever been, so `0` or a negative number names no format; both were
-  read as legacy documents and quietly migrated. The schema already declared
-  `minimum: 1`, so this is the parser catching up with it.
-
-* A configuration that sets part of `AcceptedConnectionsLimit` now takes the
-  rest from the defaults, as it already did for every other nested object.
-  `{ "AcceptedConnectionsLimit": { "HardLimit": 1000 } }` was rejected with
-  `key "SoftLimit" not found`; it now resolves with the default `SoftLimit` and
-  `Delay`. The three sub-keys are no longer `required` in the schema.
-
-  `NetworkConfiguration`'s `acceptedConnectionsLimit` is an
-  `AcceptedConnectionsLimitConfig f`, carrying the `f` parameter on each limit
-  rather than on the object. `acceptedConnectionsLimitOf` reads a resolved
-  configuration's three limits as `ouroboros-network`'s
-  `AcceptedConnectionsLimit`.
-
-* `DiffusionMode`, `AcceptedConnectionsLimit` and `TxSubmissionLogicVersion` are
-  now `ouroboros-network`'s types, re-exported under the same names, and
-  `peerSharing` is its `PeerSharing` rather than a `Bool`. Code matching on
-  `InitiatorOnly` or `InitiatorAndResponder` must use
-  `InitiatorOnlyDiffusionMode` and `InitiatorAndResponderDiffusionMode`; code
-  reading `hardLimit`, `softLimit` or `delayOnSoftLimit` must use
+- `InitiatorOnly` and `InitiatorAndResponder` become
+  `InitiatorOnlyDiffusionMode` and `InitiatorAndResponderDiffusionMode`.
+- `hardLimit`, `softLimit` and `delayOnSoftLimit` become
   `acceptedConnectionsHardLimit`, `acceptedConnectionsSoftLimit` and
-  `acceptedConnectionsDelay`; code reading `peerSharing` gets
-  `PeerSharingEnabled` or `PeerSharingDisabled` in place of `True` or `False`.
+  `acceptedConnectionsDelay`.
+- `True` and `False` for peer sharing become `PeerSharingEnabled` and
+  `PeerSharingDisabled`.
 
-  No configuration file changes, and the schema is unchanged.
+`ConfigResolutionError` has two constructors. `ViolatedChecks` carries the
+descriptions of the consistency checks that failed. `SectionDecodeError`
+carries a section and a decode error. The type is no longer a newtype, and the
+`violatedChecks` field accessor is gone. The type gains a `displayException`,
+so `resolve` prints failed checks as a list.
 
-* The peer selection targets are checked at resolution, and a set
-  `ouroboros-network` will not accept is now rejected. The check calls that
-  library's own `sanePeerSelectionTargets`, so the two cannot disagree: each of
-  the active, established and known targets must be no greater than the next,
-  the root target no greater than the known target, the same order must hold
-  among the three big ledger peer targets, none may be negative, and the
-  active, established and known targets are capped at 100, 1000 and 10000. The
-  `Deadline` and `Sync` groups are checked separately, so the failure names
-  which seven fields are meant.
+`NodeConfigurationFromFile` is a plain record. `NodeConfigurationFromFileF`
+and its `Identity` synonym are gone. It loses `networkUserLayer` and gains
+`userConfiguration :: Value`, the `Configuration` object as JSON. Its
+component fields hold the file's own values, so a field the file leaves unset
+is `SNothing`.
 
-  The node does not reject such a set itself. Its peer selection governor
-  states the invariant as an assertion, which `-O` compiles out, so a release
-  node starts and runs peer selection on targets that logic is written assuming
-  cannot occur. A configuration the node ran correctly before is unaffected.
+`LocalConnectionsConfig` replaces `grpcSocketPath :: StrictMaybe FilePath`
+with `grpcEndpoint :: StrictMaybe GrpcEndpoint`, the choice among the three
+listeners. `CliArgs` replaces `grpcSocketPathCLI` with `grpcEndpointCLI` in
+the same way.
 
-  `Cardano.Configuration.File.Network` gains `deadlinePeerSelectionTargets` and
-  `syncPeerSelectionTargets`, which build that library's `PeerSelectionTargets`
-  from a resolved configuration. The deadline one returns `Maybe`: those seven
-  targets have no always-applied default, and a configuration stating only some
-  of them describes no target set, so it is passed on unchecked.
+`experimentalGenesisConfig` is `SJust` only when
+`ExperimentalHardForksEnabled` is on and a `DijkstraGenesisFile` is named.
+With the flag off the file is not opened, not read and not hash-checked. A
+consumer that used to handle four combinations of flag and genesis now handles
+two. The price is that a stale `DijkstraGenesisHash` goes unreported while the
+flag is off.
 
-* `cardano-config` no longer supplies tracing defaults. Tracing belongs to
-  `trace-dispatcher`, which falls back on its own for whatever a configuration
-  leaves unset, so `HermodTracing` is now handed to it as written, with no
-  default under it. `defaultCardanoTracingConfig` is gone from
-  `Cardano.Configuration.File`, and a configuration with no `HermodTracing` key
-  gets `mkConfiguration` (re-exported there) instead of it.
+Smaller changes:
 
-  That literal set more than the fallback does: the `EKGBackend` backend, the
-  `cardano.node.metrics.` metrics prefix, per-tracer severities for `ChainDB`,
-  `Mempool`, `Forge` and others, and five rate limiters. None of them apply
-  now. A node that wants them must say so under `HermodTracing`. The fallback
-  that remains is `Notice` severity, `DNormal` detail and `Stdout
-  MachineFormat` at the namespace root.
+- `Cardano.Configuration.Commands` drops `SchemaOptions` and `ConfigForm`.
+  `runSchemaCommand` takes `()`, and `schemaOptionsParser` has type
+  `Parser ()`.
+- `Cardano.Configuration.CliArgs` exports `parseNodeHostIPAddress` and the
+  gRPC endpoint parsers.
+- `Cardano.Configuration.File.Merge.runCodec` loses its `Maybe FilePath`
+  argument, and `decodeValueFile` loses its `Maybe String` section argument.
+  Both only ever named a sub-file.
+- `AcceptedConnectionsLimitConfig f` holds the three limits, one per field.
+  `acceptedConnectionsLimitOf` reads them as `ouroboros-network`'s
+  `AcceptedConnectionsLimit`.
+- `deadlinePeerSelectionTargets` and `syncPeerSelectionTargets` build a
+  `PeerSelectionTargets` from a resolved configuration.
 
-  The `HermodTracing` block in `defaults/config.blockproducer.json` and
-  `defaults/config.relay.json` states that fallback, but is not applied: unlike
-  every other section there, it is shown rather than used. The test suite pins
-  it to what `trace-dispatcher` falls back to, so it cannot drift.
+### Dependencies
 
-### Added
-
-* `Cardano.Configuration.CliArgs` exports `parseNodeHostIPAddress`, which reads
-  the IPv4 or IPv6 address the `--host-addr` and `--host-ipv6-addr` options
-  take.
-
-* `migrate` rewrites the remaining `Rpc*` key names to their `Grpc*` form:
-  `RpcListenAddress`, `RpcListenPort`, `RpcTlsCertificateFile`,
-  `RpcTlsPrivateKeyFile` and `RpcTlsChainCertificateFiles`, alongside the
-  `EnableRpc`/`RpcSocketPath` pair it already handled.
-
-  The schemas gain the new keys, and `migrate` now stamps `Version: 2` on the
-  documents it reshapes, replacing an older one (see the breaking change
-  above). A `Version` *newer* than 2 is left alone, because migration never
-  goes backwards, and a `$schema` is kept only on a document whose version
-  migration did not move.
-
-### Changed
-
-* The schemas state the cross-field rules the parser enforces. A codec cannot
-  express them, because it derives the schema one key at a time:
-
-  - the gRPC endpoint is one listener, so `GrpcSocketPath` excludes the TCP
-    keys, `GrpcListenAddress` and the `GrpcTls*` keys require `GrpcListenPort`,
-    and the certificate and private key require each other (`dependencies`)
-  - `MempoolTimeoutSoft`, `MempoolTimeoutHard` and `MempoolTimeoutCapacity` are
-    all set or all unset (`dependencies`)
-  - `ExperimentalHardForksEnabled` requires a `DijkstraGenesisFile` and
-    `DijkstraGenesisHash` (`if`/`then`), and those two require each other
-  - `SnapshotInterval` is `minimum: 1`, not the 0 its `Word64` would allow
-
-  Only rules whose inputs all come from the configuration file are stated.
-  "Enabling gRPC needs a node socket path" is not: a `--socket-path` on the
-  command line satisfies it, and a validator sees only the file.
-  `MinDelay <= MaxDelay` remains parser-only, because JSON Schema cannot compare
-  two properties.
-
-* The lower bounds on the boot libraries `bytestring`, `directory`, `filepath`,
-  `text` and `time` are relaxed to the versions GHC 9.6.7 ships. That is the
-  oldest compiler in `tested-with`. They were set to what the newest GHC ships,
-  so a plan on 9.6 had to reinstall newer ones from Hackage. A downstream plan
-  that cannot do that needed `allow-older` entries for all five. Only long
-  stable API is used from them, and none of it is `OsPath`.
-
-* The `ExperimentalHardForksEnabled` description in the JSON schemas now states
-  that a `DijkstraGenesisFile` and `DijkstraGenesisHash` must accompany it. The
-  schemas enforce that requirement too, with the `if`/`then` rule above.
+The lower bounds on the boot libraries `bytestring`, `directory`, `filepath`,
+`text` and `time` now allow the versions GHC 9.6.7 ships.
 
 ## 1.1.0.0 -- 2026-09-08
 
