@@ -236,14 +236,19 @@ splitEnvelope value =
 --
 -- A missing @Version@ is the legacy version 1: a fixed historical fact about
 -- unversioned documents, not 'Cardano.Configuration.Schema.currentFormatVersion'.
--- A present one must be an integer in range, since the schema declares it as an
--- integer. A value that is not an object reports 1 and fails later, where the
--- error names the real problem.
+-- A present one must be an integer of at least 1, which is what the schema
+-- declares: 1 is the lowest version there has ever been, so 0 or a negative
+-- number names no format. Rejecting them here keeps a document the schema
+-- refuses from being read as a legacy one and quietly migrated. A value that is
+-- not an object reports 1 and fails later, where the error names the real
+-- problem.
 declaredFormatVersion :: Value -> IO Int
 declaredFormatVersion (Object o) = case KM.lookup "Version" o of
   Nothing -> pure 1
-  Just (Number n) ->
-    maybe (throwIO (badVersion ("expected an integer, got " <> show n))) pure (toBoundedInteger n)
+  Just (Number n) -> case toBoundedInteger n of
+    Just v | v >= 1 -> pure v
+    Just v -> throwIO (badVersion ("expected a positive integer, got " <> show v))
+    Nothing -> throwIO (badVersion ("expected an integer, got " <> show n))
   Just _ -> throwIO (badVersion "expected an integer")
  where
   badVersion msg = ConfigurationParsingError SNothing SNothing [Key "Version"] ("invalid Version: " <> msg)

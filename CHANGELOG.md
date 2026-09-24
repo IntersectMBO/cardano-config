@@ -278,6 +278,11 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* A `Version` below 1 is rejected, naming it. `1` is the lowest format version
+  there has ever been, so `0` or a negative number names no format; both were
+  read as legacy documents and quietly migrated. The schema already declared
+  `minimum: 1`, so this is the parser catching up with it.
+
 * A configuration that sets part of `AcceptedConnectionsLimit` now takes the
   rest from the defaults, as it already did for every other nested object.
   `{ "AcceptedConnectionsLimit": { "HardLimit": 1000 } }` was rejected with

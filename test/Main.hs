@@ -355,7 +355,9 @@ migrateCase =
 -- document and a version-1 document both come out at 'currentFormatVersion',
 -- with the @$schema@ that goes with it. Reading a version-1 document still
 -- works and reports 'OutdatedFormatVersion'. A version past the newest is
--- rejected, naming it.
+-- rejected, naming it, and so is one below the oldest: 1 is the lowest version
+-- there has ever been, so 0 names no format, and without the check it would be
+-- read as a legacy document and quietly migrated.
 formatVersionCompatibilityCase :: TestTree
 formatVersionCompatibilityCase =
   testCase "migrate upgrades an older version; a newer one is rejected" $ do
@@ -365,6 +367,8 @@ formatVersionCompatibilityCase =
     (parsed, warnings) <- parseConfigurationFiles olderPath
     unsupportedPath <- getDataFileName "test/examples/version-unsupported.json"
     unsupported <- try (parseConfigurationFiles unsupportedPath)
+    nonPositivePath <- getDataFileName "test/examples/version-nonpositive.json"
+    nonPositive <- try (parseConfigurationFiles nonPositivePath)
     expectOk $ case (older, legacy) of
       (Left err, _) -> Just ("could not read the version-1 fixture: " <> err)
       (_, Left err) -> Just ("could not read the legacy fixture: " <> err)
@@ -375,11 +379,15 @@ formatVersionCompatibilityCase =
             Just ("reading a version-1 document did not report it: " <> show warnings)
         | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) parsed of
             Left err -> Just ("the version-1 document did not resolve: " <> show err)
-            Right _ -> case unsupported of
-              Right _ -> Just "a document past the newest format version was accepted"
-              Left (e :: SomeException)
-                | "99" `isInfixOf` show e -> Nothing
-                | otherwise -> Just ("rejected, but without naming the version: " <> show e)
+            Right _ -> case (unsupported, nonPositive) of
+              (Right _, _) -> Just "a document past the newest format version was accepted"
+              (_, Right _) -> Just "a document declaring version 0 was accepted"
+              (Left (e :: SomeException), Left (e0 :: SomeException))
+                | not ("99" `isInfixOf` show e) ->
+                    Just ("rejected, but without naming the version: " <> show e)
+                | not ("0" `isInfixOf` show e0 && "positive" `isInfixOf` show e0) ->
+                    Just ("version 0 rejected, but not as a version: " <> show e0)
+                | otherwise -> Nothing
  where
   upgraded v = case fst (migrated v) of
     Object o ->
