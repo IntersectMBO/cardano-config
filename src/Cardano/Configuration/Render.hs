@@ -60,7 +60,7 @@ nodeConfigurationToJSON geneses nc =
   -- The tracing configuration resolved by trace-dispatcher, rendered under the
   -- same @HermodTracing@ key it is read from (as an inline object, via
   -- trace-dispatcher's own 'ToJSON'). Always present: absent a @HermodTracing@
-  -- key it holds 'File.defaultCardanoTracingConfig'.
+  -- key it holds the tracing defaults from @defaults\/@.
   tracingFields =
     ["HermodTracing" .= tracingConfiguration nc]
   -- The resolved (parsed) era geneses, rendered through the ledger's @aeson@

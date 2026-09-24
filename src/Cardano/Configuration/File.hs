@@ -36,7 +36,8 @@ module Cardano.Configuration.File
   , TracingConfiguration (..)
   , TracingConfigSource (..)
   , TraceConfig
-  , defaultCardanoTracingConfig
+  , resolveTracingConfiguration
+  , mkConfiguration
 
     -- * Resolving components
   , finalizeNetwork
@@ -75,7 +76,7 @@ import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
   ( TracingConfigSource (..)
   , TracingConfiguration (..)
-  , defaultCardanoTracingConfig
+  , mkConfiguration
   , resolveTracingConfiguration
   )
 import Cardano.Configuration.Genesis
@@ -163,9 +164,10 @@ data NodeConfigurationFromFile = NodeConfigurationFromFile
   -- ^ The tracing configuration referenced by the top-level @HermodTracing@ key,
   -- resolved by @trace-dispatcher@'s own parser ('resolveTracingConfiguration'):
   -- a @HermodTracing@ file path is read from that file, an inline object is read
-  -- directly. When no @HermodTracing@ key is present it falls back to
-  -- 'defaultCardanoTracingConfig', so a tracing configuration is always present.
-  -- Its schema is owned by @trace-dispatcher@, not described here (see
+  -- directly. The value is passed on as the configuration wrote it, with no
+  -- default of ours under it: what it leaves unset, @trace-dispatcher@ fills
+  -- from its own fallback, so a tracing configuration is always present. Its
+  -- schema is owned by @trace-dispatcher@, not described here (see
   -- 'TracingConfiguration').
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
@@ -293,6 +295,11 @@ parseConfigurationBody root minNodeVer configValue = do
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
   -- 'TraceConfig' — reading the referenced file, or the inline object directly.
+  -- Unlike every other component this one takes no default from @defaults\/@:
+  -- tracing belongs to @trace-dispatcher@, which has a fallback of its own, and
+  -- layering ours under it would only be a second opinion on the same question.
+  -- The @HermodTracing@ block in @defaults\/@ is there to show a reader what
+  -- that fallback amounts to, not to be applied.
   tracing <- runCodec "Tracing" configValue
   traceConfig <- resolveTracingConfiguration root tracing
   -- The genesis files referenced by the configuration are read and decoded

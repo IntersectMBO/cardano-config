@@ -278,6 +278,25 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* `cardano-config` no longer supplies tracing defaults. Tracing belongs to
+  `trace-dispatcher`, which falls back on its own for whatever a configuration
+  leaves unset, so `HermodTracing` is now handed to it as written, with no
+  default under it. `defaultCardanoTracingConfig` is gone from
+  `Cardano.Configuration.File`, and a configuration with no `HermodTracing` key
+  gets `mkConfiguration` (re-exported there) instead of it.
+
+  That literal set more than the fallback does: the `EKGBackend` backend, the
+  `cardano.node.metrics.` metrics prefix, per-tracer severities for `ChainDB`,
+  `Mempool`, `Forge` and others, and five rate limiters. None of them apply
+  now. A node that wants them must say so under `HermodTracing`. The fallback
+  that remains is `Notice` severity, `DNormal` detail and `Stdout
+  MachineFormat` at the namespace root.
+
+  The `HermodTracing` block in `defaults/config.blockproducer.json` and
+  `defaults/config.relay.json` states that fallback, but is not applied: unlike
+  every other section there, it is shown rather than used. The test suite pins
+  it to what `trace-dispatcher` falls back to, so it cannot drift.
+
 ### Added
 
 * `migrate` rewrites the remaining `Rpc*` key names to their `Grpc*` form:

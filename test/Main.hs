@@ -56,7 +56,15 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Data.Aeson (FromJSON, Result (..), Value (..), eitherDecodeFileStrict', fromJSON, toJSON)
+import Data.Aeson
+  ( FromJSON
+  , Object
+  , Result (..)
+  , Value (..)
+  , eitherDecodeFileStrict'
+  , fromJSON
+  , toJSON
+  )
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.FileEmbed (makeRelativeToProject)
@@ -93,7 +101,7 @@ cases =
   [ parseCase "test/examples/legacy-fullconfig.json"
   , parseCase "test/examples/all-sections.json"
   , tracingCase
-  , tracingDefaultParityCase
+  , tracingDefaultIllustrationCase
   , unrecognisedKeyCase
   , migrationWarningCase
   , migrationErrorCase
@@ -857,8 +865,8 @@ resolveCase =
 -- into a 'TraceConfig' — whether given inline (an object) or as a path to a
 -- separate file — and surfaced both on the parse result and, when the resolved
 -- configuration is dumped, back under a @HermodTracing@ key. A configuration
--- without the key falls back to 'defaultCardanoTracingConfig', which is likewise
--- surfaced and rendered (so the @HermodTracing@ key always appears).
+-- without the key gets trace-dispatcher's minimal viable configuration, which is
+-- likewise surfaced and rendered (so the @HermodTracing@ key always appears).
 tracingCase :: TestTree
 tracingCase =
   testCase "HermodTracing resolves to a TraceConfig (inline, file, default) and is always rendered" $ do
@@ -868,11 +876,11 @@ tracingCase =
     renderedInline <- rendersTracing "test/examples/tracing-inline.json"
     renderedAbsent <- rendersTracing "test/examples/legacy-fullconfig.json"
     let asJSON = toJSON . tracingConfiguration
-        deflt = toJSON defaultCardanoTracingConfig
+        deflt = toJSON mkConfiguration
     expectOk $
       if asJSON inline /= deflt -- the inline object was applied
         && asJSON fromFile /= deflt -- the referenced file was applied
-        && asJSON absent == deflt -- no key falls back to the default
+        && asJSON absent == deflt -- no key falls back to trace-dispatcher's
         && renderedInline == Right True
         && renderedAbsent == Right True -- rendered even without a key
         then Nothing
@@ -902,35 +910,58 @@ tracingCase =
           Object o -> Right (KM.member (K.fromString "HermodTracing") o)
           _ -> Left "rendered configuration was not an object"
 
--- | The @HermodTracing@ section of the committed default configurations must
--- equal the JSON of the in-tree 'defaultCardanoTracingConfig' literal (encoded
--- through trace-dispatcher's own 'TraceConfig' codec), so the checked-in
--- default cannot drift from the Haskell source. The two role configurations
--- carry the same tracing defaults, so checking one is enough. Regenerate from
--- 'defaultCardanoTracingConfig' if this fails.
-tracingDefaultParityCase :: TestTree
-tracingDefaultParityCase =
-  testCase "the HermodTracing defaults match defaultCardanoTracingConfig" $ do
-    path <- getDataFileName "defaults/config.relay.json"
-    committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
-    expectOk $ case committed >>= tracingSection of
-      Left e -> Just ("could not read defaults/config.relay.json: " <> e)
-      Right v
-        | toJSON defaultCardanoTracingConfig == v -> Nothing
-        | otherwise ->
-            Just $
-              "the HermodTracing defaults are out of date; regenerate from defaultCardanoTracingConfig: "
-                <> show (toJSON defaultCardanoTracingConfig)
-                <> " /= "
-                <> show v
+-- | The @HermodTracing@ block in the shipped default configurations is not
+-- applied to anything: tracing is the one part of the configuration
+-- @cardano-config@ supplies no default for, because @trace-dispatcher@ falls
+-- back on its own. The block is there to show a reader what that fallback is.
+--
+-- An illustration that is wrong is worse than none, so this pins it: each
+-- file's block must be written exactly as @trace-dispatcher@ writes the
+-- configuration it falls back to ('mkConfiguration'), minus the top-level keys
+-- that fallback leaves empty.
+--
+-- It compares the block as written, not the 'TraceConfig' it resolves to,
+-- because the two are not the same check. A key the parser does not know is
+-- ignored, and the fallback then supplies the value the key was trying to give,
+-- so a misspelling resolves correctly and only shows up here. If this fails,
+-- copy the expected value the failure prints into both files.
+tracingDefaultIllustrationCase :: TestTree
+tracingDefaultIllustrationCase =
+  testCase "the HermodTracing block in defaults/ is trace-dispatcher's fallback, as written" $
+    mapM_ check ["defaults/config.blockproducer.json", "defaults/config.relay.json"]
  where
-  -- The HermodTracing value inside the default configuration's envelope.
-  tracingSection v = case v of
-    Object top
-      | Just (Object cfg) <- KM.lookup (K.fromString "Configuration") top
-      , Just tracing <- KM.lookup (K.fromString "HermodTracing") cfg ->
-          Right tracing
-    _ -> Left "the default configuration has no Configuration.HermodTracing"
+  check fp = do
+    path <- getDataFileName fp
+    committed <- eitherDecodeFileStrict' path
+    case committed >>= tracingSectionOf of
+      Left e -> assertFailure ("could not read " <> fp <> ": " <> e)
+      Right tracing ->
+        expectOk $
+          if Object tracing == expected
+            then Nothing
+            else
+              Just $
+                fp
+                  <> " does not show trace-dispatcher's fallback: "
+                  <> show (Object tracing)
+                  <> " /= "
+                  <> show expected
+  -- trace-dispatcher renders every top-level field, including the ones its
+  -- fallback does not set. Those say nothing, so the files leave them out.
+  expected = case toJSON mkConfiguration of
+    Object o -> Object (KM.filter (/= Null) o)
+    v -> v
+
+-- | The @HermodTracing@ object inside a default configuration's envelope.
+tracingSectionOf :: Value -> Either String Object
+tracingSectionOf v = case v of
+  Object top
+    | Just (Object cfg) <- KM.lookup (K.fromString "Configuration") top ->
+        case KM.lookup (K.fromString "HermodTracing") cfg of
+          Just (Object tracing) -> Right tracing
+          Just _ -> Left "Configuration.HermodTracing is not an object"
+          Nothing -> Left "the default configuration has no Configuration.HermodTracing"
+  _ -> Left "the default configuration has no Configuration object"
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
 -- of every era genesis (Byron via its canonical-JSON form, the rest via the

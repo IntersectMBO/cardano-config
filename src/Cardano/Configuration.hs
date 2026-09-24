@@ -170,8 +170,11 @@ data NodeConfiguration = NodeConfiguration
   , mempoolConfiguration :: File.MempoolConfiguration Identity
   , tracingConfiguration :: File.TraceConfig
   -- ^ The tracing configuration resolved from the top-level @HermodTracing@ key
-  -- by @trace-dispatcher@'s parser (see 'File.resolveTracingConfiguration'), or
-  -- 'File.defaultCardanoTracingConfig' when no @HermodTracing@ key is present.
+  -- by @trace-dispatcher@'s parser (see 'File.resolveTracingConfiguration'),
+  -- with the @HermodTracing@ defaults from @defaults\/@ layered underneath it.
+  -- Unlike every other component it is resolved while parsing, not here: it is
+  -- read from files, and the two roles' tracing defaults are identical, so
+  -- nothing about it waits on the role.
   -- Carried through unchanged from the file-parse result so consumers get the
   -- parsed 'File.TraceConfig'.
   , byronGenesisConfig :: ByronGenesisConfig
