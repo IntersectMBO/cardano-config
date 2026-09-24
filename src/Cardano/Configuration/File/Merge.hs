@@ -186,11 +186,13 @@ parseSection configValue section =
 -- | The pure counterpart of 'parseSection', for resolution, which merges the
 -- role's defaults with the user's configuration and reads each section from the
 -- result. A failure is returned rather than thrown, and rendered against the
--- section and the JSON path within it.
+-- JSON path within the section. Naming the section is the caller's, which has
+-- it to hand and carries it separately (see
+-- @Cardano.Configuration.SectionDecodeError@).
 decodeSection :: FromJSON a => Value -> String -> Either String a
 decodeSection configValue section =
   case iparseEither parseJSON sectionValue of
-    Left (path, msg) -> Left (section <> ": " <> formatError path msg)
+    Left (path, msg) -> Left (formatError path msg)
     Right a -> Right a
  where
   sectionValue = case configValue of

@@ -151,11 +151,13 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Applicative ((<|>))
-import Control.Exception (Exception)
+import Control.Exception (Exception (..))
 import Data.Aeson (FromJSON)
 import Data.Functor.Identity
 import Data.IP
+import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as NE
 import GHC.Stack (HasCallStack)
 import Network.Socket
 import Ouroboros.Network.PeerSelection.Governor.Types
@@ -235,15 +237,38 @@ data ConfigCheck = ConfigCheck
   -- ^ The invariant. 'True' means the configuration satisfies it.
   }
 
--- | An error detected while resolving the configuration: one or more
--- consistency checks failed on a configuration whose individual values were
--- each well-formed. Carries the descriptions of the violated checks.
-newtype ConfigResolutionError = ConfigResolutionError
-  { violatedChecks :: NonEmpty String
-  }
+-- | A failure while resolving the configuration.
+data ConfigResolutionError
+  = -- | One or more consistency checks failed on a configuration whose
+    -- individual values were each well-formed. Carries the descriptions of the
+    -- violated checks.
+    ViolatedChecks (NonEmpty String)
+  | -- | A section could not be decoded from the merge of the shipped defaults
+    -- with the configuration. Carries the section and the decode error.
+    --
+    -- This is a decode failure, not an inconsistency, and it is separate
+    -- because it says something different about who is at fault. Every section
+    -- is decoded from the configuration's own text at parse time, with the same
+    -- codec resolution uses, so by the time resolution decodes the merge the
+    -- configuration's own sections have already decoded. What is left to fail
+    -- is the shipped defaults or the merge itself, which is to say a fault in
+    -- this library rather than in the file.
+    SectionDecodeError String String
   deriving (Eq, Show)
 
-instance Exception ConfigResolutionError
+instance Exception ConfigResolutionError where
+  displayException = \case
+    ViolatedChecks violations ->
+      intercalate
+        "\n"
+        ("The configuration is inconsistent:" : ["  - " <> v | v <- NE.toList violations])
+    SectionDecodeError section msg ->
+      "Could not decode the "
+        <> section
+        <> " section of the resolved configuration: "
+        <> msg
+        <> "\nThe configuration parsed on its own, so this is a fault in cardano-config"
+        <> " rather than in the file."
 
 -- | The built-in consistency checks applied by 'resolveConfiguration'. Exported
 -- so consumers can extend them, e.g.
@@ -356,7 +381,7 @@ runConfigChecks ::
   Either ConfigResolutionError (NodeConfiguration, [File.ConfigWarning])
 runConfigChecks checks nc =
   case [checkDescription c | c <- checks, checkSeverity c == CheckError, not (checkHolds c nc)] of
-    (violation : violations) -> Left (ConfigResolutionError (violation :| violations))
+    (violation : violations) -> Left (ViolatedChecks (violation :| violations))
     [] ->
       Right
         ( nc
@@ -421,7 +446,7 @@ resolveConfigurationWith checks cli file = do
       merged =
         File.mergeValues (File.defaultConfiguration role) (File.userConfiguration file)
       section :: FromJSON a => String -> Either ConfigResolutionError a
-      section = finalize . File.decodeSection merged
+      section name = either (Left . SectionDecodeError name) Right (File.decodeSection merged name)
   network <- section "NetworkConfig" >>= finalize . File.finalizeNetwork
   testing <- section "TestingConfig" >>= finalize . File.finalizeTesting
   mempool <- section "MempoolConfig" >>= finalize . File.finalizeMempool
@@ -487,7 +512,7 @@ resolveConfigurationWith checks cli file = do
     , grpcTlsDowngradeWarning (File.grpcEndpoint lcc) cliGrpcEndpoint <> warnings
     )
  where
-  finalize = either (\m -> Left (ConfigResolutionError (m :| []))) Right
+  finalize = either (\m -> Left (ViolatedChecks (m :| []))) Right
   require name = strictMaybe (Left (name <> " has no value and no base default")) Right
 
 -- | The gRPC endpoint is one choice, so a command-line endpoint replaces the

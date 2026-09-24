@@ -278,6 +278,22 @@ The split-file form is gone, so those sections hold their objects now (below).
   using the shared `bounded` reader: `--port`, `--grpc-listen-port`,
   `--shutdown-on-slot-synced` and `--shutdown-on-block-synced`.
 
+* `ConfigResolutionError` has two constructors instead of one. A section that
+  cannot be decoded is `SectionDecodeError`, carrying the section and the
+  decode error; a failed consistency check is `ViolatedChecks`, carrying the
+  descriptions as before. The single constructor reported a decode failure as
+  though a check had been violated, which says the wrong thing about what went
+  wrong. `ConfigResolutionError` is no longer a newtype and the `violatedChecks`
+  field accessor is gone; match on the constructor instead.
+
+  The type now has a `displayException`, so `resolve` prints the violated
+  checks as a list rather than the derived `Show` of the error.
+
+  A `SectionDecodeError` does not mean the configuration is wrong. Every
+  section is decoded from the configuration's own text at parse time, with the
+  codec resolution uses, so what is left to fail at resolution is the shipped
+  defaults or the merge itself.
+
 * `resolve` warns when a command-line gRPC endpoint replaces a TLS endpoint
   from the configuration file with one that does not serve TLS. The endpoint is
   replaced whole, so `--grpc-listen-port` on its own drops the file's

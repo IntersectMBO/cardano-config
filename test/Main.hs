@@ -134,6 +134,7 @@ cases =
   , roleSelectionCase
   , rolePrecedenceCase
   , peerTargetsRejectedCase
+  , sectionDecodeErrorCase
   , partialNestedObjectCase
   , defaultConfigParityCase
   , experimentalHardForksDefaultCase
@@ -1056,6 +1057,35 @@ rolePrecedenceCase =
                 && deadlineTargetOfKnownPeers n == SJust 100 -- unset in file, block-producer default
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
+
+-- | A section that cannot be decoded from the merge is reported as a
+-- 'C.SectionDecodeError' naming the section, not as 'C.ViolatedChecks'. The two
+-- say different things about who is at fault, which is why they are separate.
+--
+-- A configuration file cannot reach this: every section is decoded from the
+-- file's own text at parse time with the same codec resolution uses, so a file
+-- that parses has sections that decode, and the shipped defaults add no key
+-- that any cross-field rule reads. It is reached here the way the only caller
+-- that can would, by resolving a 'NodeConfigurationFromFile' whose
+-- 'userConfiguration' has been replaced.
+sectionDecodeErrorCase :: TestTree
+sectionDecodeErrorCase =
+  testCase "a section that cannot be decoded is a decode error, not a violated check" $ do
+    path <- getDataFileName "test/examples/all-sections.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let broken = cfg{userConfiguration = section "NetworkConfig" "DiffusionMode" (str "Nonsense")}
+        section outer inner v =
+          Object (KM.singleton (K.fromString outer) (Object (KM.singleton (K.fromString inner) v)))
+    expectOk $ case cliArgs [] of
+      Nothing -> Just "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli broken of
+        Right _ -> Just "a section that cannot be decoded resolved"
+        Left (C.SectionDecodeError sec msg)
+          | sec /= "NetworkConfig" -> Just ("the wrong section was named: " <> sec)
+          | not ("DiffusionMode" `isInfixOf` msg) ->
+              Just ("the decode error does not name the field: " <> msg)
+          | otherwise -> Nothing
+        Left e -> Just ("not reported as a decode error: " <> show e)
 
 -- | A configuration that states part of a nested object takes the rest of that
 -- object's fields from the defaults, because the merge recurses rather than
