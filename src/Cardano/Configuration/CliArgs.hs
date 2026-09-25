@@ -9,6 +9,14 @@ module Cardano.Configuration.CliArgs
   , TracerConnectionMethod (..)
   , TracerConnection (..)
 
+    -- * The gRPC endpoint
+
+  -- Re-exported so that a consumer building a 'CliArgs' directly can name the
+  -- type of 'grpcEndpointCLI'.
+  , GrpcEndpoint (..)
+  , GrpcTlsFiles (..)
+  , defaultGrpcListenAddress
+
     -- * Credentials
   , Credentials (..)
   , emptyCredentials
@@ -23,7 +31,11 @@ module Cardano.Configuration.CliArgs
   , parseSocketPath
   , parseValidateDB
   , parseEnableGrpc
+  , parseGrpcEndpoint
   , parseGrpcSocketPath
+  , parseGrpcListenAddress
+  , parseGrpcListenPort
+  , parseGrpcTlsFiles
   , parseCredentials
   , parseKESSource
   , parseHostIPv4Addr
@@ -36,15 +48,18 @@ module Cardano.Configuration.CliArgs
     -- ** Argument readers
   , parseNodeAddress
   , parseHostPort
+  , parseNodeHostIPAddress
   , parseNodeHostIPv4Address
   , parseNodeHostIPv6Address
   ) where
 
 import Cardano.Configuration.Common
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe)
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Data.Bifunctor (second)
-import Data.IP (IPv4, IPv6)
+import Data.Char (isDigit)
+import Data.IP (IP, IPv4, IPv6)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word64)
@@ -130,7 +145,7 @@ data CliArgs = CliArgs
   , shutdownIPC :: StrictMaybe Fd
   , shutdownOnTarget :: StrictMaybe ShutdownOn
   , enableGrpcCLI :: StrictMaybe Bool
-  , grpcSocketPathCLI :: StrictMaybe FilePath
+  , grpcEndpointCLI :: StrictMaybe GrpcEndpoint
   }
   deriving Show
 
@@ -166,7 +181,7 @@ parseCliArgs =
     <*> parserOptionGroup "Shutdown:" (optionalStrict parseShutdownIPC)
     <*> parserOptionGroup "Shutdown:" (optionalStrict parseShutdownOn)
     <*> optionalStrict parseEnableGrpc
-    <*> optionalStrict parseGrpcSocketPath
+    <*> optionalStrict parseGrpcEndpoint
 
 -- | The 'CliArgs' for resolving a configuration from its file alone, with no
 -- command-line overrides: every field takes the value 'parseCliArgs' would
@@ -193,7 +208,7 @@ defaultCliArgs configFile =
     , shutdownIPC = SNothing
     , shutdownOnTarget = SNothing
     , enableGrpcCLI = SNothing
-    , grpcSocketPathCLI = SNothing
+    , grpcEndpointCLI = SNothing
     }
 
 -- | The topology file path used when @--topology@ is not given.
@@ -238,15 +253,113 @@ parseEnableGrpc =
       , help "[EXPERIMENTAL] Enable node gRPC endpoint."
       ]
 
+-- | Where the gRPC server listens: @--grpc-socket-path@ for a unix socket, or
+-- @--grpc-listen-port@ for a TCP listener, with an optional
+-- @--grpc-listen-address@ and the @--grpc-tls-*@ credentials for TLS. The two
+-- forms are mutually exclusive, and with neither the endpoint is unset.
+parseGrpcEndpoint :: Parser GrpcEndpoint
+parseGrpcEndpoint = parseGrpcUnixSocketEndpoint <|> parseGrpcHttpEndpoint
+ where
+  parseGrpcUnixSocketEndpoint = GrpcEndpointUnixSocket <$> parseGrpcSocketPath
+  -- The TLS credentials decide between the plaintext (h2c) and the TLS
+  -- listener. The address defaults to loopback.
+  parseGrpcHttpEndpoint =
+    mkHttpEndpoint
+      <$> optional parseGrpcListenAddress
+      <*> parseGrpcListenPort
+      <*> optional parseGrpcTlsFiles
+  mkHttpEndpoint mAddress port =
+    maybe (GrpcEndpointHttp address port) (GrpcEndpointHttps address port)
+   where
+    address = fromMaybe defaultGrpcListenAddress mAddress
+
 parseGrpcSocketPath :: Parser FilePath
 parseGrpcSocketPath =
   strOption $
     mconcat
       [ long "grpc-socket-path"
       , metavar "FILEPATH"
-      , help "[EXPERIMENTAL] gRPC socket path. Defaults to rpc.sock in the same directory as node socket."
+      , help $
+          mconcat
+            [ "[EXPERIMENTAL] gRPC unix socket path. Defaults to rpc.sock in the same directory as "
+            , "node socket. Mutually exclusive with --grpc-listen-port."
+            ]
       , completer (bashCompleter "file")
       ]
+
+parseGrpcListenPort :: Parser PortNumber
+parseGrpcListenPort =
+  option (bounded "PORT") $
+    mconcat
+      [ long "grpc-listen-port"
+      , metavar "PORT"
+      , help $
+          mconcat
+            [ "[EXPERIMENTAL] TCP port the gRPC server listens on. When set, the gRPC server listens "
+            , "over HTTP/2 without TLS, or HTTP/2 over TLS if --grpc-tls-certificate is given, "
+            , "instead of a unix socket. Mutually exclusive with --grpc-socket-path."
+            ]
+      ]
+
+parseGrpcListenAddress :: Parser IP
+parseGrpcListenAddress =
+  option (eitherReader parseNodeHostIPAddress) $
+    mconcat
+      [ long "grpc-listen-address"
+      , metavar "IP-ADDRESS"
+      , help $
+          mconcat
+            [ "[EXPERIMENTAL] IP address the gRPC server binds to. Requires --grpc-listen-port. "
+            , "Defaults to 127.0.0.1."
+            ]
+      ]
+
+-- | The gRPC server's TLS credentials. The certificate and the private key are
+-- required together, so giving either alone fails the parse. The chain
+-- certificates are optional and repeatable.
+parseGrpcTlsFiles :: Parser GrpcTlsFiles
+parseGrpcTlsFiles =
+  GrpcTlsFiles
+    <$> parseGrpcTlsCertificateFile
+    <*> parseGrpcTlsPrivateKeyFile
+    <*> many parseGrpcTlsChainCertificateFile
+ where
+  parseGrpcTlsCertificateFile =
+    strOption $
+      mconcat
+        [ long "grpc-tls-certificate"
+        , metavar "FILEPATH"
+        , help $
+            mconcat
+              [ "[EXPERIMENTAL] Path to the TLS certificate file. Enables TLS; requires "
+              , "--grpc-tls-private-key and --grpc-listen-port."
+              ]
+        , completer (bashCompleter "file")
+        ]
+  parseGrpcTlsPrivateKeyFile =
+    strOption $
+      mconcat
+        [ long "grpc-tls-private-key"
+        , metavar "FILEPATH"
+        , help $
+            mconcat
+              [ "[EXPERIMENTAL] Path to the TLS private key file. Requires --grpc-tls-certificate "
+              , "and --grpc-listen-port."
+              ]
+        , completer (bashCompleter "file")
+        ]
+  parseGrpcTlsChainCertificateFile =
+    strOption $
+      mconcat
+        [ long "grpc-tls-chain-certificate"
+        , metavar "FILEPATH"
+        , help $
+            mconcat
+              [ "[EXPERIMENTAL] Path to an additional certificate to include in the TLS chain. May "
+              , "be given multiple times. Requires --grpc-tls-certificate and --grpc-tls-private-key."
+              ]
+        , completer (bashCompleter "file")
+        ]
 
 parseConfigFile :: Parser FilePath
 parseConfigFile =
@@ -279,6 +392,11 @@ parseHostIPv6Addr =
       , metavar "IPV6"
       , help "An optional IPv6 address"
       ]
+
+-- | Read an IP address of either family, as @--grpc-listen-address@ takes it.
+parseNodeHostIPAddress :: String -> Either String IP
+parseNodeHostIPAddress s =
+  maybe (Left ("Failed to parse IP address: " ++ s)) Right (readMaybe s)
 
 parseNodeHostIPv4Address :: String -> Either String IPv4
 parseNodeHostIPv4Address s =
@@ -496,14 +614,31 @@ parseShutdownOn =
           ]
     ]
 
--- | An 'option' reader that parses an integer and rejects values outside the
--- target type's bounds, rather than silently wrapping (as @fromIntegral <$> auto@
--- would). The string argument names the value in the error message.
+-- | An 'option' reader that parses a decimal integer and rejects values outside
+-- the target type's bounds, rather than silently wrapping (as
+-- @fromIntegral <$> auto@ would). The string argument names the value in the
+-- error message.
+--
+-- Only plain decimal is accepted: an optional @-@ and then digits. 'readEither'
+-- alone would also take Haskell's other integer literals and surrounding
+-- whitespace, so @--port 0x1F1@ would bind port 497 and @--port 0o17@ port 15,
+-- quietly, rather than being refused. @cardano-node@ refuses both — its
+-- @parsePortNumber@ filters on 'isDigit' before reading — and an operator who
+-- writes @0x1F1@ has made a mistake whichever tool reads it.
+--
+-- A leading @-@ is read and then caught by the lower-bound check below, so an
+-- unsigned target reports the bound rather than a parse failure.
 bounded :: forall a. (Bounded a, Integral a, Show a) => String -> ReadM a
 bounded t = eitherReader $ \s -> do
+  unless (isDecimal s) $ Left $ t <> " must be a decimal number, but was: " <> s
   i <- readEither @Integer s
   when (i < fromIntegral (minBound @a)) $ Left $ t <> " must not be less than " <> show (minBound @a)
   when (i > fromIntegral (maxBound @a)) $
     Left $
       t <> " must not be greater than " <> show (maxBound @a)
   pure (fromIntegral i)
+ where
+  isDecimal = \case
+    '-' : digits -> allDigits digits
+    digits -> allDigits digits
+  allDigits ds = not (null ds) && all isDigit ds

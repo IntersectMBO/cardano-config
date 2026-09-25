@@ -1,13 +1,10 @@
-{-# LANGUAGE GADTs #-}
-
 -- | Orchestration of configuration-file parsing: it ties together the JSON
 -- layering engine ("Cardano.Configuration.File.Merge"), the key linting
 -- ("Cardano.Configuration.File.Lint") and the per-component parsers and genesis
 -- readers, and re-exports the public surface.
 module Cardano.Configuration.File
   ( -- * Configuration file
-    NodeConfigurationFromFile
-  , NodeConfigurationFromFileF (..)
+    NodeConfigurationFromFile (..)
   , parseConfigurationFiles
 
     -- * Warnings
@@ -16,6 +13,9 @@ module Cardano.Configuration.File
 
     -- * Defaults
   , componentDefaults
+  , defaultConfiguration
+  , decodeSection
+  , mergeValues
 
     -- * Errors
   , ConfigurationParsingError (..)
@@ -26,14 +26,21 @@ module Cardano.Configuration.File
   , ProtocolConfiguration (..)
   , NetworkConfiguration (..)
   , DiffusionMode (..)
+  , PeerSharing (..)
   , AcceptedConnectionsLimit (..)
+  , AcceptedConnectionsLimitConfig (..)
+  , acceptedConnectionsLimitOf
   , LocalConnectionsConfig (..)
+  , GrpcEndpoint (..)
+  , GrpcTlsFiles (..)
+  , defaultGrpcListenAddress
   , TestingConfiguration (..)
   , MempoolConfiguration (..)
   , TracingConfiguration (..)
   , TracingConfigSource (..)
   , TraceConfig
-  , defaultCardanoTracingConfig
+  , resolveTracingConfiguration
+  , mkConfiguration
 
     -- * Resolving components
   , finalizeNetwork
@@ -41,13 +48,8 @@ module Cardano.Configuration.File
   , finalizeMempool
   , finalizeTesting
 
-    -- * Network role defaults
+    -- * Network role
   , BlockProducerOrRelay (..)
-  , withRoleDefaults
-  , networkRoleDefaults
-  , blockProducerRoleDefaults
-  , relayRoleDefaults
-  , emptyNetworkConfiguration
   ) where
 
 import Cardano.Configuration.File.Consensus
@@ -59,14 +61,17 @@ import Cardano.Configuration.File.Lint
   )
 import Cardano.Configuration.File.Mempool
 import Cardano.Configuration.File.Merge
-  ( decodeValueFile
-  , loadBaseDefault
+  ( declaredFormatVersion
+  , decodeSection
+  , decodeValueFile
+  , defaultConfiguration
+  , mergeValues
   , parseSection
+  , roleIndependentDefaults
   , runCodec
-  , sectionUserLayer
   , splitEnvelope
   )
-import Cardano.Configuration.File.Migrate (migrate)
+import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Network
 import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
@@ -74,7 +79,7 @@ import Cardano.Configuration.File.Testing
 import Cardano.Configuration.File.Tracing
   ( TracingConfigSource (..)
   , TracingConfiguration (..)
-  , defaultCardanoTracingConfig
+  , mkConfiguration
   , resolveTracingConfiguration
   )
 import Cardano.Configuration.Genesis
@@ -91,7 +96,7 @@ import Cardano.Configuration.Genesis.Injection
   , missingInjectionFiles
   , renderInjectionSlot
   )
-import Cardano.Configuration.Schema (componentPropertyNames)
+import Cardano.Configuration.Schema (componentPropertyNames, currentFormatVersion)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.BaseTypes
@@ -105,23 +110,26 @@ import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Cardano.Logging.Types (TraceConfig)
 import Control.Exception (throwIO)
+import Control.Monad (when)
 import Data.Aeson (FromJSON, Value)
 import qualified Data.Aeson.Key as K
 import Data.Aeson.Types (JSONPathElement (..))
-import Data.Functor.Identity (Identity (..))
-import Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import GHC.Stack
 import System.FilePath (takeDirectory, (</>))
 
--- | The configuration from the files, parsed with 'parseConfigurationFiles'
-type NodeConfigurationFromFile = NodeConfigurationFromFileF Identity
-
--- | The configuration from the files, initially maybe pointing to sub-files and
--- finally fully parsed.
-data NodeConfigurationFromFileF f
-  = NodeConfigurationFromFileV1
+-- | The configuration file, read: what it said, plus everything reading it
+-- required the library to fetch.
+--
+-- The sections are /not/ here as parsed components. Which defaults apply
+-- depends on the node's role, which comes from the command line, so the
+-- sections stay as the user wrote them ('userConfiguration') and are read once
+-- the defaults are layered under them, at resolution (see
+-- 'Cardano.Configuration.resolveConfiguration'). What is here is what could not
+-- wait: the genesis files, which the configuration names and this library
+-- reads and hash-checks, and the tracing configuration.
+data NodeConfigurationFromFile = NodeConfigurationFromFile
   { minNodeVersion :: StrictMaybe T.Text
   -- ^ The minimum @cardano-node@ version expected to run this configuration,
   -- taken from the optional top-level @MinNodeVersion@ key (a sibling of
@@ -132,28 +140,37 @@ data NodeConfigurationFromFileF f
   -- t'Cardano.Configuration.NodeConfiguration'; 'resolveConfiguration' drops it.
   -- It lives only on this file-parse result, so a consumer that wants to act on
   -- it must read it here, before resolving.
-  , storageConfiguration :: f (StorageConfiguration StrictMaybe)
-  , consensusConfiguration :: f (ConsensusConfiguration StrictMaybe)
-  , protocolConfiguration :: f (ProtocolConfiguration StrictMaybe)
-  , networkConfiguration :: f (NetworkConfiguration StrictMaybe)
-  , networkUserLayer :: f (NetworkConfiguration StrictMaybe)
-  -- ^ The user-supplied network layer alone, /without/ the base defaults merged
-  -- in (unlike 'networkConfiguration', which is the full merge of the base
-  -- defaults with the user layer on top).
+  , storageConfiguration :: StorageConfiguration StrictMaybe
+  , consensusConfiguration :: ConsensusConfiguration StrictMaybe
+  , protocolConfiguration :: ProtocolConfiguration StrictMaybe
+  , networkConfiguration :: NetworkConfiguration StrictMaybe
+  , localConnectionsConfig :: LocalConnectionsConfig StrictMaybe
+  , testingConfiguration :: TestingConfiguration StrictMaybe
+  , mempoolConfiguration :: MempoolConfiguration StrictMaybe
+  -- ^ Each component as the configuration file wrote it, with no defaults
+  -- filled in. A field the file leaves unset is @SNothing@ here.
   --
-  -- Resolution needs to tell a value the user actually wrote from one that only
-  -- came from the base defaults, so the role defaults can sit between them
-  -- (@base \< role \< user@); see 'withRoleDefaults'.
-  , localConnectionsConfig :: f (LocalConnectionsConfig StrictMaybe)
-  , testingConfiguration :: f (TestingConfiguration StrictMaybe)
-  , mempoolConfiguration :: f (MempoolConfiguration StrictMaybe)
+  -- Which defaults apply depends on the node's role, which comes from the
+  -- command line, so these cannot carry them. 'resolveConfiguration' layers
+  -- the role's default configuration under the file and reads each component
+  -- again from the result. Read these to see what the file itself said.
+  , userConfiguration :: Value
+  -- ^ The same @Configuration@ object, as JSON, brought to the current format
+  -- by @migrate@. Resolution merges the role's default configuration under it
+  -- and reads the components from the merge.
+  --
+  -- The merge is by key and recurses into nested objects, so a file that sets
+  -- one field of @LedgerDB@ keeps the defaults of the others. Merging the
+  -- typed components field by field would replace whole nested objects
+  -- instead, which is why the JSON is kept.
   , tracingConfiguration :: TraceConfig
   -- ^ The tracing configuration referenced by the top-level @HermodTracing@ key,
   -- resolved by @trace-dispatcher@'s own parser ('resolveTracingConfiguration'):
   -- a @HermodTracing@ file path is read from that file, an inline object is read
-  -- directly. When no @HermodTracing@ key is present it falls back to
-  -- 'defaultCardanoTracingConfig', so a tracing configuration is always present.
-  -- Its schema is owned by @trace-dispatcher@, not described here (see
+  -- directly. The value is passed on as the configuration wrote it, with no
+  -- default of ours under it: what it leaves unset, @trace-dispatcher@ fills
+  -- from its own fallback, so a tracing configuration is always present. Its
+  -- schema is owned by @trace-dispatcher@, not described here (see
   -- 'TracingConfiguration').
   , byronGenesisConfig :: ByronGenesisConfig
   -- ^ The parsed Byron genesis (read from the @ByronGenesisFile@).
@@ -176,24 +193,26 @@ data NodeConfigurationFromFileF f
   -- consumer building the node's @SomeHasFS@ does not have to re-derive it; see
   -- "Cardano.Configuration.Genesis.Injection".
   }
-  deriving Generic
+  deriving (Generic, Show)
 
-deriving instance Show (NodeConfigurationFromFileF Identity)
-
--- | The per-component base defaults (@defaults\/<Component>.json@), for schema
--- generation. Keyed by component name; components without a defaults file are
--- omitted. These are the same files the resolver merges as the base layer, so
--- the documented defaults match the applied ones.
-componentDefaults :: IO [(T.Text, Value)]
+-- | The defaults to document in the schema: those the two role configurations
+-- agree on, keyed by section. A value that depends on the role (the deadline
+-- peer targets, @PeerSharing@) is not a default a configuration has before its
+-- role is known, so it is left out. These come from the same files resolution
+-- merges, so the documented defaults are the applied ones.
+componentDefaults :: [(T.Text, Value)]
 componentDefaults =
-  catMaybes
-    <$> mapM
-      (\name -> fmap (name,) <$> loadBaseDefault (T.unpack name))
-      (map fst componentPropertyNames)
+  [ (name, defaults)
+  | (name, _) <- componentPropertyNames
+  , Just defaults <- [lookup name roleIndependentDefaults]
+  ]
 
--- | Parse the configuration file and any sub-files referenced from it, together
--- with any non-fatal 'ConfigWarning's (unrecognised keys, shadowed keys, use of
--- the legacy single-file form).
+-- | Parse the configuration file, together with any non-fatal
+-- 'ConfigWarning's (unrecognised keys, or a document that had to be migrated).
+--
+-- The whole configuration is held in that one file, apart from the genesis
+-- files and the optional @HermodTracing@ file, which are read from the paths it
+-- gives.
 --
 -- The configuration may be given in JSON or YAML. Failures are thrown as a
 -- 'ConfigurationParsingError', identifying the offending file, section and
@@ -202,7 +221,7 @@ componentDefaults =
 parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
-  rawValue <- decodeValueFile Nothing cfgFile
+  rawValue <- decodeValueFile cfgFile
   -- Every document is run through 'migrate' before parsing, so an already-enveloped
   -- configuration that still uses a pre-rename field name (or carries a stray
   -- top-level sibling) is brought up to the current shape too — not only a
@@ -212,55 +231,79 @@ parseConfigurationFiles cfgFile = do
   -- order-independent comparison). 'migrate' also returns its own warnings for the
   -- fields it had to reconcile. If the migrated document still cannot be parsed, the
   -- parse error surfaces as usual.
-  let (mainValue, migrateWarnings) = migrate rawValue
-      migrationWarnings =
-        [MigratedToCurrentFormat | mainValue /= rawValue] <> migrateWarnings
-  (version, minNodeVer, configValue) <- splitEnvelope mainValue
+  -- The declared version is read before migrating, because migrating rewrites
+  -- it. A version this library does not write is rejected here rather than
+  -- misread as the current one.
+  declared <- declaredFormatVersion rawValue
+  when (declared > currentFormatVersion) $
+    throwIO $
+      ConfigurationParsingError
+        (SJust cfgFile)
+        SNothing
+        [Key "Version"]
+        ( "unsupported configuration version: "
+            <> show declared
+            <> ". This cardano-config writes version "
+            <> show currentFormatVersion
+            <> ", so upgrade cardano-config to read it."
+        )
+  -- A document migrate cannot reshape — one whose sections name separate files
+  -- rather than holding their configuration — is rejected here, naming them.
+  (mainValue, migrateWarnings) <- case migrate rawValue of
+    Left err ->
+      throwIO $
+        ConfigurationParsingError (SJust cfgFile) SNothing [] (renderMigrationError err)
+    Right ok -> pure ok
+  let migrationWarnings =
+        -- An outdated version is reported on its own. migrate always rewrites
+        -- such a document, so the generic warning would only repeat it.
+        [ MigratedToCurrentFormat
+        | mainValue /= rawValue
+        , declared == currentFormatVersion
+        ]
+          <> [OutdatedFormatVersion declared currentFormatVersion | declared < currentFormatVersion]
+          <> migrateWarnings
+  -- migrate has brought the document to the current version, so there is one
+  -- body parser rather than one per version.
+  (_version, minNodeVer, configValue) <- splitEnvelope mainValue
   let warnings = migrationWarnings <> configWarnings configValue
       root = takeDirectory cfgFile
-  -- Versions 1 to 'currentFormatVersion' are all accepted — that is what the
-  -- package version's first component states (@cardano-config-X.y.z.v@ parses up
-  -- to and including @X@). They are enumerated literally rather than derived from
-  -- that constant, because each one needs its own parse path, so this list only
-  -- ever grows.
-  (config, parseWarnings) <- case version of
-    1 -> parseConfigurationVersion1 root minNodeVer configValue
-    n ->
-      throwIO $
-        ConfigurationParsingError
-          (SJust cfgFile)
-          SNothing
-          [Key "Version"]
-          ("unsupported configuration version: " <> show n)
-  pure (config, warnings <> parseWarnings)
+  config <- parseConfigurationBody root minNodeVer configValue
+  pure (config, warnings)
 
--- | Parse a version-1 configuration object, reading each component either
--- inline or from its referenced sub-file, together with the warnings that only
--- the parsed configuration can reveal (an ignored experimental genesis).
-parseConfigurationVersion1 ::
-  -- | The directory sub-file paths are resolved against.
+-- | Read a configuration object at the current format version: check that
+-- every section parses, and read the genesis files and tracing configuration
+-- it names.
+parseConfigurationBody ::
+  -- | The directory the genesis and tracing paths are resolved against.
   FilePath ->
   -- | The optional top-level @MinNodeVersion@ annotation.
   Maybe T.Text ->
   -- | The configuration object.
   Value ->
-  IO (NodeConfigurationFromFile, [ConfigWarning])
-parseConfigurationVersion1 root minNodeVer configValue = do
-  storage <- parseSection root configValue "StorageConfig"
-  consensus <- parseSection root configValue "ConsensusConfig"
-  protocol <- parseSection root configValue "ProtocolConfig"
-  network <- parseSection root configValue "NetworkConfig"
-  -- The user's network layer on its own (no base defaults), so resolution can
-  -- distinguish a user-set field from a base default (see 'withRoleDefaults').
-  networkUser <-
-    sectionUserLayer root configValue "NetworkConfig" >>= runCodec Nothing "NetworkConfig"
-  localConnections <- parseSection root configValue "LocalConnectionsConfig"
-  testing <- parseSection root configValue "TestingConfig"
-  mempool <- parseSection root configValue "MempoolConfig"
+  IO NodeConfigurationFromFile
+parseConfigurationBody root minNodeVer configValue = do
+  -- Every section is read here, as the file wrote it, so a section the
+  -- parsers cannot read is reported against the file while it is in hand.
+  -- Resolution reads them again from the merge of the role defaults with this
+  -- configuration, because only then is the role known.
+  storage <- parseSection @(StorageConfiguration StrictMaybe) configValue "StorageConfig"
+  consensus <- parseSection @(ConsensusConfiguration StrictMaybe) configValue "ConsensusConfig"
+  protocol <- parseSection @(ProtocolConfiguration StrictMaybe) configValue "ProtocolConfig"
+  network <- parseSection @(NetworkConfiguration StrictMaybe) configValue "NetworkConfig"
+  localConnections <-
+    parseSection @(LocalConnectionsConfig StrictMaybe) configValue "LocalConnectionsConfig"
+  mempool <- parseSection @(MempoolConfiguration StrictMaybe) configValue "MempoolConfig"
+  testing <- parseSection @(TestingConfiguration StrictMaybe) configValue "TestingConfig"
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
   -- 'TraceConfig' — reading the referenced file, or the inline object directly.
-  tracing <- runCodec Nothing "Tracing" configValue
+  -- Unlike every other component this one takes no default from @defaults\/@:
+  -- tracing belongs to @trace-dispatcher@, which has a fallback of its own, and
+  -- layering ours under it would only be a second opinion on the same question.
+  -- The @HermodTracing@ block in @defaults\/@ is there to show a reader what
+  -- that fallback amounts to, not to be applied.
+  tracing <- runCodec "Tracing" configValue
   traceConfig <- resolveTracingConfiguration root tracing
   -- The genesis files referenced by the configuration are read and decoded
   -- here, so that JSON resolution happens entirely within this library.
@@ -281,30 +324,33 @@ parseConfigurationVersion1 root minNodeVer configValue = do
   conwayGenesisData <-
     readEraGenesisOrThrow root "ConwayGenesisFile" (conwayGenesis protocol)
   -- The experimental (Dijkstra) genesis is gated on the
-  -- @ExperimentalHardForksEnabled@ testing flag.
+  -- @ExperimentalHardForksEnabled@ testing flag. The flag is off unless the
+  -- configuration turns it on, here and in the defaults alike, so reading it
+  -- before the defaults are merged gives the same answer.
+  --
+  -- A @DijkstraGenesisFile@ named while the flag is off is passed over in
+  -- silence: the file is not opened, and nothing is said about it. Turning the
+  -- flag on hard-forks the node onto an experimental era, which is a decision
+  -- coordinated across a network, never one taken because a tool suggested it.
+  -- A warning here would read as that suggestion.
   let experimentalRef = strictMaybeToMaybe (experimentalGenesis testing)
       experimentalEnabled = fromSMaybe False (experimentalHardForksEnabled testing)
   experimentalGenesisData <-
     if experimentalEnabled
       then readExperimentalGenesisOrThrow root experimentalRef
       else pure Nothing
-  let experimentalWarnings =
-        [ ExperimentalGenesisIgnored file
-        | not experimentalEnabled
-        , Hashed file _ <- maybe [] pure experimentalRef
-        ]
   checkInjectionOrThrow injectionRoot shelleyGenesisData conwayGenesisData
-  pure . (,experimentalWarnings) $
-    NodeConfigurationFromFileV1
+  pure $
+    NodeConfigurationFromFile
       { minNodeVersion = maybeToStrictMaybe minNodeVer
-      , storageConfiguration = Identity storage
-      , consensusConfiguration = Identity consensus
-      , protocolConfiguration = Identity protocol
-      , networkConfiguration = Identity network
-      , networkUserLayer = Identity networkUser
-      , localConnectionsConfig = Identity localConnections
-      , testingConfiguration = Identity testing
-      , mempoolConfiguration = Identity mempool
+      , storageConfiguration = storage
+      , consensusConfiguration = consensus
+      , protocolConfiguration = protocol
+      , networkConfiguration = network
+      , localConnectionsConfig = localConnections
+      , testingConfiguration = testing
+      , mempoolConfiguration = mempool
+      , userConfiguration = configValue
       , tracingConfiguration = traceConfig
       , byronGenesisConfig = byronGenesisData
       , shelleyGenesisConfig = shelleyGenesisData

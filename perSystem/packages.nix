@@ -7,6 +7,6 @@
       packages.cardano-config     = cc.components.library;
       packages.cardano-config-exe = cc.components.exes.cardano-config;
 
-      checks.cardano-config-test  = cc.components.tests.cardano-config-test;
+      checks.cardano-config-test  = cc.checks.cardano-config-test;
     };
 }

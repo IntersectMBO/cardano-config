@@ -60,7 +60,7 @@ nodeConfigurationToJSON geneses nc =
   -- The tracing configuration resolved by trace-dispatcher, rendered under the
   -- same @HermodTracing@ key it is read from (as an inline object, via
   -- trace-dispatcher's own 'ToJSON'). Always present: absent a @HermodTracing@
-  -- key it holds 'File.defaultCardanoTracingConfig'.
+  -- key it holds the tracing defaults from @defaults\/@.
   tracingFields =
     ["HermodTracing" .= tracingConfiguration nc]
   -- The resolved (parsed) era geneses, rendered through the ledger's @aeson@
@@ -88,6 +88,17 @@ nodeConfigurationToJSON geneses nc =
 -- form the component's 'ToJSON' instance expects.
 j :: Identity a -> StrictMaybe a
 j = SJust . runIdentity
+
+-- | The same, for the accepted-connection limits, which carry the @f@ parameter
+-- on each of their three fields rather than on the object.
+weakenAcceptedConnectionsLimit ::
+  File.AcceptedConnectionsLimitConfig Identity -> File.AcceptedConnectionsLimitConfig StrictMaybe
+weakenAcceptedConnectionsLimit l =
+  File.AcceptedConnectionsLimitConfig
+    { File.hardLimit = j (File.hardLimit l)
+    , File.softLimit = j (File.softLimit l)
+    , File.delayOnSoftLimit = j (File.delayOnSoftLimit l)
+    }
 
 weakenStorage :: File.StorageConfiguration Identity -> File.StorageConfiguration StrictMaybe
 weakenStorage s =
@@ -121,7 +132,7 @@ weakenNetwork n =
     , File.timeWaitTimeout = j (File.timeWaitTimeout n)
     , File.egressPollInterval = j (File.egressPollInterval n)
     , File.chainSyncIdleTimeout = j (File.chainSyncIdleTimeout n)
-    , File.acceptedConnectionsLimit = j (File.acceptedConnectionsLimit n)
+    , File.acceptedConnectionsLimit = weakenAcceptedConnectionsLimit (File.acceptedConnectionsLimit n)
     , File.deadlineTargetOfRootPeers = File.deadlineTargetOfRootPeers n
     , File.deadlineTargetOfKnownPeers = File.deadlineTargetOfKnownPeers n
     , File.deadlineTargetOfEstablishedPeers = File.deadlineTargetOfEstablishedPeers n
@@ -150,7 +161,7 @@ weakenLocalConnections l =
   File.LocalConnectionsConfig
     { File.socketPath = File.socketPath l
     , File.enableGrpc = j (File.enableGrpc l)
-    , File.grpcSocketPath = File.grpcSocketPath l
+    , File.grpcEndpoint = File.grpcEndpoint l
     }
 
 weakenTesting :: File.TestingConfiguration Identity -> File.TestingConfiguration StrictMaybe

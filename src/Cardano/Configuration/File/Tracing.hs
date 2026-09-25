@@ -7,9 +7,16 @@
 --
 -- We do not interpret the tracing configuration ourselves: its authoritative
 -- schema lives in @trace-dispatcher@. What we do is hand the @HermodTracing@
--- value to @trace-dispatcher@'s own parser ('readConfigurationWithDefault'), which turns it
+-- value to @trace-dispatcher@'s own parser ('readConfiguration'), which turns it
 -- into a 'TraceConfig' — a file reference via 'FromFile' (after resolving the
 -- path to its canonical location), an inline object via 'FromJSONObject'.
+--
+-- We hand it no default of our own. Every other component of the configuration
+-- takes its defaults from @defaults\/@, but tracing does not: @trace-dispatcher@
+-- already falls back for whatever the configuration leaves unset, and a second
+-- default here would only compete with it. The @HermodTracing@ block in
+-- @defaults\/@ is there to show a reader what that fallback amounts to; it is
+-- never applied.
 --
 -- Correspondingly, the configuration schema describes @HermodTracing@ only as
 -- \"a path or a JSON object\"; the shape of that object is @trace-dispatcher@'s
@@ -18,7 +25,7 @@ module Cardano.Configuration.File.Tracing
   ( TracingConfiguration (..)
   , TracingConfigSource (..)
   , resolveTracingConfiguration
-  , defaultCardanoTracingConfig
+  , mkConfiguration
   ) where
 
 import Autodocodec
@@ -28,7 +35,6 @@ import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Cardano.Logging
 import Data.Aeson (FromJSON, Object, ToJSON)
 import qualified Data.Aeson.KeyMap as KM
-import qualified Data.Map.Strict as Map
 import GHC.Generics (Generic)
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>))
@@ -86,18 +92,21 @@ instance HasCodec TracingConfiguration where
           )
           .= hermodTracing
 
--- | Resolve the captured @HermodTracing@ value into a 'TraceConfig' by handing it
--- to @trace-dispatcher@'s own parser ('readConfigurationWithDefault'), with
--- 'defaultCardanoTracingConfig' supplying defaults for any top-level fields the
--- source leaves unspecified:
+-- | Resolve the captured @HermodTracing@ value into a 'TraceConfig' by handing
+-- it to @trace-dispatcher@'s own parser ('readConfiguration'):
 --
 --   * a file reference is resolved to its canonical location (relative paths are
 --     taken against the configuration directory @root@) and read via 'FromFile';
 --   * an inline object is read via 'FromJSONObject'.
 --
--- When no @HermodTracing@ key is present, the tracing system still needs a
--- configuration, so we fall back to 'defaultCardanoTracingConfig' unchanged
--- rather than to no configuration at all.
+-- No default of ours is passed: @trace-dispatcher@ applies its own fallback to
+-- the namespace root (@Notice@ severity, @DNormal@ detail, @Stdout
+-- MachineFormat@) for whatever the value leaves unset.
+--
+-- When there is no @HermodTracing@ key at all the tracing system still needs a
+-- configuration, so we take @trace-dispatcher@'s minimal viable one
+-- ('mkConfiguration') — that same fallback over an empty configuration — rather
+-- than no configuration at all.
 resolveTracingConfiguration ::
   -- | The directory a relative @HermodTracing@ file path is resolved against.
   FilePath ->
@@ -105,116 +114,9 @@ resolveTracingConfiguration ::
   IO TraceConfig
 resolveTracingConfiguration root (TracingConfiguration mSource) =
   case mSource of
-    SNothing -> pure defaultCardanoTracingConfig
+    SNothing -> pure mkConfiguration
     SJust (TracingConfigFile path) -> do
       canonPath <- canonicalizePath (root </> path)
-      readConfigurationWithDefault (FromFile canonPath) defaultCardanoTracingConfig
+      readConfiguration (FromFile canonPath)
     SJust (TracingConfigInline obj) ->
-      readConfigurationWithDefault (FromJSONObject obj) defaultCardanoTracingConfig
-
-defaultCardanoTracingConfig :: TraceConfig
-defaultCardanoTracingConfig =
-  emptyTraceConfig
-    { tcMetricsPrefix = Just "cardano.node.metrics."
-    , tcLedgerMetricsFrequency = Nothing -- discard the default from 'trace-dispatcher'; Cardano has own ones, different for block producers and relays
-    , tcOptions =
-        Map.fromList
-          [
-            ( []
-            ,
-              [ ConfSeverity (SeverityF (Just Notice))
-              , ConfDetail DNormal
-              , ConfBackend
-                  [ Stdout MachineFormat
-                  , EKGBackend
-                  ]
-              ]
-            )
-          , -- more important tracers going here
-
-            ( ["BlockFetch", "Decision"]
-            , [ConfSeverity (SeverityF Nothing)]
-            )
-          ,
-            ( ["ChainDB"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["ChainDB", "AddBlockEvent", "AddBlockValidation"]
-            , [ConfSeverity (SeverityF Nothing)]
-            )
-          ,
-            ( ["ChainSync", "Client"]
-            , [ConfSeverity (SeverityF (Just Warning))]
-            )
-          ,
-            ( ["Net", "ConnectionManager", "Remote"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Startup", "DiffusionInit"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Net", "ErrorPolicy"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Forge", "Loop"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Forge", "StateInfo"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Net", "InboundGovernor", "Remote"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Mempool"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Net", "Mux", "Remote"]
-            , [ConfSeverity (SeverityF (Just Info))]
-            )
-          ,
-            ( ["Net", "InboundGovernor"]
-            , [ConfSeverity (SeverityF (Just Warning))]
-            )
-          ,
-            ( ["Net", "PeerSelection"]
-            , [ConfSeverity (SeverityF Nothing)]
-            )
-          ,
-            ( ["LedgerMetrics"]
-            , [ConfSeverity (SeverityF Nothing)]
-            )
-          ,
-            ( ["Resources"]
-            , [ConfSeverity (SeverityF Nothing)]
-            )
-          , --     Limiters
-
-            ( ["ChainDB", "AddBlockEvent", "AddedBlockToQueue"]
-            , [ConfLimiter 2.0]
-            )
-          ,
-            ( ["ChainDB", "AddBlockEvent", "AddedBlockToVolatileDB"]
-            , [ConfLimiter 2.0]
-            )
-          ,
-            ( ["ChainDB", "AddBlockEvent", "AddBlockValidation", "ValidCandidate"]
-            , [ConfLimiter 2.0]
-            )
-          ,
-            ( ["ChainDB", "CopyToImmutableDBEvent", "CopiedBlockToImmutableDB"]
-            , [ConfLimiter 2.0]
-            )
-          ,
-            ( ["BlockFetch", "Client", "CompletedBlockFetch"]
-            , [ConfLimiter 2.0]
-            )
-          ]
-    }
+      readConfiguration (FromJSONObject obj)

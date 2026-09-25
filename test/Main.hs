@@ -8,11 +8,12 @@
 --
 -- The @test/examples/@ and @schemas/@ fixtures are read from the source tree,
 -- resolved against 'packageRoot' (the package directory, baked in at compile
--- time) rather than against the current working directory, so the tests work
--- under @cabal test@, Nix and a source distribution alike. Unlike the files the
+-- time) when it still exists, and against the current working directory
+-- otherwise (see 'getDataFileName'), so the tests work under @cabal test@, Nix
+-- and a source distribution alike. Unlike the files the
 -- library itself needs, which are compiled into it (see
 -- "Cardano.Configuration.Embedded"), the fixtures are read as files: most of
--- them are fed to the file pipeline, which resolves sub-file references
+-- them are fed to the file pipeline, which resolves the genesis paths they name
 -- relative to the file's own directory.
 --
 -- The cases form a tasty 'TestTree' of @tasty-hunit@ assertions; 'defaultMain'
@@ -21,9 +22,9 @@ module Main (main) where
 
 import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
-import Cardano.Configuration.CliArgs (CliArgs, parseCliArgs)
+import Cardano.Configuration.CliArgs (CliArgs, grpcEndpointCLI, parseCliArgs)
 import Cardano.Configuration.File
-import Cardano.Configuration.File.Migrate (migrate)
+import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Storage
   ( LedgerDbBackendSelector (..)
   , LedgerDbConfiguration (..)
@@ -43,12 +44,10 @@ import Cardano.Configuration.Genesis.Injection
   )
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
-  ( configurationSchemasWithDefaults
+  ( configSchemaWithDefaults
   , currentFormatVersion
-  , legacyOneFileConfigSchemaWithDefaults
   , packageFormatVersion
   , schemaId
-  , splitConfigSchemaWithDefaults
   )
 import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
@@ -58,17 +57,28 @@ import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis)
 import Cardano.Ledger.Shelley.Genesis (ShelleyGenesis)
 import Control.Exception (SomeException, evaluate, try)
-import Data.Aeson (FromJSON, Result (..), Value (..), eitherDecodeFileStrict', fromJSON, toJSON)
+import Control.Monad (foldM)
+import Data.Aeson
+  ( FromJSON
+  , Object
+  , Result (..)
+  , Value (..)
+  , eitherDecodeFileStrict'
+  , fromJSON
+  , toJSON
+  )
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import Data.FileEmbed (makeRelativeToProject)
 import Data.Functor.Identity (runIdentity)
-import Data.List (isInfixOf)
+import Data.IP (IP)
+import Data.List (isInfixOf, sort)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import Data.Word (Word64)
 import Language.Haskell.TH.Syntax (lift)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
+import System.Directory (doesFileExist)
 import System.FS.API (fsPathToList)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -82,44 +92,32 @@ packageRoot = $(makeRelativeToProject "." >>= lift)
 -- | Resolve a fixture path relative to the package root. This replaces the
 -- @Paths_cardano_config@ function of the same name, which resolved the same
 -- files through the Cabal data directory the package no longer installs.
+--
+-- The baked-in root can be gone by the time the tests run: @haskell.nix@
+-- builds the suite in one derivation and runs it in another, and on Darwin each
+-- gets its own randomly named build directory. The run then happens in the
+-- unpacked source tree, so the path is resolved against the working directory
+-- instead.
 getDataFileName :: FilePath -> IO FilePath
-getDataFileName p = pure (packageRoot </> p)
+getDataFileName p = do
+  baked <- doesFileExist (packageRoot </> "cardano-config.cabal")
+  pure (if baked then packageRoot </> p else p)
 
 main :: IO ()
-main = do
-  schema <- schemaTests
-  defaultMain $ testGroup "cardano-config" (cases <> [schema])
+main = defaultMain $ testGroup "cardano-config" (cases <> [schemaTests])
 
 -- | The example/parser/resolver cases, in the order they used to be checked.
 cases :: [TestTree]
 cases =
-  [ decodeCase
-      "test/examples/storage.json"
-      (decodeData "test/examples/storage.json" :: IO (Either String (StorageConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/consensus.json"
-      (decodeData "test/examples/consensus.json" :: IO (Either String (ConsensusConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/protocol.json"
-      (decodeData "test/examples/protocol.json" :: IO (Either String (ProtocolConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/network.json"
-      (decodeData "test/examples/network.json" :: IO (Either String (NetworkConfiguration StrictMaybe)))
-  , decodeCase
-      "test/examples/localconnections.json"
-      ( decodeData "test/examples/localconnections.json" ::
-          IO (Either String (LocalConnectionsConfig StrictMaybe))
-      )
-  , parseCase "test/examples/fullconfig.json"
-  , parseCase "test/examples/split.json"
-  , parseCase "test/examples/split-all.json"
+  [ parseCase "test/examples/legacy-fullconfig.json"
+  , parseCase "test/examples/all-sections.json"
   , tracingCase
-  , tracingDefaultParityCase
-  , misplacedKeyCase
+  , tracingDefaultIllustrationCase
+  , unrecognisedKeyCase
   , migrationWarningCase
   , migrationErrorCase
-  , splitSubfileSchemaCase
   , formatVersionCase
+  , formatVersionCompatibilityCase
   , migrateCase
   , migrateRenameCase
   , migrateTracingCase
@@ -131,14 +129,26 @@ cases =
   , migrateEnvelopeCollisionCase
   , migrateEnvelopedRenameCase
   , migrateRenameCollisionCase
-  , subfilePathConfinementCase
+  , sectionNotInlineCase
   , minNodeVersionCase
   , resolveCase
   , genesisRenderCase
-  , roleVariantParityCase
+  , schemaConstraintsCase
+  , snapshotIntervalCase
+  , grpcEndpointCase
+  , grpcEndpointRejectionCase
+  , grpcEndpointCliCase
+  , grpcTlsDowngradeCase
+  , grpcEnabledEndpointCheckCase
+  , boundedDecimalOnlyCase
   , roleSelectionCase
   , rolePrecedenceCase
-  , roleBeatsBaseDefaultCase
+  , peerTargetsRejectedCase
+  , sectionDecodeErrorCase
+  , partialNestedObjectCase
+  , softAboveHardLimitCase
+  , defaultConfigParityCase
+  , experimentalHardForksDefaultCase
   , mempoolAllUnsetCase
   , mempoolAllSetCase
   , mempoolMixedCase
@@ -170,6 +180,12 @@ cases =
   , byronGenesisDecodeCase
   ]
 
+-- | 'migrate' on a document that is expected to migrate cleanly. Every input
+-- below is one, so a rejection is a test failure; 'sectionNotInlineCase' covers
+-- the rejecting path.
+migrated :: Value -> (Value, [ConfigWarning])
+migrated = either (error . renderMigrationError) id . migrate
+
 -- | Fail the assertion with the message when one is present, otherwise pass.
 expectOk :: Maybe String -> Assertion
 expectOk = maybe (pure ()) assertFailure
@@ -193,7 +209,7 @@ decodeCase label act =
       Left err -> assertFailure err
       Right v -> () <$ evaluate (length (show v))
 
--- | Parse a full configuration file (exercising sub-files).
+-- | Parse a full configuration file through the whole pipeline.
 parseCase :: FilePath -> TestTree
 parseCase fp =
   testCase fp $ do
@@ -203,122 +219,94 @@ parseCase fp =
       Left (e :: SomeException) -> Just (show e)
       Right _ -> Nothing
 
--- | A section sub-file path must be a relative path that resolves to a file
--- within the configuration directory. An absolute path (@\/etc\/passwd@) and one
--- that climbs out of the directory with @..@ are both rejected as invalid paths,
--- so a configuration cannot pull in arbitrary files.
-subfilePathConfinementCase :: TestTree
-subfilePathConfinementCase =
-  testCase "section sub-file paths are confined to the config directory (no absolute, no escaping)" $ do
-    absolute <- rejectionMessage "test/examples/subfile-absolute.json"
-    escaping <- rejectionMessage "test/examples/subfile-escapes.json"
-    expectOk $ case (absolute, escaping) of
-      (Just a, Just e)
-        | "invalid configuration file path" `isInfixOf` a
-        , "invalid configuration file path" `isInfixOf` e ->
-            Nothing
-      _ ->
-        Just ("expected both paths rejected as invalid, got " <> show (absolute, escaping))
- where
-  -- The error message if parsing was rejected, or 'Nothing' if it wrongly
-  -- succeeded.
-  rejectionMessage fp = do
-    path <- getDataFileName fp
+-- | A configuration is held in one file, so a section that names a separate
+-- file instead of holding its configuration object is rejected, naming the
+-- section and telling the user to copy the contents in.
+sectionNotInlineCase :: TestTree
+sectionNotInlineCase =
+  testCase "a section naming a separate file is rejected" $ do
+    path <- getDataFileName "test/examples/section-not-inline.json"
     res <- try (parseConfigurationFiles path)
-    pure $ case res of
-      Left (e :: SomeException) -> Just (show e)
-      Right _ -> Nothing
+    expectOk $ case res of
+      Right _ -> Just "expected a section naming a separate file to be rejected"
+      Left (e :: SomeException)
+        | "StorageConfig" `isInfixOf` show e
+        , "one file" `isInfixOf` show e ->
+            Nothing
+        | otherwise -> Just ("unexpected rejection message: " <> show e)
 
--- | A component property placed flat under @Configuration@ (here a
--- @DijkstraGenesisFile@ alongside the @TestingConfig@ section that owns it) is not
--- resolved into that section: it is an unrecognised key. Parsing still succeeds
--- (the component is read from its section) and an 'UnrecognisedKeys' warning names
--- the misplaced key.
-misplacedKeyCase :: TestTree
-misplacedKeyCase =
-  testCase "test/examples/shadow.json (a misplaced component key is unrecognised, still parses)" $ do
-    path <- getDataFileName "test/examples/shadow.json"
+-- | A key at the @Configuration@ level that no parser recognises (here the
+-- typo @DijsktraGenesisFile@) belongs to no section, so migration leaves it
+-- where it is. Parsing still succeeds and an 'UnrecognisedKeys' warning names
+-- it. A key that /is/ a component property is a different matter: migration
+-- groups it under the section that owns it (see 'migrateCase').
+unrecognisedKeyCase :: TestTree
+unrecognisedKeyCase =
+  testCase "test/examples/unrecognised-key.json (an unknown key warns, still parses)" $ do
+    path <- getDataFileName "test/examples/unrecognised-key.json"
     res <- try (parseConfigurationFiles path)
     expectOk $ case res of
       Left (e :: SomeException) -> Just (show e)
       Right (_, warnings)
-        | any mentionsDijkstra warnings -> Nothing
+        | any mentionsTypo warnings -> Nothing
         | otherwise ->
-            Just ("expected an UnrecognisedKeys warning for DijkstraGenesisFile, got " <> show warnings)
+            Just ("expected an UnrecognisedKeys warning for DijsktraGenesisFile, got " <> show warnings)
  where
-  mentionsDijkstra (UnrecognisedKeys ks) = "DijkstraGenesisFile" `elem` ks
-  mentionsDijkstra _ = False
+  mentionsTypo (UnrecognisedKeys ks) = "DijsktraGenesisFile" `elem` ks
+  mentionsTypo _ = False
 
--- | Every document is migrated before parsing. One that migration changes (here a
--- legacy flat config, reshaped into the envelope) yields a 'MigratedToCurrentFormat'
--- warning; one already in the canonical form (an enveloped config with current
--- field names) migrates to itself and so does not warn.
+-- | Every document is migrated before parsing, and the two warnings that
+-- reports split by cause. A document at an older format version yields
+-- 'OutdatedFormatVersion' alone, since migration always rewrites it and the
+-- generic warning would only repeat that. A document already at the current
+-- version that migration still changes (here a legacy field name inside a
+-- current envelope) yields 'MigratedToCurrentFormat'. A canonical document
+-- migrates to itself and yields neither.
 migrationWarningCase :: TestTree
 migrationWarningCase =
-  testCase "a config that migration changes warns MigratedToCurrentFormat; a canonical one does not" $ do
-    legacyPath <- getDataFileName "test/examples/fullconfig.json"
-    envPath <- getDataFileName "test/examples/min-node-version.json"
-    (_, legacyWarnings) <- parseConfigurationFiles legacyPath
-    (_, envWarnings) <- parseConfigurationFiles envPath
+  testCase "the migration warnings split by cause" $ do
+    legacy <- warningsFor "test/examples/legacy-fullconfig.json"
+    renamed <- warningsFor "test/examples/current-version-legacy-name.json"
+    canonical <- warningsFor "test/examples/min-node-version.json"
     expectOk $
-      if MigratedToCurrentFormat `elem` legacyWarnings && MigratedToCurrentFormat `notElem` envWarnings
-        then Nothing
-        else
-          Just $
-            "expected MigratedToCurrentFormat only for the non-canonical config: legacy="
-              <> show legacyWarnings
-              <> " enveloped="
-              <> show envWarnings
+      firstProblem
+        [ check
+            "an older version"
+            legacy
+            [OutdatedFormatVersion 1 currentFormatVersion]
+            [MigratedToCurrentFormat]
+        , check
+            "a current version still rewritten"
+            renamed
+            [MigratedToCurrentFormat]
+            [OutdatedFormatVersion 1 currentFormatVersion]
+        , check
+            "a canonical document"
+            canonical
+            []
+            [MigratedToCurrentFormat, OutdatedFormatVersion 1 currentFormatVersion]
+        ]
+ where
+  warningsFor p = snd <$> (getDataFileName p >>= parseConfigurationFiles)
+  check what warnings expected unexpected
+    | not (all (`elem` warnings) expected) =
+        Just (what <> ": expected " <> show expected <> ", got " <> show warnings)
+    | any (`elem` warnings) unexpected =
+        Just (what <> ": did not expect " <> show unexpected <> ", got " <> show warnings)
+    | otherwise = Nothing
 
--- | A document that is not in the Version1 format /and/ whose migration still
+-- | A document that is not in the envelope /and/ whose migration still
 -- does not yield a parseable configuration is rejected (the parse error
 -- surfaces). Here a legacy document with an ill-typed @ConsensusMode@ migrates to
--- a Version1 envelope, but the component codec then rejects the value.
+-- an envelope, but the component codec then rejects the value.
 migrationErrorCase :: TestTree
 migrationErrorCase =
-  testCase "a non-Version1 document whose migration is still unparseable is rejected" $ do
+  testCase "a non-enveloped document whose migration is still unparseable is rejected" $ do
     path <- getDataFileName "test/examples/migration-unparseable.json"
     res <- try (parseConfigurationFiles path >>= \c -> evaluate (length (show c)))
     expectOk $ case res of
       Left (_ :: SomeException) -> Nothing
       Right _ -> Just "expected a parse error for a document whose migration is unparseable"
-
--- | Each per-component split sub-file declares a @$schema@ pointing to that
--- component's schema, and the component schema in turn declares a @$schema@
--- property — so the annotation is recognised. Guards both the fixtures and the
--- schema generation.
-splitSubfileSchemaCase :: TestTree
-splitSubfileSchemaCase =
-  testCase "split sub-files declare $schema; component schemas have the property" $ do
-    results <- mapM check pairs
-    expectOk (case [m | Just m <- results] of [] -> Nothing; (m : _) -> Just m)
- where
-  pairs =
-    [ ("storage.json", "StorageConfig")
-    , ("consensus.json", "ConsensusConfig")
-    , ("protocol.json", "ProtocolConfig")
-    , ("network.json", "NetworkConfig")
-    , ("localconnections.json", "LocalConnectionsConfig")
-    , ("mempool.json", "MempoolConfig")
-    , ("testing.json", "TestingConfig")
-    ]
-  schemaKey = K.fromString "$schema"
-  check (file, comp) = do
-    sub <- decodeData ("test/examples/" <> file) :: IO (Either String Value)
-    sch <- decodeData ("schemas/" <> comp <> ".schema.json") :: IO (Either String Value)
-    let url = String (schemaId (comp <> ".schema.json"))
-    pure $ case (sub, sch) of
-      (Left e, _) -> Just (file <> ": " <> e)
-      (_, Left e) -> Just (comp <> ".schema.json: " <> e)
-      (Right (Object o), Right schObj)
-        | KM.lookup schemaKey o /= Just url ->
-            Just (file <> ": $schema is " <> show (KM.lookup schemaKey o) <> ", expected " <> show url)
-        | not (KM.member schemaKey (properties schObj)) ->
-            Just (comp <> ".schema.json: missing a $schema property")
-        | otherwise -> Nothing
-      _ -> Just (file <> ": not a JSON object")
-  properties (Object o) | Just (Object p) <- KM.lookup (K.fromString "properties") o = p
-  properties _ = KM.empty
 
 -- | The newest configuration format version is the first component of the package
 -- version: @cardano-config-X.y.z.v@ parses every version up to and including @X@,
@@ -341,17 +329,17 @@ formatVersionCase =
               <> " but the package version implies "
               <> show packageFormatVersion
 
--- | 'migrate' reshapes a legacy flat config into the Version1 envelope: the
+-- | 'migrate' reshapes a legacy flat config into the envelope: the
 -- envelope keys appear at the top, each component's flat keys are grouped under
 -- its section (e.g. ConsensusMode under ConsensusConfig), a removed key
 -- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
 migrateCase :: TestTree
 migrateCase =
-  testCase "migrate test/examples/fullconfig.json (legacy flat -> Version1 envelope)" $ do
-    res <- decodeData "test/examples/fullconfig.json" :: IO (Either String Value)
+  testCase "migrate test/examples/legacy-fullconfig.json (legacy flat -> envelope)" $ do
+    res <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
-      Right raw -> case fst (migrate raw) of
+      Right raw -> case fst (migrated raw) of
         m@(Object top)
           | not (all (`KM.member` top) (map K.fromString envelopeKeys)) ->
               Just ("missing envelope keys; got " <> show (KM.keys top))
@@ -365,7 +353,7 @@ migrateCase =
                     Just "StorageConfig.LedgerDB not grouped"
                 | KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg ->
                     Just "removed key MaxKnownMajorProtocolVersion survived (should be dropped)"
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
         _ -> Just "migrate did not produce an object"
@@ -373,6 +361,51 @@ migrateCase =
   envelopeKeys = ["$schema", "Version", "MinNodeVersion", "Configuration"]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
+    _ -> False
+
+-- | 'migrate' brings every document it accepts to the current format version,
+-- which is why there is one parse path rather than one per version. A legacy
+-- document and a version-1 document both come out at 'currentFormatVersion',
+-- with the @$schema@ that goes with it. Reading a version-1 document still
+-- works and reports 'OutdatedFormatVersion'. A version past the newest is
+-- rejected, naming it, and so is one below the oldest: 1 is the lowest version
+-- there has ever been, so 0 names no format, and without the check it would be
+-- read as a legacy document and quietly migrated.
+formatVersionCompatibilityCase :: TestTree
+formatVersionCompatibilityCase =
+  testCase "migrate upgrades an older version; a newer one is rejected" $ do
+    olderPath <- getDataFileName "test/examples/version1.json"
+    older <- decodeData "test/examples/version1.json" :: IO (Either String Value)
+    legacy <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
+    (parsed, warnings) <- parseConfigurationFiles olderPath
+    unsupportedPath <- getDataFileName "test/examples/version-unsupported.json"
+    unsupported <- try (parseConfigurationFiles unsupportedPath)
+    nonPositivePath <- getDataFileName "test/examples/version-nonpositive.json"
+    nonPositive <- try (parseConfigurationFiles nonPositivePath)
+    expectOk $ case (older, legacy) of
+      (Left err, _) -> Just ("could not read the version-1 fixture: " <> err)
+      (_, Left err) -> Just ("could not read the legacy fixture: " <> err)
+      (Right olderValue, Right legacyValue)
+        | not (upgraded olderValue) -> Just "a version-1 document was not upgraded"
+        | not (upgraded legacyValue) -> Just "a legacy document was not upgraded"
+        | OutdatedFormatVersion 1 currentFormatVersion `notElem` warnings ->
+            Just ("reading a version-1 document did not report it: " <> show warnings)
+        | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) parsed of
+            Left err -> Just ("the version-1 document did not resolve: " <> show err)
+            Right _ -> case (unsupported, nonPositive) of
+              (Right _, _) -> Just "a document past the newest format version was accepted"
+              (_, Right _) -> Just "a document declaring version 0 was accepted"
+              (Left (e :: SomeException), Left (e0 :: SomeException))
+                | not ("99" `isInfixOf` show e) ->
+                    Just ("rejected, but without naming the version: " <> show e)
+                | not ("0" `isInfixOf` show e0 && "positive" `isInfixOf` show e0) ->
+                    Just ("version 0 rejected, but not as a version: " <> show e0)
+                | otherwise -> Nothing
+ where
+  upgraded v = case fst (migrated v) of
+    Object o ->
+      KM.lookup (K.fromString "Version") o == Just (Number (fromIntegral currentFormatVersion))
+        && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
     _ -> False
 
 -- | 'migrate' rewrites the renamed fields to their current names and drops the
@@ -389,7 +422,7 @@ migrateRenameCase =
     res <- decodeData "test/examples/legacy-renamed-fields.json" :: IO (Either String Value)
     expectOk $ case res of
       Left err -> Just ("could not read fixture: " <> err)
-      Right raw -> case fst (migrate raw) of
+      Right raw -> case fst (migrated raw) of
         m@(Object top)
           | any (`elem` removed) (allKeys m) ->
               Just ("a removed key survived; keys: " <> show (allKeys m))
@@ -411,7 +444,7 @@ migrateRenameCase =
                 -- A genuinely-unrecognised key (a typo) is kept, not dropped.
                 | not (KM.member (K.fromString "SomeUnrecognisedKey") cfg) ->
                     Just "a genuinely-unrecognised key was dropped (should be kept)"
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "Configuration is not an object"
         _ -> Just "migrate did not produce an object"
@@ -429,7 +462,16 @@ migrateRenameCase =
   -- Globally-unique old names that must never survive (the generic
   -- AcceptedConnectionsLimit sub-keys are checked in place above, since a stray
   -- one is deliberately left unchanged).
-  oldNames = ["EnableRpc", "RpcSocketPath", "TargetNumberOfRootPeers"]
+  oldNames =
+    [ "EnableRpc"
+    , "RpcSocketPath"
+    , "RpcListenAddress"
+    , "RpcListenPort"
+    , "RpcTlsCertificateFile"
+    , "RpcTlsPrivateKeyFile"
+    , "RpcTlsChainCertificateFiles"
+    , "TargetNumberOfRootPeers"
+    ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
     _ -> False
@@ -450,7 +492,7 @@ migrateTracingCase =
   testCase
     "migrate gathers trace-dispatcher keys verbatim under HermodTracing and drops obsolete logging keys"
     $ expectOk
-    $ case fst (migrate legacyTracing) of
+    $ case fst (migrated legacyTracing) of
       m@(Object top)
         | any (`elem` obsolete) (allKeys m) ->
             Just ("an obsolete logging key survived; keys: " <> show (allKeys m))
@@ -462,7 +504,7 @@ migrateTracingCase =
                 -- The trace-dispatcher keys moved into HermodTracing, not left flat.
                 | any (\k -> KM.member (K.fromString k) cfg) tracingKeys ->
                     Just "a trace-dispatcher key was left flat under Configuration"
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "HermodTracing was not created as an object"
             _ -> Just "Configuration is not an object"
@@ -513,7 +555,7 @@ migrateApplicationNameCase =
   testCase
     "migrate collapses top-level ApplicationName to HermodTracing.TraceOptionNodeName, drops ApplicationVersion"
     $ expectOk
-    $ case fst (migrate legacyByron) of
+    $ case fst (migrated legacyByron) of
       m@(Object top)
         | "ApplicationVersion" `elem` allKeys m -> Just "ApplicationVersion survived"
         | "ApplicationName" `elem` allKeys m -> Just "top-level ApplicationName was not collapsed"
@@ -522,7 +564,7 @@ migrateApplicationNameCase =
               Just (Object h) -> case KM.lookup (K.fromString "TraceOptionNodeName") h of
                 Just (String n)
                   | n /= T.pack "cardano-sl" -> Just ("TraceOptionNodeName has wrong value: " <> show n)
-                  | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                  | fst (migrated m) /= m -> Just "migrate is not idempotent"
                   | otherwise -> Nothing
                 _ -> Just "HermodTracing.TraceOptionNodeName is missing"
               _ -> Just "HermodTracing was not created as an object"
@@ -549,7 +591,7 @@ migrateApplicationNameCase =
 migrateLedgerDbSnapshotsCase :: TestTree
 migrateLedgerDbSnapshotsCase =
   testCase "migrate gathers flat LedgerDB snapshot options into LedgerDB.Snapshots" $
-    expectOk $ case fst (migrate legacyLedgerDB) of
+    expectOk $ case fst (migrated legacyLedgerDB) of
       m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
         Just (Object ldb)
           | any (\k -> KM.member (K.fromString k) ldb) snapOpts ->
@@ -560,7 +602,7 @@ migrateLedgerDbSnapshotsCase =
               Just (Object snaps)
                 | not (all (\k -> KM.member (K.fromString k) snaps) snapOpts) ->
                     Just ("LedgerDB.Snapshots is missing a moved key; has: " <> show (KM.keys snaps))
-                | fst (migrate m) /= m -> Just "migrate is not idempotent"
+                | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "LedgerDB.Snapshots was not created as an object"
         _ -> Just "Configuration.StorageConfig.LedgerDB not found"
@@ -590,7 +632,7 @@ migrateLedgerDbSnapshotsCase =
 migrateLedgerDbBackendCase :: TestTree
 migrateLedgerDbBackendCase =
   testCase "migrate folds the flat V2LSM backend into Backend.LSM" $
-    expectOk $ case fst (migrate legacyLedgerDB) of
+    expectOk $ case fst (migrated legacyLedgerDB) of
       m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
         Just (Object ldb)
           | any (\k -> KM.member (K.fromString k) ldb) ["LSMDatabasePath", "LSMExportPath"] ->
@@ -600,7 +642,7 @@ migrateLedgerDbBackendCase =
                 Just (Object lsm)
                   | KM.lookup (K.fromString "DatabasePath") lsm == Just (String (T.pack "lsm"))
                       && KM.lookup (K.fromString "ExportPath") lsm == Just (String (T.pack "lsm-export")) ->
-                      if fst (migrate m) == m then Nothing else Just "migrate is not idempotent"
+                      if fst (migrated m) == m then Nothing else Just "migrate is not idempotent"
                   | otherwise -> Just ("Backend.LSM has wrong contents: " <> show (KM.toList lsm))
                 _ -> Just "Backend.LSM was not created as an object"
               other -> Just ("Backend was not folded into an object: " <> show other)
@@ -650,7 +692,7 @@ backendRoundTripCase =
 migrateSiblingCase :: TestTree
 migrateSiblingCase =
   testCase "migrate keeps a top-level sibling of the Configuration envelope (regroups, not drops)" $
-    expectOk $ case migrate input of
+    expectOk $ case migrated input of
       (Object top, warnings)
         | not (null warnings) -> Just ("expected no warnings, got " <> show warnings)
         | otherwise -> case KM.lookup (K.fromString "Configuration") top of
@@ -666,7 +708,7 @@ migrateSiblingCase =
   input =
     obj
       [ ("Version", Number 1)
-      , ("Configuration", obj [("StorageConfig", String (T.pack "storage.json"))])
+      , ("Configuration", obj [("StorageConfig", obj [("DatabasePath", String (T.pack "db"))])])
       , ("ByronGenesisFile", String (T.pack "byron.json"))
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
@@ -681,7 +723,7 @@ migrateEnvelopeCollisionCase =
   testCase
     "migrate resolves a sibling/Configuration collision in favour of Configuration (with a warning)"
     $ expectOk
-    $ case migrate input of
+    $ case migrated input of
       (Object top, warnings)
         | EnvelopeKeyCollision (T.pack "MempoolConfig") `notElem` warnings ->
             Just ("expected an EnvelopeKeyCollision for MempoolConfig, got " <> show warnings)
@@ -704,35 +746,48 @@ migrateEnvelopeCollisionCase =
       , ("MempoolConfig", obj [("MempoolCapacityOverride", Number 999)])
       ]
 
--- | 'migrate' rewrites a pre-rename field name even when the document is /already/
--- enveloped (the parser used to skip migration for enveloped documents, so an
--- enveloped @EnableRpc@ silently reverted to its default). It also carries an
--- existing @$schema@ through unchanged, rather than clobbering a user's pinned URL.
--- (Regression test for the reviewer's "enveloped legacy fields skipped" and
--- "unconditional schema replacement" concerns.)
+-- | 'migrate' rewrites a pre-rename field name even when the document is
+-- /already/ enveloped (the parser used to skip migration for enveloped
+-- documents, so an enveloped @EnableRpc@ silently reverted to its default).
+--
+-- A pinned @$schema@ survives only while the version does not move. Upgrading a
+-- version-1 document replaces it, because the pinned URL describes a version
+-- the document no longer is; a document already at the current version keeps
+-- whatever URL it pins.
 migrateEnvelopedRenameCase :: TestTree
 migrateEnvelopedRenameCase =
-  testCase "migrate renames fields inside an existing envelope and carries $schema through" $
-    expectOk $ case migrate input of
-      (m@(Object top), _)
-        | KM.lookup (K.fromString "$schema") top /= Just pinnedSchema ->
-            Just
-              ("the pinned $schema was not carried through, got " <> show (KM.lookup (K.fromString "$schema") top))
-        | "EnableRpc" `elem` allKeys m ->
-            Just "the old name EnableRpc survived the rename"
-        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
-            Just (Object cfg)
-              | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
-                  Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
-              | otherwise -> Nothing
-            _ -> Just "Configuration is not an object"
-      (m, _) -> Just ("migrate did not produce an object: " <> show m)
+  testCase "migrate renames inside an envelope, and repins $schema only on an upgrade" $
+    expectOk (firstProblem [renamed, upgradedRepins, currentKeepsPin])
  where
+  renamed = case migrated (envelope 1) of
+    (m@(Object top), _)
+      | "EnableRpc" `elem` allKeys m -> Just "the old name EnableRpc survived the rename"
+      | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+          Just (Object cfg)
+            | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
+                Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
+            | otherwise -> Nothing
+          _ -> Just "Configuration is not an object"
+    (m, _) -> Just ("migrate did not produce an object: " <> show m)
+  upgradedRepins
+    | schemaOf (envelope 1) == Just (String (schemaId "config.schema.json")) = Nothing
+    | otherwise = Just ("an upgraded document kept its old $schema: " <> show (schemaOf (envelope 1)))
+  currentKeepsPin
+    | schemaOf (envelope currentFormatVersion) == Just pinnedSchema = Nothing
+    | otherwise =
+        Just
+          ( "a document already at the current version lost its pinned $schema: "
+              <> show (schemaOf (envelope currentFormatVersion))
+          )
+  schemaOf v = case fst (migrated v) of
+    Object top -> KM.lookup (K.fromString "$schema") top
+    _ -> Nothing
   pinnedSchema = String (T.pack "https://example.com/pinned/config.schema.json")
-  input =
+  envelope :: Int -> Value
+  envelope version =
     obj
       [ ("$schema", pinnedSchema)
-      , ("Version", Number 1)
+      , ("Version", Number (fromIntegral version))
       , ("Configuration", obj [("LocalConnectionsConfig", obj [("EnableRpc", Bool True)])])
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
@@ -750,7 +805,7 @@ migrateEnvelopedRenameCase =
 migrateRenameCollisionCase :: TestTree
 migrateRenameCollisionCase =
   testCase "migrate keeps the current name on an old/new rename collision (with a warning)" $
-    expectOk $ case migrate input of
+    expectOk $ case migrated input of
       (Object top, warnings)
         | expectedWarning `notElem` warnings ->
             Just ("expected a RenamedKeyCollision warning, got " <> show warnings)
@@ -797,7 +852,7 @@ minNodeVersionCase =
   testCase "MinNodeVersion is read at the top level (enveloped and legacy), or absent" $ do
     enveloped <- parsedMinNodeVersion "test/examples/min-node-version.json"
     legacy <- parsedMinNodeVersion "test/examples/min-node-version-legacy.json"
-    absent <- parsedMinNodeVersion "test/examples/split.json"
+    absent <- parsedMinNodeVersion "test/examples/all-sections.json"
     expectOk $
       if enveloped == SJust (T.pack "10.5.0")
         && legacy == SJust (T.pack "9.1.0")
@@ -822,8 +877,8 @@ minNodeVersionCase =
 -- defaults populate every resolved field.
 resolveCase :: TestTree
 resolveCase =
-  testCase "resolveConfiguration examples/fullconfig.json" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+  testCase "resolveConfiguration examples/legacy-fullconfig.json" $ do
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     case cliArgs [] of
       Nothing -> assertFailure "could not build default CLI arguments"
@@ -835,22 +890,22 @@ resolveCase =
 -- into a 'TraceConfig' — whether given inline (an object) or as a path to a
 -- separate file — and surfaced both on the parse result and, when the resolved
 -- configuration is dumped, back under a @HermodTracing@ key. A configuration
--- without the key falls back to 'defaultCardanoTracingConfig', which is likewise
--- surfaced and rendered (so the @HermodTracing@ key always appears).
+-- without the key gets trace-dispatcher's minimal viable configuration, which is
+-- likewise surfaced and rendered (so the @HermodTracing@ key always appears).
 tracingCase :: TestTree
 tracingCase =
   testCase "HermodTracing resolves to a TraceConfig (inline, file, default) and is always rendered" $ do
     inline <- parsed "test/examples/tracing-inline.json"
     fromFile <- parsed "test/examples/tracing-file.json"
-    absent <- parsed "test/examples/fullconfig.json"
+    absent <- parsed "test/examples/legacy-fullconfig.json"
     renderedInline <- rendersTracing "test/examples/tracing-inline.json"
-    renderedAbsent <- rendersTracing "test/examples/fullconfig.json"
+    renderedAbsent <- rendersTracing "test/examples/legacy-fullconfig.json"
     let asJSON = toJSON . tracingConfiguration
-        deflt = toJSON defaultCardanoTracingConfig
+        deflt = toJSON mkConfiguration
     expectOk $
       if asJSON inline /= deflt -- the inline object was applied
         && asJSON fromFile /= deflt -- the referenced file was applied
-        && asJSON absent == deflt -- no key falls back to the default
+        && asJSON absent == deflt -- no key falls back to trace-dispatcher's
         && renderedInline == Right True
         && renderedAbsent == Right True -- rendered even without a key
         then Nothing
@@ -880,26 +935,58 @@ tracingCase =
           Object o -> Right (KM.member (K.fromString "HermodTracing") o)
           _ -> Left "rendered configuration was not an object"
 
--- | The committed @defaults/HermodTracing.json@ must equal the JSON of the
--- in-tree 'defaultCardanoTracingConfig' literal (encoded through
--- trace-dispatcher's own 'TraceConfig' codec), so the checked-in default cannot
--- drift from the Haskell source. Regenerate the file from
--- 'defaultCardanoTracingConfig' if this fails.
-tracingDefaultParityCase :: TestTree
-tracingDefaultParityCase =
-  testCase "defaults/HermodTracing.json matches defaultCardanoTracingConfig" $ do
-    path <- getDataFileName "defaults/HermodTracing.json"
-    committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
-    expectOk $ case committed of
-      Left e -> Just ("could not read defaults/HermodTracing.json: " <> e)
-      Right v
-        | toJSON defaultCardanoTracingConfig == v -> Nothing
-        | otherwise ->
-            Just $
-              "defaults/HermodTracing.json is out of date; regenerate from defaultCardanoTracingConfig: "
-                <> show (toJSON defaultCardanoTracingConfig)
-                <> " /= "
-                <> show v
+-- | The @HermodTracing@ block in the shipped default configurations is not
+-- applied to anything: tracing is the one part of the configuration
+-- @cardano-config@ supplies no default for, because @trace-dispatcher@ falls
+-- back on its own. The block is there to show a reader what that fallback is.
+--
+-- An illustration that is wrong is worse than none, so this pins it: each
+-- file's block must be written exactly as @trace-dispatcher@ writes the
+-- configuration it falls back to ('mkConfiguration'), minus the top-level keys
+-- that fallback leaves empty.
+--
+-- It compares the block as written, not the 'TraceConfig' it resolves to,
+-- because the two are not the same check. A key the parser does not know is
+-- ignored, and the fallback then supplies the value the key was trying to give,
+-- so a misspelling resolves correctly and only shows up here. If this fails,
+-- copy the expected value the failure prints into both files.
+tracingDefaultIllustrationCase :: TestTree
+tracingDefaultIllustrationCase =
+  testCase "the HermodTracing block in defaults/ is trace-dispatcher's fallback, as written" $
+    mapM_ check ["defaults/config.blockproducer.json", "defaults/config.relay.json"]
+ where
+  check fp = do
+    path <- getDataFileName fp
+    committed <- eitherDecodeFileStrict' path
+    case committed >>= tracingSectionOf of
+      Left e -> assertFailure ("could not read " <> fp <> ": " <> e)
+      Right tracing ->
+        expectOk $
+          if Object tracing == expected
+            then Nothing
+            else
+              Just $
+                fp
+                  <> " does not show trace-dispatcher's fallback: "
+                  <> show (Object tracing)
+                  <> " /= "
+                  <> show expected
+  -- trace-dispatcher renders every top-level field, including the ones its
+  -- fallback does not set. Those say nothing, so the files leave them out.
+  expected = case toJSON mkConfiguration of
+    Object o -> Object (KM.filter (/= Null) o)
+    v -> v
+
+-- | The @HermodTracing@ object inside a default configuration's envelope.
+tracingSectionOf :: Value -> Either String Object
+tracingSectionOf v = case v of
+  Object top
+    | Just (Object cfg) <- KM.lookup (K.fromString "Configuration") top ->
+        case KM.lookup (K.fromString "HermodTracing") cfg of
+          Just (Object tracing) -> Right tracing
+          Just _ -> Left "Configuration.HermodTracing is not an object"
+          Nothing -> Left "the default configuration has no Configuration.HermodTracing"
+  _ -> Left "the default configuration has no Configuration object"
 
 -- | With 'IncludeGeneses' the resolved configuration renders the decoded value
 -- of every era genesis (Byron via its canonical-JSON form, the rest via the
@@ -908,7 +995,7 @@ tracingDefaultParityCase =
 genesisRenderCase :: TestTree
 genesisRenderCase =
   testCase "resolve renders era geneses only with IncludeGeneses" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case cliArgs [] of
       Nothing -> Just "could not build CLI arguments"
@@ -926,44 +1013,15 @@ genesisRenderCase =
  where
   eras = ["ByronGenesis", "ShelleyGenesis", "AlonzoGenesis", "ConwayGenesis"]
 
--- | The inline role-default partials must equal the committed variant JSON
--- (Option B parity): they are encoded through the same codec and compared to the
--- raw files, so the Haskell literals cannot drift from the data files.
-roleVariantParityCase :: TestTree
-roleVariantParityCase =
-  testCase "network role defaults match the committed variant JSON" $ do
-    bpPath <- getDataFileName "defaults/NetworkConfig/blockproducer.json"
-    relayPath <- getDataFileName "defaults/NetworkConfig/relay.json"
-    bp <- eitherDecodeFileStrict' bpPath :: IO (Either String Value)
-    relay <- eitherDecodeFileStrict' relayPath :: IO (Either String Value)
-    let dropSchema (Object km) = Object (KM.delete (K.fromString "$schema") km)
-        dropSchema _ = error "Impossible"
-    expectOk $ case (fmap dropSchema bp, fmap dropSchema relay) of
-      (Left e, _) -> Just ("could not read blockproducer.json: " <> e)
-      (_, Left e) -> Just ("could not read relay.json: " <> e)
-      (Right bpV, Right relayV)
-        | toJSON blockProducerRoleDefaults /= bpV ->
-            Just $
-              "blockProducerRoleDefaults differs from NetworkConfig.blockproducer.json: "
-                <> show (toJSON blockProducerRoleDefaults)
-                <> " /= "
-                <> show bpV
-        | toJSON relayRoleDefaults /= relayV ->
-            Just $
-              "relayRoleDefaults differs from NetworkConfig.relay.json: "
-                <> show (toJSON relayRoleDefaults)
-                <> " /= "
-                <> show relayV
-        | otherwise -> Nothing
-
 -- | The networking role defaults are chosen by credential presence: a credential
 -- (here a VRF key) yields the block-producer targets (root 100, known 100,
--- PeerSharing off); no credential yields the relay targets (root 60, known 150,
--- PeerSharing on). These values are the node's @defaultDeadlineTargets@ oracle.
+-- PeerSharing disabled); no credential yields the relay targets (root 60, known
+-- 150, PeerSharing enabled). These values are the node's
+-- @defaultDeadlineTargets@ oracle.
 roleSelectionCase :: TestTree
 roleSelectionCase =
   testCase "network role defaults selected from credential presence" $ do
-    path <- getDataFileName "test/examples/fullconfig.json"
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
     (cfg, _) <- parseConfigurationFiles path
     expectOk $ case (cliArgs ["--shelley-vrf-key", "vrf.skey"], cliArgs []) of
       (Just bpCli, Just relayCli) ->
@@ -976,10 +1034,10 @@ roleSelectionCase =
                 ok =
                   deadlineTargetOfRootPeers bn == SJust 100
                     && deadlineTargetOfKnownPeers bn == SJust 100
-                    && peerSharing bn == SJust False
+                    && peerSharing bn == SJust PeerSharingDisabled
                     && deadlineTargetOfRootPeers rn == SJust 60
                     && deadlineTargetOfKnownPeers rn == SJust 150
-                    && peerSharing rn == SJust True
+                    && peerSharing rn == SJust PeerSharingEnabled
              in if ok
                   then Nothing
                   else Just "resolved role targets do not match the expected block-producer/relay values"
@@ -989,6 +1047,11 @@ roleSelectionCase =
 -- when credentials are present (block producer). Here PeerSharing and
 -- TargetNumberOfRootPeers are set in the file; the remaining role fields still
 -- come from the (block-producer) role default.
+--
+-- The root target is 99 rather than some larger round number because the peer
+-- targets are checked against ouroboros-network's own predicate at resolution:
+-- root peers may not exceed known peers, which the block-producer default puts
+-- at 100 (see 'peerTargetsRejectedCase').
 rolePrecedenceCase :: TestTree
 rolePrecedenceCase =
   testCase "explicit file value overrides the role default" $ do
@@ -1000,35 +1063,195 @@ rolePrecedenceCase =
         Left e -> Just ("resolve failed: " <> show e)
         Right (nc, _) ->
           let n = C.networkConfiguration nc
-           in if peerSharing n == SJust True -- file wins over block-producer's False
-                && deadlineTargetOfRootPeers n == SJust 999 -- file wins over 100
+           in if peerSharing n == SJust PeerSharingEnabled -- file wins over the producer's Disabled
+                && deadlineTargetOfRootPeers n == SJust 99 -- file wins over 100
                 && deadlineTargetOfKnownPeers n == SJust 100 -- unset in file, block-producer default
                 then Nothing
                 else Just "explicit file values did not take precedence over the role default"
 
--- | The role default beats a /base/ default for a role field the user did not
--- set: resolution is @base \< role \< user@, so a value present only in the base
--- defaults must not shadow the role default. The base @Network.json@ omits the
--- role fields today, so this pins the ordering rather than relying on that.
-roleBeatsBaseDefaultCase :: TestTree
-roleBeatsBaseDefaultCase =
-  testCase "role default overrides a base default (base < role < user)" $
-    expectOk
-      ( if peerSharing resolved == SJust False -- role's False beats the base's True
-          && deadlineTargetOfRootPeers resolved == SJust 100 -- role's 100 beats the base's 7
-          then Nothing
-          else Just ("role default did not override the base default: " <> show resolved)
-      )
+-- | A section that cannot be decoded from the merge is reported as a
+-- 'C.SectionDecodeError' naming the section, not as 'C.ViolatedChecks'. The two
+-- say different things about who is at fault, which is why they are separate.
+--
+-- A configuration file cannot reach this: every section is decoded from the
+-- file's own text at parse time with the same codec resolution uses, so a file
+-- that parses has sections that decode, and the shipped defaults add no key
+-- that any cross-field rule reads. It is reached here the way the only caller
+-- that can would, by resolving a 'NodeConfigurationFromFile' whose
+-- 'userConfiguration' has been replaced.
+sectionDecodeErrorCase :: TestTree
+sectionDecodeErrorCase =
+  testCase "a section that cannot be decoded is a decode error, not a violated check" $ do
+    path <- getDataFileName "test/examples/all-sections.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let broken = cfg{userConfiguration = section "NetworkConfig" "DiffusionMode" (str "Nonsense")}
+        section outer inner v =
+          Object (KM.singleton (K.fromString outer) (Object (KM.singleton (K.fromString inner) v)))
+    expectOk $ case cliArgs [] of
+      Nothing -> Just "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli broken of
+        Right _ -> Just "a section that cannot be decoded resolved"
+        Left (C.SectionDecodeError sec msg)
+          | sec /= "NetworkConfig" -> Just ("the wrong section was named: " <> sec)
+          | not ("DiffusionMode" `isInfixOf` msg) ->
+              Just ("the decode error does not name the field: " <> msg)
+          | otherwise -> Nothing
+        Left e -> Just ("not reported as a decode error: " <> show e)
+
+-- | A configuration that states part of a nested object takes the rest of that
+-- object's fields from the defaults, because the merge recurses rather than
+-- replacing the object whole. Here only @HardLimit@ is set, so @SoftLimit@ and
+-- @Delay@ stay at the shipped 384 and 5.
+--
+-- @AcceptedConnectionsLimit@ is the one place this can be observed: it is the
+-- only defaulted nested object whose sub-keys are values in their own right.
+-- @LedgerDB@ is the other nested object default and already reads every
+-- sub-key optionally; the remaining nested objects sit under a default that is
+-- a string (@DatabasePath@, @Backend@), which an object replaces whole, so
+-- there is nothing there to inherit.
+partialNestedObjectCase :: TestTree
+partialNestedObjectCase =
+  testCase "a partly stated AcceptedConnectionsLimit keeps the defaults for the rest" $ do
+    path <- getDataFileName "test/examples/partial-accepted-connections-limit.json"
+    (cfg, _) <- parseConfigurationFiles path
+    expectOk $ case cliArgs [] of
+      Nothing -> Just "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Just ("resolve failed: " <> show e)
+        Right (nc, _) ->
+          let limits = acceptedConnectionsLimitOf (C.networkConfiguration nc)
+              expected = AcceptedConnectionsLimit 1000 384 5
+           in if limits == expected
+                then Nothing
+                else Just ("unexpected limits: " <> show limits <> " /= " <> show expected)
+
+-- | A @SoftLimit@ above the @HardLimit@ is rejected at resolution. The fixture
+-- sets only @HardLimit@, at 100, so the rejection is of the shipped @SoftLimit@
+-- of 384: lowering the hard limit alone is the way an operator reaches this.
+-- The partial configuration that raises @HardLimit@ to 1000 resolves, so what
+-- is being rejected is the ordering and not the fixture.
+softAboveHardLimitCase :: TestTree
+softAboveHardLimitCase =
+  testCase "a SoftLimit above the HardLimit fails resolution" $ do
+    above <- resolveExample "test/examples/accepted-connections-soft-above-hard.json"
+    below <- resolveExample "test/examples/partial-accepted-connections-limit.json"
+    expectOk $ case (above, below) of
+      (Left msg, Right ())
+        | "SoftLimit must be no greater than its HardLimit" `isInfixOf` msg -> Nothing
+        | otherwise -> Just ("rejected, but not for the limits: " <> msg)
+      (Right (), _) -> Just "a SoftLimit above the HardLimit resolved"
+      (_, Left e) -> Just ("a SoftLimit below the HardLimit was rejected: " <> e)
  where
-  -- A base default that sets two role fields, with the user setting nothing. The
-  -- merged layer (base defaults plus the user layer) then equals the base here.
-  base =
-    emptyNetworkConfiguration
-      { peerSharing = SJust True
-      , deadlineTargetOfRootPeers = SJust 7
-      }
-  user = emptyNetworkConfiguration
-  resolved = withRoleDefaults blockProducerRoleDefaults user base
+  resolveExample fp = do
+    path <- getDataFileName fp
+    (cfg, _) <- parseConfigurationFiles path
+    pure $ case cliArgs [] of
+      Nothing -> Left "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Left (show e)
+        Right _ -> Right ()
+
+-- | A peer target set ouroboros-network will not accept is rejected at
+-- resolution, naming the group it is in. Its governor only asserts
+-- 'sanePeerSelectionTargets', and @-O@ compiles assertions out, so without this
+-- check a release node starts on such a set and runs peer selection on it.
+--
+-- One fixture per group, each breaking the ordering the predicate requires: the
+-- deadline group asks for more active peers than established ones, the sync
+-- group for more established peers than known ones. Both also exceed the
+-- predicate's absolute caps, so neither depends on the role's other defaults.
+-- The same configuration without the offending field resolves, so what is being
+-- rejected is the target and not the fixture.
+peerTargetsRejectedCase :: TestTree
+peerTargetsRejectedCase =
+  testCase "a peer target set ouroboros-network rejects fails resolution" $ do
+    deadline <- resolveExample "test/examples/peer-targets-deadline-insane.json"
+    sync <- resolveExample "test/examples/peer-targets-sync-insane.json"
+    sane <- resolveExample "test/examples/role-precedence.json"
+    expectOk $ case (deadline, sync, sane) of
+      (Left dMsg, Left sMsg, Right ())
+        | "Deadline peer targets" `isInfixOf` dMsg
+        , "Sync peer targets" `isInfixOf` sMsg ->
+            Nothing
+        | otherwise ->
+            Just ("rejected, but not for the peer targets: " <> dMsg <> " / " <> sMsg)
+      (Right (), _, _) -> Just "an insane deadline target set resolved"
+      (_, Right (), _) -> Just "an insane sync target set resolved"
+      (_, _, Left e) -> Just ("the sane configuration was rejected too: " <> e)
+ where
+  resolveExample fp = do
+    path <- getDataFileName fp
+    (cfg, _) <- parseConfigurationFiles path
+    pure $ case cliArgs [] of
+      Nothing -> Left "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Left (show e)
+        Right _ -> Right ()
+
+-- | The two default configurations are one configuration in two roles: they
+-- must differ only in the @NetworkConfig@ fields that the role decides (the
+-- deadline peer targets and @PeerSharing@). Anything else differing means one
+-- file was edited and the other was not.
+defaultConfigParityCase :: TestTree
+defaultConfigParityCase =
+  testCase "the two default configurations differ only in the role fields" $ do
+    bp <- getDataFileName "defaults/config.blockproducer.json" >>= decodeFile
+    relay <- getDataFileName "defaults/config.relay.json" >>= decodeFile
+    expectOk $ case (bp >>= body, relay >>= body) of
+      (Left e, _) -> Just e
+      (_, Left e) -> Just e
+      (Right b, Right r)
+        | differing /= ["NetworkConfig"] ->
+            Just ("sections other than NetworkConfig differ: " <> show differing)
+        | not (null badKeys) ->
+            Just ("NetworkConfig differs outside the role fields: " <> show badKeys)
+        | roleKeys /= sort roleFields ->
+            Just ("the role fields that differ are " <> show roleKeys)
+        | otherwise -> Nothing
+       where
+        differing = sort [K.toString k | (k, v) <- KM.toList b, KM.lookup k r /= Just v]
+        net (Object o) = case KM.lookup (K.fromString "NetworkConfig") o of
+          Just (Object n) -> n
+          _ -> KM.empty
+        net _ = KM.empty
+        roleKeys =
+          sort [K.toString k | (k, v) <- KM.toList (net (Object b)), KM.lookup k (net (Object r)) /= Just v]
+        badKeys = [k | k <- roleKeys, k `notElem` roleFields]
+ where
+  decodeFile fp = eitherDecodeFileStrict' fp :: IO (Either String Value)
+  -- Only these three actually hold different values; the rest of the role
+  -- overlay agrees between the two.
+  roleFields =
+    [ "DeadlineTargetNumberOfKnownPeers"
+    , "DeadlineTargetNumberOfRootPeers"
+    , "PeerSharing"
+    ]
+  body (Object top) = case KM.lookup (K.fromString "Configuration") top of
+    Just (Object cfg) -> Right cfg
+    _ -> Left "a default configuration has no Configuration object"
+  body _ = Left "a default configuration is not an object"
+
+-- | Neither shipped default enables the experimental hard forks. The flag gates
+-- eras a network is not ready to run, and it is the bottom layer of every
+-- resolution, so a default that turned it on would turn them on for every node
+-- that does not say otherwise.
+experimentalHardForksDefaultCase :: TestTree
+experimentalHardForksDefaultCase =
+  testCase "the default configurations leave ExperimentalHardForksEnabled off" $
+    mapM_ check ["defaults/config.blockproducer.json", "defaults/config.relay.json"]
+ where
+  check fp = do
+    path <- getDataFileName fp
+    committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
+    expectOk $ case committed of
+      Left e -> Just ("could not read " <> fp <> ": " <> e)
+      Right v -> case lookupPath ["Configuration", "TestingConfig", "ExperimentalHardForksEnabled"] v of
+        Just (Bool False) -> Nothing
+        other -> Just (fp <> " sets ExperimentalHardForksEnabled to " <> show other)
+  lookupPath keys v = foldM step v keys
+   where
+    step (Object o) k = KM.lookup (K.fromString k) o
+    step _ _ = Nothing
 
 -- | All three mempool timeouts unset resolves to the coupled default (1, 1.5, 5).
 mempoolAllUnsetCase :: TestTree
@@ -1085,6 +1308,354 @@ mempoolMixedResolveCase =
 
 -- | Parse @cardano-node@-style CLI arguments for a test (no defaults file is
 -- needed; the parser supplies its own).
+-- | The flat @Grpc*@ keys of @LocalConnectionsConfig@ fold into the single
+-- 'GrpcEndpoint' they describe: a unix socket, a plaintext (h2c) TCP listener
+-- or a TLS one. The listen address defaults to loopback. Each endpoint also
+-- survives a round trip through 'toJSON'.
+grpcEndpointCase :: TestTree
+grpcEndpointCase =
+  testCase "the flat Grpc* keys fold into a GrpcEndpoint (and unfold again)" $
+    expectOk (firstProblem (map check endpoints))
+ where
+  endpoints =
+    [ ("a unix socket", [socketPathKey], GrpcEndpointUnixSocket "rpc.sock")
+    , ("a plaintext listener", [portKey], GrpcEndpointHttp defaultGrpcListenAddress 3001)
+    ,
+      ( "a plaintext listener on a given address"
+      , [addressKey, portKey]
+      , GrpcEndpointHttp (ip "0.0.0.0") 3001
+      )
+    ,
+      ( "a plaintext listener on IPv6"
+      , [("GrpcListenAddress", str "::1"), portKey]
+      , GrpcEndpointHttp (ip "::1") 3001
+      )
+    ,
+      ( "a TLS listener"
+      , [portKey, certificateKey, privateKeyKey]
+      , GrpcEndpointHttps defaultGrpcListenAddress 3001 (GrpcTlsFiles "tls/server.pem" "tls/server.key" [])
+      )
+    ,
+      ( "a TLS listener with a chain"
+      , [addressKey, portKey, certificateKey, privateKeyKey, chainKey]
+      , GrpcEndpointHttps
+          (ip "0.0.0.0")
+          3001
+          (GrpcTlsFiles "tls/server.pem" "tls/server.key" ["tls/intermediate.pem"])
+      )
+    ]
+  check (label, fields, expected) = case decodeLocalConnections fields of
+    Left err -> Just (label <> ": did not decode: " <> err)
+    Right cfg
+      | grpcEndpoint cfg /= SJust expected ->
+          Just (label <> ": decoded to " <> show (grpcEndpoint cfg) <> ", expected " <> show expected)
+      | otherwise -> case fromJSON (toJSON cfg) :: Result (LocalConnectionsConfig StrictMaybe) of
+          Error err -> Just (label <> ": did not re-decode what it rendered: " <> err)
+          Success cfg'
+            | grpcEndpoint cfg' /= grpcEndpoint cfg ->
+                Just (label <> ": did not survive a round trip: " <> show (grpcEndpoint cfg'))
+            | otherwise -> Nothing
+
+-- | The @Grpc*@ key combinations that describe no single listener are rejected
+-- as the section is parsed, naming the keys at fault.
+grpcEndpointRejectionCase :: TestTree
+grpcEndpointRejectionCase =
+  testCase "a Grpc* key combination that describes no single listener is rejected" $
+    expectOk (firstProblem (map check rejected))
+ where
+  rejected =
+    [ ("a socket path and a listen port", [socketPathKey, portKey], "mutually exclusive")
+    , ("a socket path and a listen address", [socketPathKey, addressKey], "mutually exclusive")
+    , ("a socket path and TLS", [socketPathKey, certificateKey, privateKeyKey], "mutually exclusive")
+    , ("a listen address with no port", [addressKey], "GrpcListenAddress requires GrpcListenPort")
+    , ("TLS with no port", [certificateKey, privateKeyKey], "require GrpcListenPort")
+    , ("a certificate with no private key", [portKey, certificateKey], "must be set together")
+    , ("a private key with no certificate", [portKey, privateKeyKey], "must be set together")
+    , ("a TLS chain with no credentials", [portKey, chainKey], "requires GrpcTlsCertificateFile")
+    ]
+  check (label, fields, expectedMessage) = case decodeLocalConnections fields of
+    Right cfg -> Just (label <> ": was accepted, as " <> show (grpcEndpoint cfg))
+    Left err
+      | expectedMessage `isInfixOf` err -> Nothing
+      | otherwise ->
+          Just (label <> ": rejected, but not for " <> show expectedMessage <> ": " <> err)
+
+-- | A command-line endpoint replaces the configuration file's whole, so a flag
+-- meaning only to move the port also drops the file's TLS credentials. That is
+-- reported as a 'ConsistencyWarning' rather than silently accepted.
+--
+-- The resolution still succeeds: replacing the endpoint is what the flags are
+-- for, and the warning says what was lost. Passing the TLS flags alongside
+-- keeps TLS and raises nothing, and so does passing no endpoint flag at all.
+grpcTlsDowngradeCase :: TestTree
+grpcTlsDowngradeCase =
+  testCase "replacing a TLS gRPC endpoint from the command line warns" $ do
+    path <- getDataFileName "test/examples/grpc-tls-listener.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let resolveWith args = case cliArgs args of
+          Nothing -> Left "could not build CLI arguments"
+          Just cli -> case resolveConfiguration cli cfg of
+            Left e -> Left ("resolve failed: " <> show e)
+            Right (_, ws) -> Right [w | w <- map renderConfigWarning ws, "plaintext" `isInfixOf` w]
+        movedPort = resolveWith ["--grpc-listen-port", "4001"]
+        keptTls =
+          resolveWith
+            [ "--grpc-listen-port"
+            , "4001"
+            , "--grpc-tls-certificate"
+            , "tls/server.pem"
+            , "--grpc-tls-private-key"
+            , "tls/server.key"
+            ]
+        untouched = resolveWith []
+    expectOk $ case (movedPort, keptTls, untouched) of
+      (Left e, _, _) -> Just e
+      (_, Left e, _) -> Just e
+      (_, _, Left e) -> Just e
+      (Right dropped, Right kept, Right none)
+        | length dropped /= 1 -> Just ("moving the port did not warn once: " <> show dropped)
+        | not (null kept) -> Just ("keeping TLS still warned: " <> show kept)
+        | not (null none) -> Just ("no endpoint flag still warned: " <> show none)
+        | otherwise -> Nothing
+
+-- | The same endpoint, from the command line: the unix-socket flag and the TCP
+-- ones are alternatives, so giving both fails the parse, as does an address or
+-- a TLS credential with no port to listen on.
+grpcEndpointCliCase :: TestTree
+grpcEndpointCliCase =
+  testCase "the gRPC endpoint flags build the endpoint, and exclude each other" $
+    expectOk (firstProblem (map accepts accepted <> map rejects rejected))
+ where
+  accepted =
+    [ (["--grpc-socket-path", "rpc.sock"], GrpcEndpointUnixSocket "rpc.sock")
+    , (["--grpc-listen-port", "3001"], GrpcEndpointHttp defaultGrpcListenAddress 3001)
+    ,
+      ( ["--grpc-listen-address", "0.0.0.0", "--grpc-listen-port", "3001"]
+      , GrpcEndpointHttp (ip "0.0.0.0") 3001
+      )
+    ,
+      (
+        [ "--grpc-listen-port"
+        , "3001"
+        , "--grpc-tls-certificate"
+        , "tls/server.pem"
+        , "--grpc-tls-private-key"
+        , "tls/server.key"
+        , "--grpc-tls-chain-certificate"
+        , "tls/intermediate.pem"
+        ]
+      , GrpcEndpointHttps
+          defaultGrpcListenAddress
+          3001
+          (GrpcTlsFiles "tls/server.pem" "tls/server.key" ["tls/intermediate.pem"])
+      )
+    ]
+  rejected =
+    [
+      ( "a socket path and a listen port"
+      , ["--grpc-socket-path", "rpc.sock", "--grpc-listen-port", "3001"]
+      )
+    , ("a listen address with no port", ["--grpc-listen-address", "0.0.0.0"])
+    ,
+      ( "TLS with no port"
+      , ["--grpc-tls-certificate", "tls/server.pem", "--grpc-tls-private-key", "tls/server.key"]
+      )
+    ,
+      ( "a certificate with no private key"
+      , ["--grpc-listen-port", "3001", "--grpc-tls-certificate", "tls/server.pem"]
+      )
+    , ("a port out of range", ["--grpc-listen-port", "65536"])
+    ]
+  accepts (args, expected) = case cliArgs args of
+    Nothing -> Just (show args <> ": did not parse")
+    Just cli
+      | grpcEndpointCLI cli /= SJust expected ->
+          Just (show args <> ": parsed to " <> show (grpcEndpointCLI cli) <> ", expected " <> show expected)
+      | otherwise -> Nothing
+  rejects (label, args) = case cliArgs args of
+    Nothing -> Nothing
+    Just cli -> Just (label <> ": was accepted, as " <> show (grpcEndpointCLI cli))
+
+-- | Enabling the gRPC server requires a node socket path, whichever endpoint it
+-- listens on. The server serves every request over the node-to-client socket,
+-- so a TCP listener changes where it listens, not whether it needs that
+-- socket: @cardano-node@\'s @makeRpcConfig@ refuses @EnableGrpc@ without
+-- @SocketPath@ in every case, and this check has to agree or the configuration
+-- resolves here and dies at startup.
+--
+-- So @--grpc-enable@ alone is a resolution error, and so is
+-- @--grpc-enable --grpc-listen-port 3001@. With a node socket path both are
+-- accepted, and the endpoint itself stays unset when none was asked for, so
+-- the consumer derives @rpc.sock@ beside the node socket.
+grpcEnabledEndpointCheckCase :: TestTree
+grpcEnabledEndpointCheckCase =
+  testCase "enabling gRPC requires a node socket path, whatever it listens on" $ do
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
+    (cfg, _) <- parseConfigurationFiles path
+    let resolveWith args = case cliArgs ("--config" : path : args) of
+          Nothing -> Left ("could not build CLI arguments: " <> show args)
+          Just cli -> either (Left . show) (Right . fst) (resolveConfiguration cli cfg)
+        socket = ["--socket-path", "node.socket"]
+    expectOk $ case ( resolveWith ["--grpc-enable"]
+                    , resolveWith ["--grpc-enable", "--grpc-listen-port", "3001"]
+                    , resolveWith (["--grpc-enable", "--grpc-listen-port", "3001"] <> socket)
+                    , resolveWith (["--grpc-enable"] <> socket)
+                    ) of
+      (Right _, _, _, _) -> Just "gRPC enabled with no node socket path was accepted"
+      (_, Right _, _, _) ->
+        Just "gRPC enabled on a listen port with no node socket path was accepted"
+      (_, _, Left err, _) -> Just ("gRPC on a listen port with a node socket was rejected: " <> err)
+      (_, _, _, Left err) -> Just ("gRPC with a node socket path was rejected: " <> err)
+      (Left _, Left _, Right onPort, Right onSocket)
+        | grpcEndpoint (C.localConnectionsConfig onPort)
+            /= SJust (GrpcEndpointHttp defaultGrpcListenAddress 3001) ->
+            Just
+              ("the listen port did not resolve to a TCP endpoint: " <> show (C.localConnectionsConfig onPort))
+        -- Left unset, so that the consumer derives rpc.sock beside the node socket.
+        | isSJust (grpcEndpoint (C.localConnectionsConfig onSocket)) ->
+            Just ("a node socket path invented an endpoint: " <> show (C.localConnectionsConfig onSocket))
+        | otherwise -> Nothing
+
+-- | The numeric options take plain decimal only. @readEither@ on its own also
+-- accepts Haskell\'s hexadecimal and octal literals and surrounding whitespace,
+-- so @--grpc-listen-port 0x1F1@ used to bind port 497 quietly, and @0o17@ port
+-- 15. @cardano-node@ rejects both, and so does every use of @bounded@ now.
+boundedDecimalOnlyCase :: TestTree
+boundedDecimalOnlyCase =
+  testCase "numeric options take decimal only (no hex, octal or padding)" $
+    expectOk (firstProblem (map check inputs))
+ where
+  -- (argument, the port it must resolve to, or Nothing if it must be refused)
+  inputs =
+    [ ("3001", Just 3001)
+    , ("0x1F1", Nothing)
+    , ("0o17", Nothing)
+    , (" 12 ", Nothing)
+    , ("12x", Nothing)
+    , ("", Nothing)
+    , ("-1", Nothing) -- read, then refused by the lower bound
+    , ("99999", Nothing) -- refused by the upper bound, as before
+    ]
+  check (arg, expected) =
+    case (grpcEndpointCLI <$> cliArgs ["--config", "c.json", "--grpc-listen-port", arg], expected) of
+      (Nothing, Nothing) -> Nothing
+      (Nothing, Just p) -> Just (show arg <> ": was refused, expected port " <> show p)
+      (Just got, Nothing) -> Just (show arg <> ": was accepted as " <> show got)
+      (Just got, Just p)
+        | got == SJust (GrpcEndpointHttp defaultGrpcListenAddress p) -> Nothing
+        | otherwise -> Just (show arg <> ": parsed to " <> show got <> ", expected port " <> show p)
+
+-- | The cross-field rules the parser enforces are stated in the schemas too, so
+-- a validator rejects the documents the parser rejects. This pins that they are
+-- stated at all, and on the section a configuration actually writes them
+-- under, which the drift test would not catch, because it compares the
+-- committed files against the generator.
+schemaConstraintsCase :: TestTree
+schemaConstraintsCase =
+  testCase "the schemas state the parser's cross-field rules" $ do
+    results <- mapM check checks
+    expectOk (firstProblem results)
+ where
+  checks =
+    [ ("LocalConnectionsConfig", "the gRPC endpoint exclusions", hasDependencies grpcKeys)
+    , ("MempoolConfig", "the coupled mempool timeouts", hasDependencies mempoolTimeoutKeys)
+    , ("TestingConfig", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
+    , ("TestingConfig", "the experimental-eras requirement", hasIfThen)
+    , ("StorageConfig", "the non-zero SnapshotInterval", hasMinimum "SnapshotInterval" 1)
+    ]
+  grpcKeys =
+    [ "GrpcSocketPath"
+    , "GrpcListenAddress"
+    , "GrpcTlsCertificateFile"
+    , "GrpcTlsPrivateKeyFile"
+    , "GrpcTlsChainCertificateFiles"
+    ]
+  mempoolTimeoutKeys = ["MempoolTimeoutSoft", "MempoolTimeoutHard", "MempoolTimeoutCapacity"]
+  dijkstraKeys = ["DijkstraGenesisFile", "DijkstraGenesisHash"]
+  -- A component's rules are stated on its section of the configuration schema.
+  check (name, what, holds) = do
+    res <- fmap (>>= sectionOf name) (decodeData "schemas/config.schema.json")
+    pure $ case res :: Either String Value of
+      Left err -> Just (name <> ": " <> err)
+      Right v
+        | holds v -> Nothing
+        | otherwise -> Just (name <> " does not state " <> what)
+  -- The named section of config.schema.json: root.Configuration.<name>.
+  sectionOf name v = case propertyOf name =<< propertyOf "Configuration" v of
+    Just section -> Right section
+    Nothing -> Left ("config.schema.json has no " <> name <> " section")
+  propertyOf name (Object o)
+    | Just (Object props) <- KM.lookup (K.fromString "properties") o =
+        KM.lookup (K.fromString name) props
+  propertyOf _ _ = Nothing
+  hasDependencies ks v = all (\k -> KM.member (K.fromString k) (dependenciesOf v)) ks
+  dependenciesOf (Object o) | Just (Object d) <- KM.lookup (K.fromString "dependencies") o = d
+  dependenciesOf _ = KM.empty
+  hasIfThen (Object o)
+    | Just (Array branches) <- KM.lookup (K.fromString "allOf") o = any isIfThen branches
+  hasIfThen _ = False
+  isIfThen (Object b) = KM.member (K.fromString "if") b && KM.member (K.fromString "then") b
+  isIfThen _ = False
+  -- The minimum stated for a property of this name, wherever it appears.
+  hasMinimum name n v = minimaFor name v == [Number n]
+  minimaFor name = go
+   where
+    go (Object o) =
+      [ m
+      | Just (Object props) <- [KM.lookup (K.fromString "properties") o]
+      , Just (Object c) <- [KM.lookup (K.fromString name) props]
+      , Just m <- [KM.lookup (K.fromString "minimum") c]
+      ]
+        <> concatMap go (KM.elems o)
+    go (Array a) = concatMap go a
+    go _ = []
+
+-- | The node rejects a zero snapshot interval, so the parser does too (and the
+-- schema says @minimum: 1@ rather than the 0 a 'Data.Word.Word64' would allow).
+snapshotIntervalCase :: TestTree
+snapshotIntervalCase =
+  testCase "a zero SnapshotInterval is rejected" $
+    expectOk $ case (decodeInterval 0, decodeInterval 1) of
+      (Right _, _) -> Just "SnapshotInterval 0 was accepted"
+      (_, Left err) -> Just ("SnapshotInterval 1 was rejected: " <> err)
+      (Left _, Right _) -> Nothing
+ where
+  decodeInterval n =
+    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("SnapshotInterval", Number n)])])]) ::
+           Result (StorageConfiguration StrictMaybe) of
+      Error err -> Left err
+      Success cfg -> Right cfg
+
+-- | The first problem reported by a list of checks, if any.
+firstProblem :: [Maybe String] -> Maybe String
+firstProblem problems = case [p | Just p <- problems] of
+  (p : _) -> Just p
+  [] -> Nothing
+
+-- | An IP address written the way the configuration and the command line write
+-- it (the test module does not enable @OverloadedStrings@).
+ip :: String -> IP
+ip = read
+
+-- | Decode a @LocalConnectionsConfig@ from the given keys alone.
+decodeLocalConnections :: [(String, Value)] -> Either String (LocalConnectionsConfig StrictMaybe)
+decodeLocalConnections fields = case fromJSON (obj fields) of
+  Error err -> Left err
+  Success cfg -> Right cfg
+
+-- The individual Grpc* keys the cases above combine.
+socketPathKey, addressKey, portKey, certificateKey, privateKeyKey, chainKey :: (String, Value)
+socketPathKey = ("GrpcSocketPath", str "rpc.sock")
+addressKey = ("GrpcListenAddress", str "0.0.0.0")
+portKey = ("GrpcListenPort", Number 3001)
+certificateKey = ("GrpcTlsCertificateFile", str "tls/server.pem")
+privateKeyKey = ("GrpcTlsPrivateKeyFile", str "tls/server.key")
+chainKey = ("GrpcTlsChainCertificateFiles", Array (pure (str "tls/intermediate.pem")))
+
+-- | A JSON string (the test module does not enable @OverloadedStrings@).
+str :: String -> Value
+str = String . T.pack
+
 cliArgs :: [String] -> Maybe CliArgs
 cliArgs = getParseResult . execParserPure defaultPrefs (info parseCliArgs mempty)
 
@@ -1112,7 +1683,7 @@ snapshotMithrilResolveCase :: TestTree
 snapshotMithrilResolveCase =
   testCase "Mithril snapshot policy resolves to concrete values (filling partial overrides)" $ do
     fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
-    fromPartial <- resolvedOptions "test/examples/fullconfig.json" -- sets 3 of 6 (= Mithril)
+    fromPartial <- resolvedOptions "test/examples/legacy-fullconfig.json" -- sets 3 of 6 (= Mithril)
     expectOk $ case (fromMithril, fromPartial) of
       (Right a, Right b)
         | a == mithrilFields && b == mithrilFields -> Nothing
@@ -1341,14 +1912,20 @@ genesisHashPresentCase =
 --
 -- The gated-off fixture pins a deliberately wrong @DijkstraGenesisHash@, so
 -- parsing it at all proves the file is not merely dropped after being read: it
--- is never opened. Because that is exactly the surprising part, an
--- 'ExperimentalGenesisIgnored' warning names the ignored file — and only in the
--- gated-off case.
+-- is never opened.
+--
+-- Neither case says anything about it. A @DijkstraGenesisFile@ named while the
+-- flag is off is passed over in silence, deliberately: turning the flag on
+-- hard-forks the node onto an experimental era, which is coordinated across a
+-- network, so no warning should read as a nudge towards it. This pins that
+-- parsing is silent in both cases.
 experimentalGenesisGateCase :: TestTree
 experimentalGenesisGateCase =
   testCase "the Dijkstra genesis is gated on ExperimentalHardForksEnabled" $ do
     (off, offWarnings) <- getDataFileName gatedOff >>= parseConfigurationFiles
     (on, onWarnings) <- getDataFileName gatedOn >>= parseConfigurationFiles
+    -- Nothing may mention the ignored file, by name or otherwise.
+    let mentions ws = [w | w <- map renderConfigWarning ws, "ijkstra" `isInfixOf` w]
     case cliArgs [] of
       Nothing -> assertFailure "could not build default CLI arguments"
       Just cli -> do
@@ -1359,8 +1936,8 @@ experimentalGenesisGateCase =
             (SNothing, SJust _)
               | SNothing <- C.experimentalGenesisConfig offResolved
               , SJust _ <- C.experimentalGenesisConfig onResolved
-              , ignoredFiles offWarnings == ["dijkstra-genesis.json"]
-              , null (ignoredFiles onWarnings) ->
+              , null (mentions offWarnings)
+              , null (mentions onWarnings) ->
                   Nothing
             _ ->
               Just $
@@ -1372,16 +1949,15 @@ experimentalGenesisGateCase =
                   <> show (isSJust (experimentalGenesisConfig on))
                   <> " onResolved="
                   <> show (isSJust (C.experimentalGenesisConfig onResolved))
-                  <> " offIgnored="
-                  <> show (ignoredFiles offWarnings)
-                  <> " onIgnored="
-                  <> show (ignoredFiles onWarnings)
+                  <> " offMentions="
+                  <> show (mentions offWarnings)
+                  <> " onMentions="
+                  <> show (mentions onWarnings)
  where
   gatedOff = "test/examples/dijkstra-gated-off.json"
   gatedOn = "test/examples/dijkstra-gated-on.json"
   resolved cli cfg =
     either (assertFailure . show) (pure . fst) (resolveConfiguration cli cfg)
-  ignoredFiles ws = [f | ExperimentalGenesisIgnored f <- ws]
 
 -- | The other half of the gating: @ExperimentalHardForksEnabled: true@ without a
 -- @DijkstraGenesisFile@ is rejected outright, as it is by @cardano-node@ (which
@@ -1425,18 +2001,11 @@ byronGenesisDecodeCase =
 -- | The committed schemas under @schemas/@ (the whole configuration and one per
 -- component) must match the schema derived from the codecs, so the documented
 -- schema cannot drift from the parsers. Regenerate them with @scripts/gen-schemas.sh@.
-schemaTests :: IO TestTree
-schemaTests = do
-  defs <- componentDefaults
-  pure $
-    testGroup "schemas" $
-      schemaTest "schemas/config.schema.json" (splitConfigSchemaWithDefaults defs)
-        : schemaTest
-          "schemas/config.legacy-one-file.schema.json"
-          (legacyOneFileConfigSchemaWithDefaults defs)
-        : [ schemaTest ("schemas/" <> T.unpack name <> ".schema.json") schema
-          | (name, schema) <- configurationSchemasWithDefaults defs
-          ]
+schemaTests :: TestTree
+schemaTests =
+  testGroup
+    "schemas"
+    [schemaTest "schemas/config.schema.json" (configSchemaWithDefaults componentDefaults)]
 
 -- | Assert that a committed schema file equals the given derived schema.
 schemaTest :: FilePath -> Value -> TestTree

@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: cardano-config
-version: 1.1.0.0
+version: 2.0.0.0
 synopsis: Cardano-node configuration parsing
 description:
   Datatypes and parsers for optparse-applicative and from YAML/JSON for the @cardano-node@ configuration.
@@ -29,7 +29,6 @@ extra-source-files:
   defaults/**/*.json
   schemas/*.json
   test/examples/**/*.json
-  variants/**/*.json
 
 source-repository head
   type: git
@@ -38,7 +37,7 @@ source-repository head
 source-repository this
   type: git
   location: https://github.com/IntersectMBO/cardano-config
-  tag: cardano-config-1.1.0.0
+  tag: cardano-config-2.0.0.0
 
 common warnings
   ghc-options:
@@ -93,7 +92,7 @@ library internal
     autodocodec ^>=0.6,
     autodocodec-schema ^>=0.2,
     base >=4.18 && <4.23,
-    bytestring ^>=0.12.2,
+    bytestring ^>=0.11.5 || ^>=0.12,
     canonical-json ^>=0.6,
     cardano-crypto-class ^>=2.6,
     cardano-crypto-wrapper ^>=1.8,
@@ -105,17 +104,18 @@ library internal
     cardano-ledger-shelley ^>=1.20,
     containers ^>=0.6 || ^>=0.7 || ^>=0.8,
     data-default ^>=0.8,
-    directory ^>=1.3.10,
+    directory ^>=1.3.8,
     file-embed ^>=0.0.16,
-    filepath ^>=1.5.4,
+    filepath ^>=1.4.301 || ^>=1.5,
     fs-api ^>=0.4,
     iproute ^>=1.7.15,
     network ^>=3.2.8,
     network-uri ^>=2.6.4,
     optparse-applicative ^>=0.19,
+    ouroboros-network:{api, framework, ouroboros-network} ^>=1.2,
     scientific ^>=0.3.8,
-    text ^>=2.1.3,
-    time ^>=1.14 || ^>=1.15,
+    text ^>=2.0.2 || ^>=2.1,
+    time ^>=1.12.2 || ^>=1.13 || ^>=1.14 || ^>=1.15,
     trace-dispatcher ^>=2.13,
     transformers ^>=0.6.1,
     yaml ^>=0.11.11,
@@ -158,7 +158,6 @@ library commands
     cardano-config:internal,
     optparse-applicative,
     safe-exceptions ^>=0.1.7,
-    text,
     yaml,
 
   hs-source-dirs: commands
@@ -194,9 +193,11 @@ test-suite cardano-config-test
     cardano-ledger-core,
     cardano-ledger-dijkstra,
     cardano-ledger-shelley,
+    directory,
     file-embed,
     filepath,
     fs-api,
+    iproute,
     optparse-applicative,
     tasty,
     tasty-hunit,

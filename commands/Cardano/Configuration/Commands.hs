@@ -38,8 +38,6 @@ module Cardano.Configuration.Commands
   , resolveCommand
 
     -- * Schema
-  , SchemaOptions (..)
-  , ConfigForm (..)
   , schemaOptionsParser
   , runSchemaCommand
   , schemaCommand
@@ -55,30 +53,27 @@ module Cardano.Configuration.Commands
 import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, resolveConfiguration)
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
-import Cardano.Configuration.File.Merge (decodeValueFile)
-import Cardano.Configuration.File.Migrate (migrate)
+import Cardano.Configuration.File.Merge (declaredFormatVersion, decodeValueFile)
+import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
-  ( configurationSchemas
-  , configurationSchemasWithDefaults
-  , legacyOneFileConfigSchemaWithDefaults
-  , splitConfigSchemaWithDefaults
+  ( configSchemaWithDefaults
+  , currentFormatVersion
   )
-import Control.Exception (displayException, throwIO)
+import Control.Exception (displayException, fromException, throwIO)
 import Control.Exception.Safe (handleAny)
+import Control.Monad (when)
 import Data.Aeson (Value)
 import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Foldable (for_)
-import Data.List (intercalate)
-import qualified Data.Text as T
 import Data.Yaml (decodeThrow)
 import Data.Yaml.Pretty (encodePretty, setConfCompare, setConfDropNull)
 import qualified Data.Yaml.Pretty as Yaml
 import Options.Applicative
 import Options.Applicative.Help.Pretty (Doc, pretty, vsep)
-import System.Exit (exitFailure)
+import System.Exit (ExitCode, exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 -- | All three configuration subcommands, ready to drop into an 'hsubparser'.
@@ -118,7 +113,7 @@ resolveCommand =
 
 -- | Resolve a configuration and print it as YAML.
 runResolveCommand :: ResolveOptions -> IO ()
-runResolveCommand (ResolveOptions cli geneses) = handleAny (die . displayException) $ do
+runResolveCommand (ResolveOptions cli geneses) = dieOnFailure $ do
   (file, warnings) <- parseConfigurationFiles (configFilePath cli)
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
   (nc, resolveWarnings) <- either throwIO pure $ resolveConfiguration cli file
@@ -141,45 +136,9 @@ withGenesesFlag =
 
 -- Schema ----------------------------------------------------------------------
 
--- | What the @schema@ command should print.
-data SchemaOptions
-  = -- | List the available component names.
-    SchemaList
-  | -- | Dump the whole-configuration schema, in the given form.
-    SchemaWhole ConfigForm
-  | -- | Dump the schema for a single named component.
-    SchemaComponent String
-
--- | Which form of the whole-configuration schema to print.
-data ConfigForm
-  = -- | The recommended split-file form (each component under its section key).
-    SplitForm
-  | -- | The legacy single-file form (all keys flat at the top level).
-    LegacyOneFileForm
-
--- | Parser for 'SchemaOptions'.
-schemaOptionsParser :: Parser SchemaOptions
-schemaOptionsParser =
-  flag'
-    SchemaList
-    (long "list" <> help "List the available component names.")
-    <|> flag'
-      (SchemaWhole LegacyOneFileForm)
-      ( long "legacy-one-file"
-          <> help
-            ( "Dump the legacy single-file schema (every key flat at the top level). "
-                <> "Prefer the default split-file schema for new configurations."
-            )
-      )
-    <|> ( maybe (SchemaWhole SplitForm) SchemaComponent
-            <$> optional
-              ( strArgument
-                  ( metavar "COMPONENT"
-                      <> help
-                        "Dump the schema for a single component (default: the whole configuration, split-file form)."
-                  )
-              )
-        )
+-- | The @schema@ command takes no options: there is one schema.
+schemaOptionsParser :: Parser ()
+schemaOptionsParser = pure ()
 
 -- | The @schema@ subcommand, as an 'hsubparser' entry.
 schemaCommand :: Mod CommandFields (IO ())
@@ -193,24 +152,9 @@ schemaCommand =
         )
     )
 
--- | Print a JSON Schema, or list the component names.
-runSchemaCommand :: SchemaOptions -> IO ()
-runSchemaCommand SchemaList = mapM_ (putStrLn . T.unpack . fst) configurationSchemas
-runSchemaCommand (SchemaWhole form) = do
-  defs <- componentDefaults
-  dump $ case form of
-    SplitForm -> splitConfigSchemaWithDefaults defs
-    LegacyOneFileForm -> legacyOneFileConfigSchemaWithDefaults defs
-runSchemaCommand (SchemaComponent name) = do
-  defs <- componentDefaults
-  case lookup (T.pack name) (configurationSchemasWithDefaults defs) of
-    Just s -> dump s
-    Nothing ->
-      die $
-        "Unknown component: "
-          <> name
-          <> "\nAvailable components: "
-          <> intercalate ", " (map (T.unpack . fst) configurationSchemas)
+-- | Print the configuration JSON Schema.
+runSchemaCommand :: () -> IO ()
+runSchemaCommand () = dump (configSchemaWithDefaults componentDefaults)
 
 -- | How to validate a configuration against the schema, shown under
 -- @cardano-config schema --help@.
@@ -251,24 +195,48 @@ migrateCommand =
         ( progDesc
             ( "Reshape a configuration into the recommended "
                 <> "{ $schema, Version, MinNodeVersion, Configuration } envelope and print it as JSON. "
-                <> "Preserves the values as written (no defaults are filled, no sub-files inlined)."
+                <> "Preserves the values as written (no defaults are filled, no genesis files read)."
             )
         )
     )
 
--- | Read a configuration and print it, reshaped into the Version1 envelope, as
--- JSON. A purely structural migration: it does not resolve, default or validate.
+-- | Read a configuration and print it, reshaped into the envelope at the
+-- current format version, as JSON. A purely structural migration: it does not
+-- resolve, default or validate, so the hint at the end points at @resolve@.
 -- A path of @-@ reads the configuration from stdin (so it composes with @curl@).
 runMigrateCommand :: MigrateOptions -> IO ()
-runMigrateCommand (MigrateOptions path) = handleAny (die . displayException) $ do
+runMigrateCommand (MigrateOptions path) = dieOnFailure $ do
   raw <- case path of
     "-" -> BS.getContents >>= decodeThrow
-    _ -> decodeValueFile Nothing path
-  let (migrated, warnings) = migrate raw
+    _ -> decodeValueFile path
+  -- A document written for a newer format version cannot be migrated down to
+  -- this one, so say so instead of rewriting it into something it is not.
+  declared <- declaredFormatVersion raw
+  when (declared > currentFormatVersion) $
+    die $
+      "This configuration declares format version "
+        <> show declared
+        <> ", and this cardano-config writes version "
+        <> show currentFormatVersion
+        <> ". Upgrade cardano-config to migrate it."
+  (migrated, warnings) <- either (die . renderMigrationError) pure (migrate raw)
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
   dump migrated
+  hPutStrLn stderr $
+    "Migrated to format version "
+      <> show currentFormatVersion
+      <> ". Run `cardano-config resolve --config <file>` to check that it parses."
 
 -- Shared helpers --------------------------------------------------------------
+
+-- | Run a command action, reporting any failure on @stderr@ and exiting with a
+-- failure status. The 'ExitCode' 'die' throws passes straight through, so a
+-- message 'die' has already printed is not printed a second time as
+-- @ExitFailure 1@.
+dieOnFailure :: IO () -> IO ()
+dieOnFailure = handleAny $ \e -> case fromException e :: Maybe ExitCode of
+  Just code -> throwIO code
+  Nothing -> die (displayException e)
 
 -- | Print a JSON 'Value' with sorted keys for stable output.
 dump :: Value -> IO ()

@@ -1,34 +1,20 @@
 {
-    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The cardano-node configuration (split-file form, recommended). Each component is given under its section key (e.g. StorageConfig) as a path to a sub-file or an inline object. The whole document may also be wrapped in a { Version, Configuration } envelope. The mandatory genesis files are supplied through the ProtocolConfig section. For the older form with every key at the top level, see config.legacy-one-file.schema.json.",
+    "description": "The cardano-node configuration, held in one file. The document is the { $schema, Version, MinNodeVersion, Configuration } envelope, and Configuration gives each component inline under its section key (e.g. StorageConfig). The mandatory genesis files are supplied through the ProtocolConfig section.",
     "properties": {
         "$schema": {
-            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/config.schema.json",
+            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
             "description": "URL of the JSON Schema this configuration follows (the standard $schema annotation), a sibling of Version, for editors and validators. Pinned to the vN tag of the format version it describes, so it identifies one exact schema; point it at a later vN to validate against that version.",
             "title": "$schema",
             "type": "string"
         },
         "Configuration": {
-            "description": "When using the { Version, Configuration } envelope, the configuration object goes here (the same shape as this schema).",
-            "title": "Configuration",
-            "type": "object"
-        },
-        "ConsensusConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the ConsensusConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
-                },
-                {
+            "description": "The configuration itself: each component given inline under its section key, plus the HermodTracing key.",
+            "properties": {
+                "ConsensusConfig": {
                     "description": "ConsensusConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/ConsensusConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "ConsensusMode": {
                             "default": "PraosMode",
                             "description": "Which consensus mode to run (PraosMode or GenesisMode)",
@@ -91,52 +77,118 @@
                     },
                     "title": "ConsensusConfig",
                     "type": "object"
-                }
-            ],
-            "description": "The ConsensusConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "ConsensusConfig"
-        },
-        "HermodTracing": {
-            "anyOf": [
-                {
-                    "format": "path",
-                    "title": "String",
-                    "type": "string"
                 },
-                {
-                    "additionalProperties": {},
-                    "title": "Object",
-                    "type": "object"
-                }
-            ],
-            "description": "Tracing configuration, given as a path to a separate file holding it or as that configuration object inline. Consumed by the node tracing system (trace-dispatcher), which owns its schema; not described further by cardano-config.",
-            "title": "HermodTracing"
-        },
-        "LocalConnectionsConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the LocalConnectionsConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
+                "HermodTracing": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "title": "String",
+                            "type": "string"
+                        },
+                        {
+                            "additionalProperties": {},
+                            "title": "Object",
+                            "type": "object"
+                        }
+                    ],
+                    "description": "Tracing configuration, given as a path to a separate file holding it or as that configuration object inline. Consumed by the node tracing system (trace-dispatcher), which owns its schema; not described further by cardano-config.",
+                    "title": "HermodTracing"
                 },
-                {
+                "LocalConnectionsConfig": {
+                    "dependencies": {
+                        "GrpcListenAddress": [
+                            "GrpcListenPort"
+                        ],
+                        "GrpcSocketPath": {
+                            "not": {
+                                "anyOf": [
+                                    {
+                                        "required": [
+                                            "GrpcListenAddress"
+                                        ]
+                                    },
+                                    {
+                                        "required": [
+                                            "GrpcListenPort"
+                                        ]
+                                    },
+                                    {
+                                        "required": [
+                                            "GrpcTlsCertificateFile"
+                                        ]
+                                    },
+                                    {
+                                        "required": [
+                                            "GrpcTlsPrivateKeyFile"
+                                        ]
+                                    },
+                                    {
+                                        "required": [
+                                            "GrpcTlsChainCertificateFiles"
+                                        ]
+                                    }
+                                ]
+                            }
+                        },
+                        "GrpcTlsCertificateFile": [
+                            "GrpcTlsPrivateKeyFile",
+                            "GrpcListenPort"
+                        ],
+                        "GrpcTlsChainCertificateFiles": [
+                            "GrpcTlsCertificateFile",
+                            "GrpcTlsPrivateKeyFile"
+                        ],
+                        "GrpcTlsPrivateKeyFile": [
+                            "GrpcTlsCertificateFile",
+                            "GrpcListenPort"
+                        ]
+                    },
                     "description": "LocalConnectionsConfig",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/LocalConnectionsConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "EnableGrpc": {
                             "default": false,
                             "description": "Whether to enable the gRPC server",
                             "title": "EnableGrpc",
                             "type": "boolean"
                         },
+                        "GrpcListenAddress": {
+                            "default": "127.0.0.1",
+                            "description": "IP address (IPv4 or IPv6) the gRPC server binds to. Requires GrpcListenPort. Defaults to 127.0.0.1",
+                            "title": "GrpcListenAddress",
+                            "type": "string"
+                        },
+                        "GrpcListenPort": {
+                            "description": "TCP port the gRPC server listens on. When set, the gRPC server listens over HTTP/2 rather than on a unix socket, without TLS unless GrpcTlsCertificateFile is also given. Mutually exclusive with GrpcSocketPath",
+                            "maximum": 65535,
+                            "minimum": 0,
+                            "title": "GrpcListenPort",
+                            "type": "integer"
+                        },
                         "GrpcSocketPath": {
-                            "description": "Path of the gRPC server socket",
+                            "description": "Path of the gRPC server socket. Mutually exclusive with GrpcListenPort",
                             "format": "path",
                             "title": "GrpcSocketPath",
+                            "type": "string"
+                        },
+                        "GrpcTlsCertificateFile": {
+                            "description": "Path of the gRPC server's TLS certificate (PEM). Enables TLS; requires GrpcTlsPrivateKeyFile and GrpcListenPort",
+                            "format": "path",
+                            "title": "GrpcTlsCertificateFile",
+                            "type": "string"
+                        },
+                        "GrpcTlsChainCertificateFiles": {
+                            "description": "Paths of the intermediate certificates to include in the gRPC server's TLS chain (PEM)",
+                            "items": {
+                                "format": "path",
+                                "type": "string"
+                            },
+                            "title": "GrpcTlsChainCertificateFiles",
+                            "type": "array"
+                        },
+                        "GrpcTlsPrivateKeyFile": {
+                            "description": "Path of the private key matching GrpcTlsCertificateFile (PEM). Requires GrpcTlsCertificateFile and GrpcListenPort",
+                            "format": "path",
+                            "title": "GrpcTlsPrivateKeyFile",
                             "type": "string"
                         },
                         "SocketPath": {
@@ -148,26 +200,24 @@
                     },
                     "title": "LocalConnectionsConfig",
                     "type": "object"
-                }
-            ],
-            "description": "The LocalConnectionsConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "LocalConnectionsConfig"
-        },
-        "MempoolConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the MempoolConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
                 },
-                {
+                "MempoolConfig": {
+                    "dependencies": {
+                        "MempoolTimeoutCapacity": [
+                            "MempoolTimeoutSoft",
+                            "MempoolTimeoutHard"
+                        ],
+                        "MempoolTimeoutHard": [
+                            "MempoolTimeoutSoft",
+                            "MempoolTimeoutCapacity"
+                        ],
+                        "MempoolTimeoutSoft": [
+                            "MempoolTimeoutHard",
+                            "MempoolTimeoutCapacity"
+                        ]
+                    },
                     "description": "MempoolConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/MempoolConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "MempoolCapacityBytesOverride": {
                             "anyOf": [
                                 {
@@ -187,48 +237,27 @@
                             "title": "MempoolCapacityBytesOverride"
                         },
                         "MempoolTimeoutCapacity": {
-                            "description": "Capacity mempool timeout, in seconds",
+                            "description": "Capacity mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
                             "title": "MempoolTimeoutCapacity",
                             "type": "number"
                         },
                         "MempoolTimeoutHard": {
-                            "description": "Hard mempool timeout, in seconds",
+                            "description": "Hard mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
                             "title": "MempoolTimeoutHard",
                             "type": "number"
                         },
                         "MempoolTimeoutSoft": {
-                            "description": "Soft mempool timeout, in seconds",
+                            "description": "Soft mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
                             "title": "MempoolTimeoutSoft",
                             "type": "number"
                         }
                     },
                     "title": "MempoolConfig",
                     "type": "object"
-                }
-            ],
-            "description": "The MempoolConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "MempoolConfig"
-        },
-        "MinNodeVersion": {
-            "description": "The minimum cardano-node version expected to run this configuration. A top-level annotation (a sibling of Version), recorded for a consumer to check.",
-            "title": "MinNodeVersion",
-            "type": "string"
-        },
-        "NetworkConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the NetworkConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
                 },
-                {
+                "NetworkConfig": {
                     "description": "NetworkConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/NetworkConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "AcceptedConnectionsLimit": {
                             "description": "Limits on accepted connections\nAcceptedConnectionsLimit",
                             "properties": {
@@ -255,11 +284,6 @@
                                     "type": "integer"
                                 }
                             },
-                            "required": [
-                                "Delay",
-                                "SoftLimit",
-                                "HardLimit"
-                            ],
                             "title": "AcceptedConnectionsLimit",
                             "type": "object"
                         },
@@ -270,6 +294,7 @@
                             "type": "number"
                         },
                         "DeadlineTargetNumberOfActiveBigLedgerPeers": {
+                            "default": 5,
                             "description": "Deadline target of active big ledger peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -277,6 +302,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfActivePeers": {
+                            "default": 20,
                             "description": "Deadline target of active peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -284,6 +310,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfEstablishedBigLedgerPeers": {
+                            "default": 10,
                             "description": "Deadline target of established big ledger peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -291,6 +318,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfEstablishedPeers": {
+                            "default": 30,
                             "description": "Deadline target of established peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -298,6 +326,7 @@
                             "type": "integer"
                         },
                         "DeadlineTargetNumberOfKnownBigLedgerPeers": {
+                            "default": 15,
                             "description": "Deadline target of known big ledger peers",
                             "maximum": 9223372036854775807,
                             "minimum": -9223372036854775808,
@@ -466,26 +495,10 @@
                     },
                     "title": "NetworkConfig",
                     "type": "object"
-                }
-            ],
-            "description": "The NetworkConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "NetworkConfig"
-        },
-        "ProtocolConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the ProtocolConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
                 },
-                {
+                "ProtocolConfig": {
                     "description": "ProtocolConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/ProtocolConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "AlonzoGenesisFile": {
                             "description": "Path to the genesis file",
                             "format": "path",
@@ -570,26 +583,10 @@
                     ],
                     "title": "ProtocolConfig",
                     "type": "object"
-                }
-            ],
-            "description": "The ProtocolConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "ProtocolConfig"
-        },
-        "StorageConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the StorageConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
                 },
-                {
+                "StorageConfig": {
                     "description": "StorageConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/StorageConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "DatabasePath": {
                             "anyOf": [
                                 {
@@ -642,7 +639,7 @@
                                                     "description": "LSM-tree backend options\nLSMOptions",
                                                     "properties": {
                                                         "DatabasePath": {
-                                                            "description": "Custom path to the LSM database",
+                                                            "description": "Custom path to the LSM database. Defaults to \"lsm\" when the backend is LSM",
                                                             "format": "path",
                                                             "title": "DatabasePath",
                                                             "type": "string"
@@ -725,7 +722,7 @@
                                                 "SnapshotInterval": {
                                                     "description": "Slots between snapshots (non-zero)",
                                                     "maximum": 1.8446744073709551615e19,
-                                                    "minimum": 0,
+                                                    "minimum": 1,
                                                     "title": "SnapshotInterval",
                                                     "type": "integer"
                                                 }
@@ -745,26 +742,40 @@
                     },
                     "title": "StorageConfig",
                     "type": "object"
-                }
-            ],
-            "description": "The StorageConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "StorageConfig"
-        },
-        "TestingConfig": {
-            "anyOf": [
-                {
-                    "description": "Path to a file holding the TestingConfig section",
-                    "format": "path",
-                    "title": "File path",
-                    "type": "string"
                 },
-                {
+                "TestingConfig": {
+                    "allOf": [
+                        {
+                            "if": {
+                                "properties": {
+                                    "ExperimentalHardForksEnabled": {
+                                        "const": true,
+                                        "title": "ExperimentalHardForksEnabled",
+                                        "type": "boolean"
+                                    }
+                                },
+                                "required": [
+                                    "ExperimentalHardForksEnabled"
+                                ]
+                            },
+                            "then": {
+                                "required": [
+                                    "DijkstraGenesisFile",
+                                    "DijkstraGenesisHash"
+                                ]
+                            }
+                        }
+                    ],
+                    "dependencies": {
+                        "DijkstraGenesisFile": [
+                            "DijkstraGenesisHash"
+                        ],
+                        "DijkstraGenesisHash": [
+                            "DijkstraGenesisFile"
+                        ]
+                    },
                     "description": "TestingConfiguration",
                     "properties": {
-                        "$schema": {
-                            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v1/schemas/TestingConfig.schema.json",
-                            "title": "$schema"
-                        },
                         "DijkstraGenesisFile": {
                             "description": "Path to the genesis file",
                             "format": "path",
@@ -778,7 +789,7 @@
                         },
                         "ExperimentalHardForksEnabled": {
                             "default": false,
-                            "description": "Enable the experimental eras. When true, a DijkstraGenesisFile and its DijkstraGenesisHash must be given alongside it, or resolution rejects the configuration (a conditional requirement this schema does not express).",
+                            "description": "Enable the experimental eras. When true, a DijkstraGenesisFile and its DijkstraGenesisHash must be given alongside it, or resolution rejects the configuration.",
                             "title": "ExperimentalHardForksEnabled",
                             "type": "boolean"
                         },
@@ -884,17 +895,27 @@
                     "title": "TestingConfig",
                     "type": "object"
                 }
-            ],
-            "description": "The TestingConfig section, given inline (an object) or as a path to a sub-file.",
-            "title": "TestingConfig"
+            },
+            "title": "Configuration",
+            "type": "object"
+        },
+        "MinNodeVersion": {
+            "description": "The minimum cardano-node version expected to run this configuration. A top-level annotation (a sibling of Version), recorded for a consumer to check.",
+            "title": "MinNodeVersion",
+            "type": "string"
         },
         "Version": {
-            "description": "The configuration format version (currently 1). It is the first component of the cardano-config version, which states how far the parser goes: cardano-config-1.y.z.v parses every version up to and including 1, and writes 1.",
+            "description": "The configuration format version (currently 2). It is the first component of the cardano-config version, which states how far the parser goes: cardano-config-2.y.z.v parses every version up to and including 2, and writes 2.",
             "minimum": 1,
             "title": "Version",
             "type": "integer"
         }
     },
+    "required": [
+        "$schema",
+        "Version",
+        "Configuration"
+    ],
     "title": "Cardano node configuration",
     "type": "object"
 }

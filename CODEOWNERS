@@ -14,10 +14,11 @@ perSystem  @IntersectMBO/cardano-node-sre
 flake.lock @IntersectMBO/cardano-node-sre
 
 # Whole directories (the specific rules below override these for individual
-# files). The two whole-configuration schemas (config.schema.json,
-# config.legacy-one-file.schema.json) are covered here.
+# files). The schema and the two default configurations are covered here. Each
+# default holds every component's defaults in one document, so no component
+# team can own its own file any more. Every team owns both.
+defaults/ @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers @IntersectMBO/performance-and-tracing
 schemas/  @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers
-variants/ @IntersectMBO/cardano-node-sre @IntersectMBO/cardano-api-cli-maintainers @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/ouroboros-network-maintainers
 
 # Ledger
 src/Cardano/Configuration/Genesis.hs  @IntersectMBO/cardano-ledger
@@ -30,26 +31,8 @@ src/Cardano/Configuration/File/Storage.hs   @IntersectMBO/ouroboros-consensus-ma
 src/Cardano/Configuration/File/Protocol.hs  @IntersectMBO/ouroboros-consensus-maintainers @IntersectMBO/cardano-ledger
 src/Cardano/Configuration/File/Testing.hs   @IntersectMBO/ouroboros-consensus-maintainers
 
-defaults/ConsensusConfig.json               @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-defaults/MempoolConfig.json                 @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-defaults/StorageConfig.json                 @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-defaults/ProtocolConfig.json                @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-defaults/TestingConfig.json                 @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-
-schemas/ConsensusConfig.schema.json         @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-schemas/MempoolConfig.schema.json           @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-schemas/StorageConfig.schema.json           @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-schemas/ProtocolConfig.schema.json          @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-schemas/TestingConfig.schema.json           @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-consensus-maintainers
-
 # Network
 src/Cardano/Configuration/File/Network.hs   @IntersectMBO/ouroboros-network-maintainers
-
-defaults/NetworkConfig.json                 @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-network-maintainers
-defaults/LocalConnectionsConfig.json        @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-network-maintainers @IntersectMBO/cardano-api-cli-maintainers
-
-schemas/NetworkConfig.schema.json           @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-network-maintainers
-schemas/LocalConnectionsConfig.schema.json  @IntersectMBO/cardano-node-sre @IntersectMBO/ouroboros-network-maintainers @IntersectMBO/cardano-api-cli-maintainers
 
 # Tracing
 src/Cardano/Configuration/File/Tracing.hs   @IntersectMBO/performance-and-tracing
