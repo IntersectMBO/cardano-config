@@ -136,6 +136,7 @@ cases =
   , peerTargetsRejectedCase
   , sectionDecodeErrorCase
   , partialNestedObjectCase
+  , softAboveHardLimitCase
   , defaultConfigParityCase
   , experimentalHardForksDefaultCase
   , mempoolAllUnsetCase
@@ -1113,6 +1114,32 @@ partialNestedObjectCase =
            in if limits == expected
                 then Nothing
                 else Just ("unexpected limits: " <> show limits <> " /= " <> show expected)
+
+-- | A @SoftLimit@ above the @HardLimit@ is rejected at resolution. The fixture
+-- sets only @HardLimit@, at 100, so the rejection is of the shipped @SoftLimit@
+-- of 384: lowering the hard limit alone is the way an operator reaches this.
+-- The partial configuration that raises @HardLimit@ to 1000 resolves, so what
+-- is being rejected is the ordering and not the fixture.
+softAboveHardLimitCase :: TestTree
+softAboveHardLimitCase =
+  testCase "a SoftLimit above the HardLimit fails resolution" $ do
+    above <- resolveExample "test/examples/accepted-connections-soft-above-hard.json"
+    below <- resolveExample "test/examples/partial-accepted-connections-limit.json"
+    expectOk $ case (above, below) of
+      (Left msg, Right ())
+        | "SoftLimit must be no greater than its HardLimit" `isInfixOf` msg -> Nothing
+        | otherwise -> Just ("rejected, but not for the limits: " <> msg)
+      (Right (), _) -> Just "a SoftLimit above the HardLimit resolved"
+      (_, Left e) -> Just ("a SoftLimit below the HardLimit was rejected: " <> e)
+ where
+  resolveExample fp = do
+    path <- getDataFileName fp
+    (cfg, _) <- parseConfigurationFiles path
+    pure $ case cliArgs [] of
+      Nothing -> Left "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left e -> Left (show e)
+        Right _ -> Right ()
 
 -- | A peer target set ouroboros-network will not accept is rejected at
 -- resolution, naming the group it is in. Its governor only asserts

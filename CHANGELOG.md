@@ -159,6 +159,11 @@ Nothing applies it.
 `HardLimit` alone takes `SoftLimit` and `Delay` from the defaults. All three
 used to be required together.
 
+An `AcceptedConnectionsLimit` whose `SoftLimit` exceeds its `HardLimit` is
+rejected at resolution. The check applies after the defaults, so setting
+`HardLimit` below the default `SoftLimit` of 384 without also lowering
+`SoftLimit` fails.
+
 A `Version` below 1 is rejected, naming it. Version 1 is the lowest that has
 ever existed, so `0` and a negative number name no format. Both used to be
 read as version 1 documents and migrated.

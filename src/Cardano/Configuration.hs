@@ -300,6 +300,15 @@ defaultConfigChecks =
                     SJust (File.V2LSM _ exportPath) -> isSJust exportPath
                 _ -> True
       )
+  , ConfigCheck
+      CheckError
+      ( "AcceptedConnectionsLimit's SoftLimit must be no greater than its HardLimit: the node "
+          <> "starts delaying new connections at the soft limit and refuses them at the hard one"
+      )
+      ( \nc ->
+          let l = File.acceptedConnectionsLimitOf (networkConfiguration nc)
+           in File.acceptedConnectionsSoftLimit l <= File.acceptedConnectionsHardLimit l
+      )
   , peerSelectionTargetsCheck
       "Deadline"
       (File.deadlinePeerSelectionTargets . networkConfiguration)
