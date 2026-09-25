@@ -288,9 +288,6 @@ value. The flag names, metavars and help text match the ones `cardano-node`
 accepted before, so your existing scripts keep working. Run
 `cabal run cardano-config -- resolve --help` to read them.
 
-The numeric options take plain decimal digits only. `--port 0x1F1` fails
-rather than binding port 497.
-
 ## Seeing the result
 
 Run `resolve` to see what a configuration comes to, defaults and all:
