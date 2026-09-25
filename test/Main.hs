@@ -8,8 +8,9 @@
 --
 -- The @test/examples/@ and @schemas/@ fixtures are read from the source tree,
 -- resolved against 'packageRoot' (the package directory, baked in at compile
--- time) rather than against the current working directory, so the tests work
--- under @cabal test@, Nix and a source distribution alike. Unlike the files the
+-- time) when it still exists, and against the current working directory
+-- otherwise (see 'getDataFileName'), so the tests work under @cabal test@, Nix
+-- and a source distribution alike. Unlike the files the
 -- library itself needs, which are compiled into it (see
 -- "Cardano.Configuration.Embedded"), the fixtures are read as files: most of
 -- them are fed to the file pipeline, which resolves the genesis paths they name
@@ -77,6 +78,7 @@ import qualified Data.Text as T
 import Data.Word (Word64)
 import Language.Haskell.TH.Syntax (lift)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
+import System.Directory (doesFileExist)
 import System.FS.API (fsPathToList)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -90,8 +92,16 @@ packageRoot = $(makeRelativeToProject "." >>= lift)
 -- | Resolve a fixture path relative to the package root. This replaces the
 -- @Paths_cardano_config@ function of the same name, which resolved the same
 -- files through the Cabal data directory the package no longer installs.
+--
+-- The baked-in root can be gone by the time the tests run: @haskell.nix@
+-- builds the suite in one derivation and runs it in another, and on Darwin each
+-- gets its own randomly named build directory. The run then happens in the
+-- unpacked source tree, so the path is resolved against the working directory
+-- instead.
 getDataFileName :: FilePath -> IO FilePath
-getDataFileName p = pure (packageRoot </> p)
+getDataFileName p = do
+  baked <- doesFileExist (packageRoot </> "cardano-config.cabal")
+  pure (if baked then packageRoot </> p else p)
 
 main :: IO ()
 main = defaultMain $ testGroup "cardano-config" (cases <> [schemaTests])
