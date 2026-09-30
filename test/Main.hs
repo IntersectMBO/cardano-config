@@ -118,6 +118,7 @@ cases =
   , migrationErrorCase
   , formatVersionCase
   , formatVersionCompatibilityCase
+  , version1RenamesCase
   , migrateCase
   , migrateRenameCase
   , migrateNoOverrideCase
@@ -409,6 +410,59 @@ formatVersionCompatibilityCase =
       KM.lookup (K.fromString "Version") o == Just (Number (fromIntegral currentFormatVersion))
         && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
     _ -> False
+
+-- | A version-1 envelope written with the version-1 spellings reaches version 2
+-- with the renames applied: the snapshot options @SnapshotInterval@\/@SlotOffset@
+-- become @Interval@\/@Offset@, a @"NoOverride"@ mempool capacity override is
+-- dropped, and a numeric one is renamed to @CapacityBytesOverride@. The fixture is
+-- read through the parser (which migrates it in memory) and resolved, so the
+-- renamed options also fill in from the Mithril values.
+version1RenamesCase :: TestTree
+version1RenamesCase =
+  testCase "a version-1 envelope is migrated with the snapshot and mempool renames" $ do
+    path <- getDataFileName "test/examples/version1-renames.json"
+    raw <- decodeData "test/examples/version1-renames.json" :: IO (Either String Value)
+    (parsed, warnings) <- parseConfigurationFiles path
+    expectOk $ case raw of
+      Left err -> Just ("could not read the fixture: " <> err)
+      Right v1
+        | OutdatedFormatVersion 1 currentFormatVersion `notElem` warnings ->
+            Just ("reading the version-1 document did not report it: " <> show warnings)
+        | isSJust (mempoolCapacityOverride (mempoolConfiguration parsed)) ->
+            Just "the \"NoOverride\" capacity override was not dropped"
+        | Just problem <- migratedProblem v1 -> Just problem
+        | otherwise -> case resolveConfiguration (C.defaultCliArgs path) parsed of
+            Left err -> Just ("the version-1 document did not resolve: " <> show err)
+            Right (nc, _) ->
+              case snapshots (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
+                SJust (CustomSnapshotPolicy o)
+                  | snapshotFields o == [Just 864, Just 10, Just 600, Just 300, Just 21600, Just 2] -> Nothing
+                other -> Just ("unexpected resolved snapshot options: " <> show other)
+ where
+  -- The same document with a numeric override: after 'migrate' it sits at
+  -- version 2 under the current names only.
+  migratedProblem v1 = case fst (migrated (withNumericOverride v1)) of
+    m@(Object top)
+      | KM.lookup (K.fromString "Version") top /= Just (Number (fromIntegral currentFormatVersion)) ->
+          Just "the version-1 document was not stamped with the current version"
+      | any (`elem` ["SnapshotInterval", "SlotOffset", "MempoolCapacityBytesOverride"]) (allKeys m) ->
+          Just ("an old name survived migration; keys: " <> show (allKeys m))
+      | navigate m ["Configuration", "MempoolConfig", "CapacityBytesOverride"] /= Just (Number 2000000) ->
+          Just "the numeric capacity override was not renamed to CapacityBytesOverride"
+      | otherwise -> Nothing
+    _ -> Just "migrate did not produce an object"
+  withNumericOverride = setAt ["Configuration", "MempoolConfig", "MempoolCapacityBytesOverride"] (Number 2000000)
+  setAt [k] x (Object o) = Object (KM.insert (K.fromString k) x o)
+  setAt (k : ks) x (Object o) = case KM.lookup (K.fromString k) o of
+    Just inner -> Object (KM.insert (K.fromString k) (setAt ks x inner) o)
+    Nothing -> Object o
+  setAt _ _ v = v
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
 
 -- | 'migrate' rewrites the renamed fields to their current names and drops the
 -- removed ones. Renamed flat keys must end up grouped under their section using
