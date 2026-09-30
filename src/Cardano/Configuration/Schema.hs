@@ -81,13 +81,13 @@ rawComponentSchemas :: [(Text, Value)]
 rawComponentSchemas =
   [ (name, withConstraints name raw)
   | (name, raw) <-
-      [ ("StorageConfig", rawStorageSchema)
-      , ("ConsensusConfig", rawConsensusSchema)
-      , ("ProtocolConfig", rawProtocolSchema)
-      , ("NetworkConfig", rawNetworkSchema)
-      , ("LocalConnectionsConfig", rawLocalConnectionsSchema)
-      , ("MempoolConfig", rawMempoolSchema)
-      , ("TestingConfig", rawTestingSchema)
+      [ ("Storage", rawStorageSchema)
+      , ("Consensus", rawConsensusSchema)
+      , ("Protocol", rawProtocolSchema)
+      , ("Network", rawNetworkSchema)
+      , ("LocalConnections", rawLocalConnectionsSchema)
+      , ("Mempool", rawMempoolSchema)
+      , ("Testing", rawTestingSchema)
       ]
   ]
 
@@ -113,7 +113,7 @@ componentConstraints = \case
   -- TCP keys, an address or a TLS credential needs a port, and the certificate
   -- and its private key are given together. Mirrors
   -- 'Cardano.Configuration.Common.grpcEndpointObjectCodec'.
-  "LocalConnectionsConfig" ->
+  "LocalConnections" ->
     dependencies
       [ ("GrpcSocketPath", excludes tcpEndpointKeys)
       , ("GrpcListenAddress", requires ["GrpcListenPort"])
@@ -126,7 +126,7 @@ componentConstraints = \case
       ]
   -- The three mempool timeouts are one coupled default: all set, or all unset.
   -- Mirrors 'Cardano.Configuration.File.Mempool.finalizeMempool'.
-  "MempoolConfig" ->
+  "Mempool" ->
     dependencies
       [ ("MempoolTimeoutSoft", requires ["MempoolTimeoutHard", "MempoolTimeoutCapacity"])
       , ("MempoolTimeoutHard", requires ["MempoolTimeoutSoft", "MempoolTimeoutCapacity"])
@@ -136,7 +136,7 @@ componentConstraints = \case
   -- the experimental eras requires the genesis to run them from.
   -- Mirrors 'Cardano.Configuration.File.Protocol.optionalHashedGenesisObjectCodec'
   -- and 'Cardano.Configuration.File.Testing.finalizeTesting'.
-  "TestingConfig" ->
+  "Testing" ->
     mergeConstraints
       ( dependencies
           [ ("DijkstraGenesisFile", requires ["DijkstraGenesisHash"])
@@ -268,8 +268,8 @@ configDescription =
   T.unwords
     [ "The cardano-node configuration, held in one file."
     , "The document is the { $schema, Version, MinNodeVersion, Configuration } envelope,"
-    , "and Configuration gives each component inline under its section key (e.g. StorageConfig)."
-    , "The mandatory genesis files are supplied through the ProtocolConfig section."
+    , "and Configuration gives each component inline under its section key (e.g. Storage)."
+    , "The mandatory genesis files are supplied through the Protocol section."
     ]
 
 versionRef :: Value

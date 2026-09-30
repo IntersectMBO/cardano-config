@@ -1,7 +1,7 @@
 {
     "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The cardano-node configuration, held in one file. The document is the { $schema, Version, MinNodeVersion, Configuration } envelope, and Configuration gives each component inline under its section key (e.g. StorageConfig). The mandatory genesis files are supplied through the ProtocolConfig section.",
+    "description": "The cardano-node configuration, held in one file. The document is the { $schema, Version, MinNodeVersion, Configuration } envelope, and Configuration gives each component inline under its section key (e.g. Storage). The mandatory genesis files are supplied through the Protocol section.",
     "properties": {
         "$schema": {
             "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
@@ -12,7 +12,7 @@
         "Configuration": {
             "description": "The configuration itself: each component given inline under its section key, plus the HermodTracing key.",
             "properties": {
-                "ConsensusConfig": {
+                "Consensus": {
                     "description": "ConsensusConfiguration",
                     "properties": {
                         "ConsensusMode": {
@@ -75,7 +75,7 @@
                             "type": "object"
                         }
                     },
-                    "title": "ConsensusConfig",
+                    "title": "Consensus",
                     "type": "object"
                 },
                 "HermodTracing": {
@@ -94,7 +94,7 @@
                     "description": "Tracing configuration, given as a path to a separate file holding it or as that configuration object inline. Consumed by the node tracing system (trace-dispatcher), which owns its schema; not described further by cardano-config.",
                     "title": "HermodTracing"
                 },
-                "LocalConnectionsConfig": {
+                "LocalConnections": {
                     "dependencies": {
                         "GrpcListenAddress": [
                             "GrpcListenPort"
@@ -198,10 +198,10 @@
                             "type": "string"
                         }
                     },
-                    "title": "LocalConnectionsConfig",
+                    "title": "LocalConnections",
                     "type": "object"
                 },
-                "MempoolConfig": {
+                "Mempool": {
                     "dependencies": {
                         "MempoolTimeoutCapacity": [
                             "MempoolTimeoutSoft",
@@ -241,10 +241,10 @@
                             "type": "number"
                         }
                     },
-                    "title": "MempoolConfig",
+                    "title": "Mempool",
                     "type": "object"
                 },
-                "NetworkConfig": {
+                "Network": {
                     "description": "NetworkConfiguration",
                     "properties": {
                         "AcceptedConnectionsLimit": {
@@ -482,10 +482,10 @@
                             "type": "string"
                         }
                     },
-                    "title": "NetworkConfig",
+                    "title": "Network",
                     "type": "object"
                 },
-                "ProtocolConfig": {
+                "Protocol": {
                     "description": "ProtocolConfiguration",
                     "properties": {
                         "AlonzoGenesisFile": {
@@ -570,10 +570,10 @@
                         "ByronGenesisHash",
                         "ByronGenesisFile"
                     ],
-                    "title": "ProtocolConfig",
+                    "title": "Protocol",
                     "type": "object"
                 },
-                "StorageConfig": {
+                "Storage": {
                     "description": "StorageConfiguration",
                     "properties": {
                         "DatabasePath": {
@@ -736,10 +736,10 @@
                             "type": "object"
                         }
                     },
-                    "title": "StorageConfig",
+                    "title": "Storage",
                     "type": "object"
                 },
-                "TestingConfig": {
+                "Testing": {
                     "allOf": [
                         {
                             "if": {
@@ -888,7 +888,7 @@
                             "type": "integer"
                         }
                     },
-                    "title": "TestingConfig",
+                    "title": "Testing",
                     "type": "object"
                 }
             },

@@ -459,11 +459,11 @@ resolveConfigurationWith checks cli file = do
         File.mergeValues (File.defaultConfiguration role) (File.userConfiguration file)
       section :: FromJSON a => String -> Either ConfigResolutionError a
       section name = either (Left . SectionDecodeError name) Right (File.decodeSection merged name)
-  network <- section "NetworkConfig" >>= finalize . File.finalizeNetwork
-  testing <- section "TestingConfig" >>= finalize . File.finalizeTesting
-  mempool <- section "MempoolConfig" >>= finalize . File.finalizeMempool
+  network <- section "Network" >>= finalize . File.finalizeNetwork
+  testing <- section "Testing" >>= finalize . File.finalizeTesting
+  mempool <- section "Mempool" >>= finalize . File.finalizeMempool
   -- Local connections additionally take CLI overrides before being finalized.
-  lcc <- section "LocalConnectionsConfig"
+  lcc <- section "LocalConnections"
   let cliGrpcEndpoint = CLI.grpcEndpointCLI cli
       lccWithCli =
         lcc
@@ -489,9 +489,9 @@ resolveConfigurationWith checks cli file = do
   -- itself, the other two in their descriptions, JSON Schema having no way to
   -- write a default of three coupled values or one that applies under a single
   -- backend.
-  sc <- section "StorageConfig"
-  pc <- section "ProtocolConfig"
-  consensus <- section "ConsensusConfig"
+  sc <- section "Storage"
+  pc <- section "Protocol"
+  consensus <- section "Consensus"
   dbPath <- finalize $ require "DatabasePath" (CLI.databasePathCLI cli <|> File.databasePath sc)
   consensusMode <- finalize $ require "ConsensusMode" (getConsensusConfiguration consensus)
   startNonProducing <-

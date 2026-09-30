@@ -39,7 +39,7 @@ and each message names what is missing.
 
 ### One file
 
-A section key such as `StorageConfig` or `ProtocolConfig` used to take either
+A section key such as `Storage` or `Protocol` used to take either
 an inline object or a path to a separate file. It now takes the inline object
 alone. A section that holds anything else is rejected, and the error names the
 section. The genesis files and the `HermodTracing` file are unaffected,
@@ -108,7 +108,7 @@ the three coupled mempool timeouts, and the LSM `DatabasePath` default of
 ### The gRPC endpoint
 
 The gRPC server used to listen only on a unix socket. It can now listen over
-HTTP/2 on a TCP port, with or without TLS. `LocalConnectionsConfig` gains five
+HTTP/2 on a TCP port, with or without TLS. `LocalConnections` gains five
 keys:
 
 - `GrpcListenAddress`
@@ -188,6 +188,17 @@ only a document already at the current version that migration still changed.
 
 The `migrate` command used to print `ExitFailure 1` under a message it had
 already written. It no longer does.
+
+### Section names
+
+The sections under `Configuration` lose their `Config` suffix:
+`ConsensusConfig` is now `Consensus`, and likewise `LocalConnections`,
+`Mempool`, `Network`, `Protocol`, `Storage` and `Testing`. `HermodTracing`
+keeps its name.
+
+`migrate` renames the sections. The legacy `Protocol` selector is still
+dropped, but only when it is not an object, so the new `Protocol` section
+survives.
 
 ### The mempool capacity override
 

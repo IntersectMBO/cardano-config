@@ -287,14 +287,14 @@ parseConfigurationBody root minNodeVer configValue = do
   -- parsers cannot read is reported against the file while it is in hand.
   -- Resolution reads them again from the merge of the role defaults with this
   -- configuration, because only then is the role known.
-  storage <- parseSection @(StorageConfiguration StrictMaybe) configValue "StorageConfig"
-  consensus <- parseSection @(ConsensusConfiguration StrictMaybe) configValue "ConsensusConfig"
-  protocol <- parseSection @(ProtocolConfiguration StrictMaybe) configValue "ProtocolConfig"
-  network <- parseSection @(NetworkConfiguration StrictMaybe) configValue "NetworkConfig"
+  storage <- parseSection @(StorageConfiguration StrictMaybe) configValue "Storage"
+  consensus <- parseSection @(ConsensusConfiguration StrictMaybe) configValue "Consensus"
+  protocol <- parseSection @(ProtocolConfiguration StrictMaybe) configValue "Protocol"
+  network <- parseSection @(NetworkConfiguration StrictMaybe) configValue "Network"
   localConnections <-
-    parseSection @(LocalConnectionsConfig StrictMaybe) configValue "LocalConnectionsConfig"
-  mempool <- parseSection @(MempoolConfiguration StrictMaybe) configValue "MempoolConfig"
-  testing <- parseSection @(TestingConfiguration StrictMaybe) configValue "TestingConfig"
+    parseSection @(LocalConnectionsConfig StrictMaybe) configValue "LocalConnections"
+  mempool <- parseSection @(MempoolConfiguration StrictMaybe) configValue "Mempool"
+  testing <- parseSection @(TestingConfiguration StrictMaybe) configValue "Testing"
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
   -- 'TraceConfig' — reading the referenced file, or the inline object directly.
@@ -376,7 +376,7 @@ readEraGenesisOrThrow ::
 readEraGenesisOrThrow root fileKey (Hashed file mHash) = do
   result <- readGenesisFile mHash (root </> file)
   case result of
-    Left err -> throwIO (genesisReadErrorAt "ProtocolConfig" fileKey err)
+    Left err -> throwIO (genesisReadErrorAt "Protocol" fileKey err)
     Right genesis -> pure genesis
 
 -- | Read, hash-check and decode the Byron genesis (canonical JSON), throwing a
@@ -390,14 +390,14 @@ readByronGenesisOrThrow root rnm (Hashed file expected) = do
       throwIO $
         ConfigurationParsingError
           (SJust (root </> file))
-          (SJust "ProtocolConfig")
+          (SJust "Protocol")
           [Key "ByronGenesisFile"]
           err
     Right cfg -> pure cfg
 
 -- | Read and decode the experimental (Dijkstra) genesis referenced by the
 -- testing configuration, turning a read\/hash\/decode failure into a
--- 'ConfigurationParsingError' under the @TestingConfig@ section.
+-- 'ConfigurationParsingError' under the @Testing@ section.
 --
 -- Whether to read it at all is the caller's decision: it is called only when
 -- @ExperimentalHardForksEnabled@ is on (see 'experimentalGenesisConfig').
@@ -406,7 +406,7 @@ readExperimentalGenesisOrThrow ::
 readExperimentalGenesisOrThrow root mRef = do
   result <- resolveExperimentalGenesis root mRef
   case result of
-    Left err -> throwIO (genesisReadErrorAt "TestingConfig" "DijkstraGenesisFile" err)
+    Left err -> throwIO (genesisReadErrorAt "Testing" "DijkstraGenesisFile" err)
     Right genesis -> pure genesis
 
 -- | Check the genesis initial-data injection the geneses ask for, throwing a
@@ -433,7 +433,7 @@ checkInjectionOrThrow injectionRoot sg cg = do
       throwIO $
         ConfigurationParsingError
           SNothing
-          (SJust "ProtocolConfig")
+          (SJust "Protocol")
           [Key (K.fromString (slotGenesisFile slot))]
           (renderInjectionSlot slot <> " " <> why)
 

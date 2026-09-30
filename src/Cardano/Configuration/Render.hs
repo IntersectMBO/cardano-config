@@ -13,7 +13,7 @@
 -- The decoded era genesis values are large, so they are included only when
 -- 'IncludeGeneses' is passed (the @--with-geneses@ flag of @cardano-config
 -- resolve@); otherwise only their file reference and hash appear, under
--- @ProtocolConfig@.
+-- @Protocol@.
 module Cardano.Configuration.Render
   ( nodeConfigurationToJSON
   , GenesisRendering (..)
@@ -33,7 +33,7 @@ import Data.Maybe (mapMaybe)
 -- values.
 data GenesisRendering
   = -- | Omit the genesis values; only their file reference\/hash appears (under
-    --       @ProtocolConfig@). The default for @cardano-config resolve@.
+    --       @Protocol@). The default for @cardano-config resolve@.
     OmitGeneses
   | -- | Include the decoded genesis value of every era (the @--with-geneses@ flag).
     IncludeGeneses
@@ -45,13 +45,13 @@ data GenesisRendering
 nodeConfigurationToJSON :: GenesisRendering -> NodeConfiguration -> Value
 nodeConfigurationToJSON geneses nc =
   object $
-    [ "StorageConfig" .= toJSON (weakenStorage (storageConfiguration nc))
-    , "ConsensusConfig" .= toJSON (weakenConsensus (consensusConfiguration nc))
-    , "ProtocolConfig" .= toJSON (weakenProtocol (protocolConfiguration nc))
-    , "NetworkConfig" .= toJSON (weakenNetwork (networkConfiguration nc))
-    , "LocalConnectionsConfig" .= toJSON (weakenLocalConnections (localConnectionsConfig nc))
-    , "MempoolConfig" .= toJSON (weakenMempool (mempoolConfiguration nc))
-    , "TestingConfig" .= toJSON (weakenTesting (testingConfiguration nc))
+    [ "Storage" .= toJSON (weakenStorage (storageConfiguration nc))
+    , "Consensus" .= toJSON (weakenConsensus (consensusConfiguration nc))
+    , "Protocol" .= toJSON (weakenProtocol (protocolConfiguration nc))
+    , "Network" .= toJSON (weakenNetwork (networkConfiguration nc))
+    , "LocalConnections" .= toJSON (weakenLocalConnections (localConnectionsConfig nc))
+    , "Mempool" .= toJSON (weakenMempool (mempoolConfiguration nc))
+    , "Testing" .= toJSON (weakenTesting (testingConfiguration nc))
     , "Runtime" .= runtimeValue nc
     ]
       <> tracingFields
@@ -66,7 +66,7 @@ nodeConfigurationToJSON geneses nc =
   -- The resolved (parsed) era geneses, rendered through the ledger's @aeson@
   -- 'toJSON' instances (and, for Byron, its canonical-JSON form), so the dump
   -- shows the decoded genesis content rather than just the file reference and
-  -- hash (which always appear under @ProtocolConfig@). These are exactly the
+  -- hash (which always appear under @Protocol@). These are exactly the
   -- files read and hash-checked while parsing the configuration. Included only
   -- under 'IncludeGeneses', as they are large.
   genesisFields = case geneses of

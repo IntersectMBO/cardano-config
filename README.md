@@ -25,7 +25,7 @@ envelope, which holds four keys and nothing else:
   "Version": 2,
   "MinNodeVersion": "11.2",
   "Configuration": {
-    "ProtocolConfig": {
+    "Protocol": {
       "RequiresNetworkMagic": "RequiresNoMagic",
       "ByronGenesisFile": "mainnet-byron-genesis.json",
       "ByronGenesisHash": "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
@@ -36,13 +36,13 @@ envelope, which holds four keys and nothing else:
       "ConwayGenesisFile": "mainnet-conway-genesis.json",
       "ConwayGenesisHash": "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62"
     },
-    "StorageConfig": { "LedgerDB": { "Backend": "V2InMemory" } }
+    "Storage": { "LedgerDB": { "Backend": "V2InMemory" } }
   }
 }
 ```
 
 `Configuration` holds the configuration itself. Each component goes inline
-under its section key, such as `ProtocolConfig` or `StorageConfig`. Tracing is
+under its section key, such as `Protocol` or `Storage`. Tracing is
 not a section. It is the single `HermodTracing` key beside them.
 
 `$schema` names the schema the file follows. `Version` is the format version.
@@ -57,8 +57,8 @@ write for. Editors and validators use it to find the schema.
 
 Some fields reference other JSON files:
 
-- the four genesis files, under `ProtocolConfig`
-- the experimental genesis file, under `TestingConfig`
+- the four genesis files, under `Protocol`
+- the experimental genesis file, under `Testing`
 - the tracing configuration, if `HermodTracing` is a string and not an object
 
 ## Mandatory keys
@@ -71,7 +71,7 @@ Eight keys have no default. Parsing fails when one is absent:
 - `ConwayGenesisFile` and `ConwayGenesisHash`
 
 These values differ per network, so the defaults do not name them. Write them
-into `ProtocolConfig` yourself.
+into `Protocol` yourself.
 
 ## Defaults and layering
 
@@ -82,7 +82,7 @@ The package ships two default configurations, under [`defaults/`](defaults/):
 - [`config.relay.json`](defaults/config.relay.json), for a node that does not
 
 Each is a complete configuration, in the same envelope you write. Each holds
-the defaults of every component. The two differ in three `NetworkConfig`
+the defaults of every component. The two differ in three `Network`
 values: `DeadlineTargetNumberOfRootPeers`, `DeadlineTargetNumberOfKnownPeers`
 and `PeerSharing`. That difference is what the two roles mean here.
 
@@ -195,7 +195,7 @@ An unknown key inside a section is ignored without a warning.
 
 ## The gRPC endpoint
 
-The schema describes the `Grpc*` keys of `LocalConnectionsConfig`, one by one,
+The schema describes the `Grpc*` keys of `LocalConnections`, one by one,
 along with the rules that tie them together. Four facts about the endpoint do
 not fit in a schema, so they are here.
 
@@ -294,17 +294,17 @@ Run `resolve` to see what a configuration comes to, defaults and all:
 
 ```console
 $ cardano-config resolve --config <your-config.json> --<other node options>
-ConsensusConfig:
+Consensus:
   ConsensusMode: PraosMode
-LocalConnectionsConfig:
+LocalConnections:
   EnableGrpc: false
-NetworkConfig:
+Network:
   ...
 ```
 
 Add `--with-geneses` to include every decoded era genesis. The output grows
 large. Without the flag, each genesis appears as a path and a hash under
-`ProtocolConfig`.
+`Protocol`.
 
 ## Notes on networks
 

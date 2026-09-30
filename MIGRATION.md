@@ -76,6 +76,19 @@ the same key sits in both places, the one inside `Configuration` wins, and
 | `TargetNumberOfActiveBigLedgerPeers` | `DeadlineTargetNumberOfActiveBigLedgerPeers` |
 | `MempoolCapacityBytesOverride` | `CapacityBytesOverride` |
 
+The sections lose their `Config` suffix. They are renamed only directly under
+`Configuration`, where sections live:
+
+| Old name | Current name |
+|----------|--------------|
+| `ConsensusConfig` | `Consensus` |
+| `LocalConnectionsConfig` | `LocalConnections` |
+| `MempoolConfig` | `Mempool` |
+| `NetworkConfig` | `Network` |
+| `ProtocolConfig` | `Protocol` |
+| `StorageConfig` | `Storage` |
+| `TestingConfig` | `Testing` |
+
 These three are renamed only inside an `AcceptedConnectionsLimit` object,
 because the names are too common to rewrite anywhere else:
 
@@ -105,7 +118,7 @@ override, and `"NoOverride"` is no longer a valid value.
 | `LastKnownBlockVersion-Alt` | Comes from consensus defaults. |
 | `ApplicationVersion` | The Byron software version number, now fixed in code. |
 | `EnableP2P` | P2P is the only mode. |
-| `Protocol` | The protocol selector no longer selects anything. |
+| `Protocol` | The protocol selector no longer selects anything. Only a non-object value is dropped, because `Protocol` is also a section. |
 | `MaxKnownMajorProtocolVersion` | The node never read it. |
 
 These belonged to the old logging system, which `trace-dispatcher` replaced.
@@ -119,7 +132,7 @@ to remove at any depth:
 
 Older files wrote many keys flat, at the top level. `migrate` moves each one
 under the section that owns it. For example `ConsensusMode` moves under
-`ConsensusConfig`, and `LedgerDB` moves under `StorageConfig`.
+`Consensus`, and `LedgerDB` moves under `Storage`.
 
 Three groups change shape as well as place.
 

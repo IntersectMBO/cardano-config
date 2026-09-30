@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
   "Version": 2,
   "Configuration": {
-    "StorageConfig": {
+    "Storage": {
       "DatabasePath": {
         "ImmutablePath": "imm",
         "VolatilePath": "vol"
@@ -17,10 +17,10 @@
         }
       }
     },
-    "ConsensusConfig": {
+    "Consensus": {
       "ConsensusMode": "PraosMode"
     },
-    "ProtocolConfig": {
+    "Protocol": {
       "ByronGenesisFile": "mainnet-byron-genesis.json",
       "ByronGenesisHash": "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
       "RequiresNetworkMagic": "RequiresNoMagic",
@@ -33,23 +33,23 @@
       "CheckpointsFile": "mainnet-checkpoints.json",
       "CheckpointsFileHash": "3e6dee5bae7acc6d870187e72674b37c929be8c66e62a552cf6a876b1af31ade"
     },
-    "NetworkConfig": {
+    "Network": {
       "AcceptedConnectionsLimit": {
         "HardLimit": 100
       }
     },
-    "LocalConnectionsConfig": {
+    "LocalConnections": {
       "SocketPath": "node.socket",
       "EnableGrpc": true,
       "GrpcSocketPath": "rpc.sock"
     },
-    "TestingConfig": {
+    "Testing": {
       "ExperimentalHardForksEnabled": true,
       "DijkstraGenesisFile": "dijkstra-genesis.json",
       "DijkstraGenesisHash": "c028ebe7fc962cbf2d9cfd73b9d3a932ff183d5bbe654abc760e766287b21e5e",
       "TestShelleyHardForkAtEpoch": 2
     },
-    "MempoolConfig": {
+    "Mempool": {
       "CapacityBytesOverride": 1000000
     }
   }

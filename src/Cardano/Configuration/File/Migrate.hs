@@ -32,9 +32,12 @@
 --     @$schema@ it pins. A document declaring a /newer/ version keeps it, since
 --     migration never goes backwards, and the reader rejects it. An existing
 --     @MinNodeVersion@ is carried through;
+--   * a section still carrying its old @Config@ suffix (@StorageConfig@,
+--     @NetworkConfig@, …) is renamed to its current name (@Storage@,
+--     @Network@, …) at the @Configuration@ level (see 'sectionRenames');
 --   * a flat top-level property key is nested under the component section that
---     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
---     @StorageConfig@);
+--     owns it (e.g. @ConsensusMode@ under @Consensus@, @LedgerDB@ under
+--     @Storage@);
 --   * the flat snapshot-option keys directly under @LedgerDB@ (@SnapshotInterval@,
 --     @NumOfDiskSnapshots@, …) are gathered into a nested @LedgerDB.Snapshots@
 --     object, where @SnapshotInterval@\/@SlotOffset@ are renamed to
@@ -164,7 +167,8 @@ acceptedConnectionsLimitFields =
 -- @PBftSignatureThreshold@ now come from consensus defaults rather than config;
 -- @ApplicationVersion@ is the (now hard-coded) Byron software-version number;
 -- @EnableP2P@ is the vestigial P2P switch (P2P is now the only mode);
--- @Protocol@ is the vestigial protocol selector; and @MaxKnownMajorProtocolVersion@
+-- @Protocol@ is the vestigial protocol selector (dropped only when it is not an
+-- object, since @Protocol@ is also the name of a section); and @MaxKnownMajorProtocolVersion@
 -- is a dead key the node never read at all. Unlike a genuine typo (which is kept,
 -- so nothing is lost) these are known-obsolete keys, so @migrate@ removes them
 -- rather than carry them forward as perpetual unrecognised-key warnings.
@@ -216,9 +220,12 @@ renameLegacy (Object o0) =
   rekeyed =
     [ rekey (k, v)
     | (k, v) <- KM.toList o
-    , K.toText k `notElem` removedFields
+    , not (isRemoved k v)
     , K.toText k `notElem` collidingOld
     ]
+  -- @Protocol@ is both a removed key (the legacy protocol selector, a string) and
+  -- the current name of a section (an object), so only the former is dropped.
+  isRemoved k v = K.toText k `elem` removedFields && not (K.toText k == "Protocol" && isObject v)
   pairs = map fst rekeyed
   rekey (k, v) =
     let (v', w) = renameLegacy v
@@ -415,13 +422,32 @@ reshape (Object top)
   body = KM.unionWith mergeValues siblings envelopeBody
   collisionWarnings =
     [EnvelopeKeyCollision (K.toText k) | k <- KM.keys siblings, k `KM.member` envelopeBody]
+      <> [RenamedKeyCollision old new | (old, new) <- sectionCollisions]
+
+  -- Rename the sections that carried a @Config@ suffix ('sectionRenames'). This
+  -- happens only at this level, where sections live. Where both the old and the
+  -- current name are present the current one wins, with a 'RenamedKeyCollision'
+  -- warning, as for the other renames.
+  sectionCollisions =
+    [ (old, new)
+    | (old, new) <- sectionRenames
+    , K.fromText old `KM.member` body
+    , K.fromText new `KM.member` body
+    ]
+  renamedBody =
+    KM.fromList
+      [ (rename sectionRenames k, v)
+      | (k, v) <- KM.toList body
+      , K.toText k `notElem` map fst sectionCollisions
+      ]
 
   -- A section that does not hold an object cannot be migrated: the values it
-  -- stands for are in another file, which migrate does not read.
+  -- stands for are in another file, which migrate does not read. It is reported
+  -- under the name the document used, old or current.
   notInline =
     [ (K.toText k, v)
     | (k, v) <- KM.toList body
-    , K.toText k `elem` sectionNames
+    , K.toText k `elem` sectionNames <> map fst sectionRenames
     , not (isObject v)
     ]
 
@@ -435,7 +461,7 @@ reshape (Object top)
   -- A mixed input (a section object plus some of its flat keys, or HermodTracing
   -- alongside flat tracing keys) is deep-merged. Every section present holds an
   -- object (checked above), so nesting never has to merge into a non-object.
-  configuration = KM.foldrWithKey place KM.empty body
+  configuration = KM.foldrWithKey place KM.empty renamedBody
   place k v
     | key `elem` tracingObsoleteKeys = id
     | key `elem` tracingLegacyKeys = nestUnderAs "HermodTracing" k
@@ -459,6 +485,20 @@ isObject _ = False
 -- | Top-level keys that belong to the envelope, not to the configuration body.
 envelopeAnnotations :: [Text]
 envelopeAnnotations = ["$schema", "Version", "MinNodeVersion", "Configuration"]
+
+-- | The sections renamed when they lost their @Config@ suffix, as @(old, new)@.
+-- They are renamed only at the @Configuration@ level (see 'reshape'); the
+-- current names are too generic to rewrite anywhere else.
+sectionRenames :: [(Text, Text)]
+sectionRenames =
+  [ ("ConsensusConfig", "Consensus")
+  , ("LocalConnectionsConfig", "LocalConnections")
+  , ("MempoolConfig", "Mempool")
+  , ("NetworkConfig", "Network")
+  , ("ProtocolConfig", "Protocol")
+  , ("StorageConfig", "Storage")
+  , ("TestingConfig", "Testing")
+  ]
 
 -- | The name of every component section, so a section holding something other
 -- than its configuration object can be reported.
