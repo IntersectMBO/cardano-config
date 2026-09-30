@@ -189,6 +189,21 @@ only a document already at the current version that migration still changed.
 The `migrate` command used to print `ExitFailure 1` under a message it had
 already written. It no longer does.
 
+### Snapshots
+
+Two snapshot options are renamed inside `LedgerDB.Snapshots`:
+`SnapshotInterval` is now `Interval`, and `SlotOffset` is now `Offset`.
+`migrate` rewrites both, whether they sit flat under `LedgerDB` or already
+inside `Snapshots`. The parser rejects the old names.
+
+The Mithril `MaxDelay` is now 21600 seconds, which is `10 * k` on mainnet. It
+used to be 600. `mithrilSnapshotOptions` carries the new value.
+
+The default configurations spell the Mithril values out rather than naming the
+`"Mithril"` policy. The warning for a Mithril policy under `V2LSM` with no
+`LSMExportPath` now matches the policy by its values, so it still fires for the
+default and for a partial policy that fills in to the Mithril values.
+
 ### The Haskell API
 
 The networking types come from `ouroboros-network` instead of being declared

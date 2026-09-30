@@ -55,6 +55,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
 import Data.List (nub)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Version (versionBranch)
@@ -467,7 +468,7 @@ titleProperties o =
 -- accepts. Keyed by the property name, which is unique across the
 -- configuration, so it is matched at any depth.
 --
--- @SnapshotInterval@ is a 'Data.Word.Word64', so its derived schema admits 0,
+-- @Interval@ (the snapshot interval) is a 'Data.Word.Word64', so its derived schema admits 0,
 -- which @snapshotIntervalCodec@ rejects. Like 'componentConstraints' this
 -- states what validates, so it is frozen with the format version.
 constrainProperties :: KM.KeyMap Value -> KM.KeyMap Value
@@ -483,7 +484,7 @@ constrainProperties o =
 -- | The property-level narrowings applied by 'constrainProperties'.
 propertyConstraints :: [(Text, KM.KeyMap Value)]
 propertyConstraints =
-  [ ("SnapshotInterval", KM.singleton "minimum" (Number 1))
+  [ ("Interval", KM.singleton "minimum" (Number 1))
   ]
 
 -- | Attach the 'propertyDefaults' to the properties they name. A @default@
@@ -618,22 +619,17 @@ configSchemaWithDefaults defs =
 
 -- | Fill in the @default@ keywords of a schema from a defaults object (a config
 -- object keyed by the configuration keys). Each value is placed at
--- @properties.<key>.default@, recursing into nested objects so leaf defaults
--- land on leaf properties.
+-- @properties.<key>.default@, recursing into a nested object only where the
+-- schema itself has @properties@ there, so leaf defaults land on leaf
+-- properties. An object default for a property without @properties@ (e.g. one
+-- that is an @anyOf@ of a string and an object, like @Snapshots@) is kept whole as
+-- that property's @default@, rather than inventing @properties@ next to the
+-- @anyOf@.
 withDefaults :: Value -> Value -> Value
-withDefaults defaultsObj schema = deepMerge schema (defaultsOverlay defaultsObj)
-
--- | Turn a defaults object into a schema overlay carrying only @default@s, to be
--- deep-merged into a schema.
-defaultsOverlay :: Value -> Value
-defaultsOverlay = \case
-  Object o -> object ["properties" .= Object (KM.map leaf o)]
-  v -> object ["default" .= v]
+withDefaults (Object defs) (Object schema)
+  | Just (Object props) <- KM.lookup "properties" schema =
+      Object (KM.insert "properties" (Object (KM.foldrWithKey place props defs)) schema)
  where
-  leaf v@(Object _) = defaultsOverlay v
-  leaf v = object ["default" .= v]
-
--- | Deep, right-biased merge of two JSON values (objects merge key by key).
-deepMerge :: Value -> Value -> Value
-deepMerge (Object a) (Object b) = Object (KM.unionWith deepMerge a b)
-deepMerge _ b = b
+  place k v acc = KM.insert k (withDefaults v (fromMaybe (Object KM.empty) (KM.lookup k acc))) acc
+withDefaults v (Object schema) = Object (KM.insert "default" v schema)
+withDefaults v _ = object ["default" .= v]

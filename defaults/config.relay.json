@@ -63,7 +63,14 @@
             "DatabasePath": "db",
             "LedgerDB": {
                 "Backend": "V2InMemory",
-                "Snapshots": "Mithril",
+                "Snapshots": {
+                    "Interval": 432000,
+                    "Offset": 388800,
+                    "RateLimit": 600,
+                    "MinDelay": 300,
+                    "MaxDelay": 21600,
+                    "NumOfDiskSnapshots": 2
+                },
                 "QueryBatchSize": 100000
             }
         },

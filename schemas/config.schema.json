@@ -684,6 +684,13 @@
                                         {
                                             "description": "SnapshotOptions",
                                             "properties": {
+                                                "Interval": {
+                                                    "description": "Slots between snapshots (non-zero)",
+                                                    "maximum": 1.8446744073709551615e19,
+                                                    "minimum": 1,
+                                                    "title": "Interval",
+                                                    "type": "integer"
+                                                },
                                                 "MaxDelay": {
                                                     "description": "Upper bound (seconds) of the random snapshot delay",
                                                     "maximum": 1.8446744073709551615e19,
@@ -705,25 +712,18 @@
                                                     "title": "NumOfDiskSnapshots",
                                                     "type": "integer"
                                                 },
+                                                "Offset": {
+                                                    "description": "Slot at which the snapshot schedule is anchored",
+                                                    "maximum": 1.8446744073709551615e19,
+                                                    "minimum": 0,
+                                                    "title": "Offset",
+                                                    "type": "integer"
+                                                },
                                                 "RateLimit": {
                                                     "description": "Minimum seconds between snapshots",
                                                     "maximum": 1.8446744073709551615e19,
                                                     "minimum": 0,
                                                     "title": "RateLimit",
-                                                    "type": "integer"
-                                                },
-                                                "SlotOffset": {
-                                                    "description": "Slot at which the snapshot schedule is anchored",
-                                                    "maximum": 1.8446744073709551615e19,
-                                                    "minimum": 0,
-                                                    "title": "SlotOffset",
-                                                    "type": "integer"
-                                                },
-                                                "SnapshotInterval": {
-                                                    "description": "Slots between snapshots (non-zero)",
-                                                    "maximum": 1.8446744073709551615e19,
-                                                    "minimum": 1,
-                                                    "title": "SnapshotInterval",
                                                     "type": "integer"
                                                 }
                                             },
@@ -731,7 +731,14 @@
                                             "type": "object"
                                         }
                                     ],
-                                    "default": "Mithril",
+                                    "default": {
+                                        "Interval": 432000,
+                                        "MaxDelay": 21600,
+                                        "MinDelay": 300,
+                                        "NumOfDiskSnapshots": 2,
+                                        "Offset": 388800,
+                                        "RateLimit": 600
+                                    },
                                     "description": "Snapshot policy: \"Mithril\" or an object of snapshot options",
                                     "title": "Snapshots"
                                 }

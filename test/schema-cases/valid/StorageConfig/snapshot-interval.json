@@ -5,7 +5,7 @@
         "StorageConfig": {
             "LedgerDB": {
                 "Snapshots": {
-                    "SnapshotInterval": 864
+                    "Interval": 864
                 }
             }
         }

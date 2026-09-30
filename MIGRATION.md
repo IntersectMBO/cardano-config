@@ -126,6 +126,17 @@ object:
 `SnapshotInterval`, `SlotOffset`, `RateLimit`, `MinDelay`, `MaxDelay`,
 `NumOfDiskSnapshots`.
 
+Inside `Snapshots`, two of them are renamed:
+
+| Old name | Current name |
+|----------|--------------|
+| `SnapshotInterval` | `Interval` |
+| `SlotOffset` | `Offset` |
+
+The rename applies to the moved keys and to a `Snapshots` object already in
+place. The names are too common to rewrite anywhere else. If both spellings
+are present, the current name wins, with a `RenamedKeyCollision` warning.
+
 If a `Snapshots` key is already present, it wins, and the flat keys are
 dropped. `Snapshots` can be the string `"Mithril"`, which is a policy rather
 than a set of values, so merging the two makes no sense.

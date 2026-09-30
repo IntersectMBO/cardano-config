@@ -123,6 +123,7 @@ cases =
   , migrateTracingCase
   , migrateApplicationNameCase
   , migrateLedgerDbSnapshotsCase
+  , migrateSnapshotRenameCase
   , migrateLedgerDbBackendCase
   , backendRoundTripCase
   , migrateSiblingCase
@@ -586,7 +587,8 @@ migrateApplicationNameCase =
 
 -- | 'migrate' gathers the flat snapshot-option keys directly under @LedgerDB@
 -- (which legacy configs and the node parser accept there) into a nested
--- @LedgerDB.Snapshots@ object — the form cardano-config's @LedgerDB@ codec reads.
+-- @LedgerDB.Snapshots@ object — the form cardano-config's @LedgerDB@ codec reads —
+-- renaming @SnapshotInterval@ to @Interval@ on the way.
 -- @Backend@/@QueryBatchSize@ stay at the @LedgerDB@ level. Idempotent.
 migrateLedgerDbSnapshotsCase :: TestTree
 migrateLedgerDbSnapshotsCase =
@@ -594,13 +596,13 @@ migrateLedgerDbSnapshotsCase =
     expectOk $ case fst (migrated legacyLedgerDB) of
       m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
         Just (Object ldb)
-          | any (\k -> KM.member (K.fromString k) ldb) snapOpts ->
+          | any (\k -> KM.member (K.fromString k) ldb) flatOpts ->
               Just ("a flat snapshot key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
           | not (KM.member (K.fromString "Backend") ldb && KM.member (K.fromString "QueryBatchSize") ldb) ->
               Just "Backend/QueryBatchSize were not kept at the LedgerDB level"
           | otherwise -> case KM.lookup (K.fromString "Snapshots") ldb of
               Just (Object snaps)
-                | not (all (\k -> KM.member (K.fromString k) snaps) snapOpts) ->
+                | not (all (\k -> KM.member (K.fromString k) snaps) nestedOpts) ->
                     Just ("LedgerDB.Snapshots is missing a moved key; has: " <> show (KM.keys snaps))
                 | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
@@ -608,7 +610,8 @@ migrateLedgerDbSnapshotsCase =
         _ -> Just "Configuration.StorageConfig.LedgerDB not found"
       _ -> Just "migrate did not produce an object"
  where
-  snapOpts = ["SnapshotInterval", "NumOfDiskSnapshots"]
+  flatOpts = ["SnapshotInterval", "NumOfDiskSnapshots"]
+  nestedOpts = ["Interval", "NumOfDiskSnapshots"]
   legacyLedgerDB =
     Object $
       KM.fromList
@@ -623,6 +626,47 @@ migrateLedgerDbSnapshotsCase =
                 ]
           )
         ]
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+
+-- | Inside an existing @LedgerDB.Snapshots@ object 'migrate' renames
+-- @SnapshotInterval@\/@SlotOffset@ to @Interval@\/@Offset@. Where both spellings
+-- are present the current one wins, with a 'RenamedKeyCollision' warning.
+migrateSnapshotRenameCase :: TestTree
+migrateSnapshotRenameCase =
+  testCase "migrate renames the snapshot options inside LedgerDB.Snapshots" $
+    expectOk $ case migrated input of
+      (m, warnings)
+        | expectedWarning `notElem` warnings ->
+            Just ("expected a RenamedKeyCollision warning, got " <> show warnings)
+        | otherwise -> case navigate m ["Configuration", "StorageConfig", "LedgerDB", "Snapshots"] of
+            Just (Object snaps)
+              | any (\k -> KM.member (K.fromString k) snaps) ["SnapshotInterval", "SlotOffset"] ->
+                  Just ("an old snapshot option name survived; keys: " <> show (KM.keys snaps))
+              | KM.lookup (K.fromString "Interval") snaps /= Just (Number 100) ->
+                  Just
+                    ( "the current-name Interval (100) should win, got "
+                        <> show (KM.lookup (K.fromString "Interval") snaps)
+                    )
+              | KM.lookup (K.fromString "Offset") snaps /= Just (Number 7) ->
+                  Just ("SlotOffset was not renamed to Offset; keys: " <> show (KM.keys snaps))
+              | otherwise -> Nothing
+            _ -> Just "LedgerDB.Snapshots is not an object"
+ where
+  expectedWarning = RenamedKeyCollision (T.pack "SnapshotInterval") (T.pack "Interval")
+  input =
+    obj
+      [
+        ( "LedgerDB"
+        , obj
+            [
+              ( "Snapshots"
+              , obj [("SnapshotInterval", Number 864), ("Interval", Number 100), ("SlotOffset", Number 7)]
+              )
+            ]
+        )
+      ]
   navigate v [] = Just v
   navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
   navigate _ _ = Nothing
@@ -1561,7 +1605,7 @@ schemaConstraintsCase =
     , ("MempoolConfig", "the coupled mempool timeouts", hasDependencies mempoolTimeoutKeys)
     , ("TestingConfig", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
     , ("TestingConfig", "the experimental-eras requirement", hasIfThen)
-    , ("StorageConfig", "the non-zero SnapshotInterval", hasMinimum "SnapshotInterval" 1)
+    , ("StorageConfig", "the non-zero snapshot Interval", hasMinimum "Interval" 1)
     ]
   grpcKeys =
     [ "GrpcSocketPath"
@@ -1614,14 +1658,14 @@ schemaConstraintsCase =
 -- schema says @minimum: 1@ rather than the 0 a 'Data.Word.Word64' would allow).
 snapshotIntervalCase :: TestTree
 snapshotIntervalCase =
-  testCase "a zero SnapshotInterval is rejected" $
+  testCase "a zero snapshot Interval is rejected" $
     expectOk $ case (decodeInterval 0, decodeInterval 1) of
-      (Right _, _) -> Just "SnapshotInterval 0 was accepted"
-      (_, Left err) -> Just ("SnapshotInterval 1 was rejected: " <> err)
+      (Right _, _) -> Just "Interval 0 was accepted"
+      (_, Left err) -> Just ("Interval 1 was rejected: " <> err)
       (Left _, Right _) -> Nothing
  where
   decodeInterval n =
-    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("SnapshotInterval", Number n)])])]) ::
+    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("Interval", Number n)])])]) ::
            Result (StorageConfiguration StrictMaybe) of
       Error err -> Left err
       Success cfg -> Right cfg
@@ -1674,7 +1718,7 @@ snapshotFields o =
 
 -- | The concrete values the @"Mithril"@ policy resolves to.
 mithrilFields :: [Maybe Word64]
-mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 600, Just 2]
+mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 21600, Just 2]
 
 -- | End-to-end: a configuration that uses the base @"Mithril"@ default and one
 -- that sets only a couple of snapshot options both resolve to the full concrete
@@ -1682,7 +1726,7 @@ mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 600, Just 2]
 snapshotMithrilResolveCase :: TestTree
 snapshotMithrilResolveCase =
   testCase "Mithril snapshot policy resolves to concrete values (filling partial overrides)" $ do
-    fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
+    fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base (Mithril values)
     fromPartial <- resolvedOptions "test/examples/legacy-fullconfig.json" -- sets 3 of 6 (= Mithril)
     expectOk $ case (fromMithril, fromPartial) of
       (Right a, Right b)
@@ -1703,7 +1747,7 @@ snapshotMithrilResolveCase =
           other -> Left ("expected resolved custom snapshot options, got " <> show other)
 
 -- | 'resolveSnapshotPolicy': @"Mithril"@ yields its values, and a partial custom
--- policy keeps the value it set (here a distinct @SnapshotInterval@) while the
+-- policy keeps the value it set (here a distinct @Interval@) while the
 -- rest are inherited from Mithril.
 snapshotResolvePolicyCase :: TestTree
 snapshotResolvePolicyCase =
@@ -1712,14 +1756,16 @@ snapshotResolvePolicyCase =
       ( let mithril = snapshotFields (resolveSnapshotPolicy MithrilSnapshotPolicy)
             partial = SnapshotOptions (SJust 7777) SNothing SNothing SNothing SNothing SNothing
             filled = snapshotFields (resolveSnapshotPolicy (CustomSnapshotPolicy partial))
-         in if mithril == mithrilFields && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 600, Just 2]
+         in if mithril == mithrilFields
+              && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 21600, Just 2]
               then Nothing
               else Just ("unexpected: mithril=" <> show mithril <> " filled=" <> show filled)
       )
 
 -- | The Mithril policy under the V2LSM backend without an @LSMExportPath@ is
--- accepted, but resolution surfaces a non-fatal 'ConsistencyWarning' (the check
--- runs before the Mithril policy is resolved away).
+-- accepted, but resolution surfaces a non-fatal 'ConsistencyWarning'. The fixture
+-- sets no @Snapshots@, so it inherits the defaults, which spell the Mithril values
+-- out rather than name the @"Mithril"@ policy: the check matches them by value.
 mithrilRequiresExportCase :: TestTree
 mithrilRequiresExportCase =
   testCase "Mithril + V2LSM without LSMExportPath resolves with a warning" $ do

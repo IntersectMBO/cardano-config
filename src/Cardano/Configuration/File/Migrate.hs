@@ -36,9 +36,10 @@
 --     @StorageConfig@);
 --   * the flat snapshot-option keys directly under @LedgerDB@ (@SnapshotInterval@,
 --     @NumOfDiskSnapshots@, …) are gathered into a nested @LedgerDB.Snapshots@
---     object, and the flat @V2LSM@ backend keys are folded into the tagged
---     @Backend: { "LSM": … }@ form the @LedgerDB@ codec reads (see
---     'nestSnapshotOptions'\/'nestBackend');
+--     object, where @SnapshotInterval@\/@SlotOffset@ are renamed to
+--     @Interval@\/@Offset@, and the flat @V2LSM@ backend keys are folded into the
+--     tagged @Backend: { "LSM": … }@ form the @LedgerDB@ codec reads (see
+--     'nestSnapshotOptions'\/'renameSnapshotOptions'\/'nestBackend');
 --   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
 --     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered
 --     verbatim into an inline @HermodTracing@ object, a top-level @ApplicationName@
@@ -205,16 +206,20 @@ renameLegacy (Object o) =
     , K.toText k `notElem` collidingOld
     ]
   pairs = map fst rekeyed
-  rekey (k, v) = let (v', w) = renameLegacy v in ((rename renamedFields k, scoped k v'), w)
+  rekey (k, v) =
+    let (v', w) = renameLegacy v
+        (v'', w') = scoped k v'
+     in ((rename renamedFields k, v''), w <> w')
   -- Inside an AcceptedConnectionsLimit object, also rewrite its (generic) direct
   -- sub-keys; the recursion above has already handled any deeper nesting. Inside a
   -- LedgerDB object, gather the flat snapshot-option keys into a nested Snapshots
-  -- object and fold the flat V2LSM backend keys into the tagged Backend form (see
-  -- 'nestSnapshotOptions'\/'nestBackend').
+  -- object, rename the options inside it, and fold the flat V2LSM backend keys
+  -- into the tagged Backend form (see 'nestSnapshotOptions'\/'renameSnapshotOptions'\/'nestBackend').
   scoped k v
-    | K.toText k == "AcceptedConnectionsLimit" = renameTopKeys acceptedConnectionsLimitFields v
-    | K.toText k == "LedgerDB" = nestBackend (nestSnapshotOptions v)
-    | otherwise = v
+    | K.toText k == "AcceptedConnectionsLimit" = (renameTopKeys acceptedConnectionsLimitFields v, [])
+    | K.toText k == "LedgerDB" =
+        let (v', w) = renameSnapshotOptions (nestSnapshotOptions v) in (nestBackend v', w)
+    | otherwise = (v, [])
 renameLegacy (Array a) =
   let results = fmap renameLegacy a
    in (Array (fmap fst results), foldMap snd results)
@@ -227,9 +232,20 @@ renameTopKeys table (Object o) =
   Object (KM.fromList [(rename table k, v) | (k, v) <- KM.toList o])
 renameTopKeys _ v = v
 
+-- | The snapshot options that were renamed when they moved into
+-- @LedgerDB.Snapshots@, as @(old, new)@. The names are too generic to rewrite
+-- anywhere else, so they are only rewritten inside a @LedgerDB.Snapshots@ object
+-- (see 'renameSnapshotOptions').
+snapshotOptionFields :: [(Text, Text)]
+snapshotOptionFields =
+  [ ("SnapshotInterval", "Interval")
+  , ("SlotOffset", "Offset")
+  ]
+
 -- | The snapshot-option keys that legacy configs (and the node's own parser)
 -- accept /flat/ directly under @LedgerDB@, but which cardano-config only reads
--- from a nested @LedgerDB.Snapshots@ object.
+-- from a nested @LedgerDB.Snapshots@ object. These are the legacy spellings:
+-- 'renameSnapshotOptions' then rewrites them to the current ones.
 snapshotOptionKeys :: [Text]
 snapshotOptionKeys =
   [ "SnapshotInterval"
@@ -255,6 +271,22 @@ nestSnapshotOptions (Object o)
   flat = KM.filterWithKey (\k _ -> K.toText k `elem` snapshotOptionKeys) o
   rest = KM.filterWithKey (\k _ -> K.toText k `notElem` snapshotOptionKeys) o
 nestSnapshotOptions v = v
+
+-- | Within a @LedgerDB@ object whose @Snapshots@ is an options object, rewrite
+-- the renamed options ('snapshotOptionFields') to their current names. Where both
+-- the old and the current name are present the current one wins, with a
+-- 'RenamedKeyCollision' warning. A @"Mithril"@ policy is left unchanged.
+renameSnapshotOptions :: Value -> (Value, [ConfigWarning])
+renameSnapshotOptions (Object ldb)
+  | Just (Object snaps) <- KM.lookup "Snapshots" ldb =
+      let present = [K.toText k | k <- KM.keys snaps]
+          collisions = [(old, new) | (old, new) <- snapshotOptionFields, old `elem` present, new `elem` present]
+          kept = KM.filterWithKey (\k _ -> K.toText k `notElem` map fst collisions) snaps
+          renamed = KM.fromList [(rename snapshotOptionFields k, v) | (k, v) <- KM.toList kept]
+       in ( Object (KM.insert "Snapshots" (Object renamed) ldb)
+          , [RenamedKeyCollision old new | (old, new) <- collisions]
+          )
+renameSnapshotOptions v = (v, [])
 
 -- | Within a @LedgerDB@ object, fold the legacy flat @V2LSM@ backend into the
 -- tagged form: @Backend: "V2LSM"@ (+ optional @LSMDatabasePath@\/@LSMExportPath@)

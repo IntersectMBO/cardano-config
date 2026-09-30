@@ -290,14 +290,17 @@ defaultConfigChecks =
       ( "the Mithril snapshot policy under the V2LSM backend has no LSMExportPath, so the LSM backend "
           <> "cannot export snapshots; set an LSMExportPath, or use the V2InMemory backend"
       )
+      -- Mithril is matched by value, not by the "Mithril" name: the defaults
+      -- spell the Mithril values out, and a partial policy may fill in to them.
       ( \nc ->
           let ldb = runIdentity (File.ledgerDbConfiguration (storageConfiguration nc))
            in case File.snapshots ldb of
-                SJust File.MithrilSnapshotPolicy ->
-                  case File.backendSelector ldb of
-                    SNothing -> True -- defaults to V2InMemory, which satisfies Mithril
-                    SJust File.V2InMemory -> True
-                    SJust (File.V2LSM _ exportPath) -> isSJust exportPath
+                SJust policy
+                  | File.resolveSnapshotPolicy policy == File.mithrilSnapshotOptions ->
+                      case File.backendSelector ldb of
+                        SNothing -> True -- defaults to V2InMemory, which satisfies Mithril
+                        SJust File.V2InMemory -> True
+                        SJust (File.V2LSM _ exportPath) -> isSJust exportPath
                 _ -> True
       )
   , ConfigCheck
@@ -496,8 +499,7 @@ resolveConfigurationWith checks cli file = do
       require
         "StartAsNonProducingNode"
         (CLI.startAsNonProducingNode cli <|> File.startAsNonProducingNode pc)
-  -- Run the consistency checks while the snapshot policy is still its requested
-  -- form (the Mithril/LSMExportPath check needs to see "Mithril"), then resolve
+  -- Run the consistency checks on the snapshot policy as requested, then resolve
   -- it to concrete options so the result carries no bare "Mithril" policy.
   (resolved, warnings) <-
     runConfigChecks checks $

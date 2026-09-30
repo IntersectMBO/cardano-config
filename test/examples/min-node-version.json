@@ -26,8 +26,8 @@
                 "QueryBatchSize": 100000,
                 "Snapshots": {
                     "NumOfDiskSnapshots": 2,
-                    "SlotOffset": 388800,
-                    "SnapshotInterval": 432000
+                    "Offset": 388800,
+                    "Interval": 432000
                 }
             }
         }
