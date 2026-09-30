@@ -1,7 +1,7 @@
 {
     "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The cardano-node configuration, held in one file. The document is the { $schema, Version, MinNodeVersion, Configuration } envelope, and Configuration gives each component inline under its section key (e.g. StorageConfig). The mandatory genesis files are supplied through the ProtocolConfig section.",
+    "description": "The cardano-node configuration, held in one file. The document is the { $schema, Version, MinNodeVersion, Configuration } envelope, and Configuration gives each component inline under its section key (e.g. Storage). The mandatory genesis files are supplied through the Protocol section.",
     "properties": {
         "$schema": {
             "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
@@ -12,7 +12,7 @@
         "Configuration": {
             "description": "The configuration itself: each component given inline under its section key, plus the HermodTracing key.",
             "properties": {
-                "ConsensusConfig": {
+                "Consensus": {
                     "description": "ConsensusConfiguration",
                     "properties": {
                         "ConsensusMode": {
@@ -75,7 +75,7 @@
                             "type": "object"
                         }
                     },
-                    "title": "ConsensusConfig",
+                    "title": "Consensus",
                     "type": "object"
                 },
                 "HermodTracing": {
@@ -94,7 +94,7 @@
                     "description": "Tracing configuration, given as a path to a separate file holding it or as that configuration object inline. Consumed by the node tracing system (trace-dispatcher), which owns its schema; not described further by cardano-config.",
                     "title": "HermodTracing"
                 },
-                "LocalConnectionsConfig": {
+                "LocalConnections": {
                     "dependencies": {
                         "GrpcListenAddress": [
                             "GrpcListenPort"
@@ -198,10 +198,10 @@
                             "type": "string"
                         }
                     },
-                    "title": "LocalConnectionsConfig",
+                    "title": "LocalConnections",
                     "type": "object"
                 },
-                "MempoolConfig": {
+                "Mempool": {
                     "dependencies": {
                         "MempoolTimeoutCapacity": [
                             "MempoolTimeoutSoft",
@@ -218,23 +218,12 @@
                     },
                     "description": "MempoolConfiguration",
                     "properties": {
-                        "MempoolCapacityBytesOverride": {
-                            "anyOf": [
-                                {
-                                    "maximum": 1.8446744073709551615e19,
-                                    "minimum": 0,
-                                    "title": "Integer",
-                                    "type": "integer"
-                                },
-                                {
-                                    "const": "NoOverride",
-                                    "title": "NoOverride",
-                                    "type": "string"
-                                }
-                            ],
-                            "default": "NoOverride",
-                            "description": "Override for the maximum mempool size in bytes, or the string \"NoOverride\"",
-                            "title": "MempoolCapacityBytesOverride"
+                        "CapacityBytesOverride": {
+                            "description": "Override for the maximum mempool size in bytes. Unset means no override",
+                            "maximum": 1.8446744073709551615e19,
+                            "minimum": 0,
+                            "title": "CapacityBytesOverride",
+                            "type": "integer"
                         },
                         "MempoolTimeoutCapacity": {
                             "description": "Capacity mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",
@@ -252,10 +241,10 @@
                             "type": "number"
                         }
                     },
-                    "title": "MempoolConfig",
+                    "title": "Mempool",
                     "type": "object"
                 },
-                "NetworkConfig": {
+                "Network": {
                     "description": "NetworkConfiguration",
                     "properties": {
                         "AcceptedConnectionsLimit": {
@@ -493,10 +482,10 @@
                             "type": "string"
                         }
                     },
-                    "title": "NetworkConfig",
+                    "title": "Network",
                     "type": "object"
                 },
-                "ProtocolConfig": {
+                "Protocol": {
                     "description": "ProtocolConfiguration",
                     "properties": {
                         "AlonzoGenesisFile": {
@@ -581,10 +570,10 @@
                         "ByronGenesisHash",
                         "ByronGenesisFile"
                     ],
-                    "title": "ProtocolConfig",
+                    "title": "Protocol",
                     "type": "object"
                 },
-                "StorageConfig": {
+                "Storage": {
                     "description": "StorageConfiguration",
                     "properties": {
                         "DatabasePath": {
@@ -684,6 +673,13 @@
                                         {
                                             "description": "SnapshotOptions",
                                             "properties": {
+                                                "Interval": {
+                                                    "description": "Slots between snapshots (non-zero)",
+                                                    "maximum": 1.8446744073709551615e19,
+                                                    "minimum": 1,
+                                                    "title": "Interval",
+                                                    "type": "integer"
+                                                },
                                                 "MaxDelay": {
                                                     "description": "Upper bound (seconds) of the random snapshot delay",
                                                     "maximum": 1.8446744073709551615e19,
@@ -705,25 +701,18 @@
                                                     "title": "NumOfDiskSnapshots",
                                                     "type": "integer"
                                                 },
+                                                "Offset": {
+                                                    "description": "Slot at which the snapshot schedule is anchored",
+                                                    "maximum": 1.8446744073709551615e19,
+                                                    "minimum": 0,
+                                                    "title": "Offset",
+                                                    "type": "integer"
+                                                },
                                                 "RateLimit": {
                                                     "description": "Minimum seconds between snapshots",
                                                     "maximum": 1.8446744073709551615e19,
                                                     "minimum": 0,
                                                     "title": "RateLimit",
-                                                    "type": "integer"
-                                                },
-                                                "SlotOffset": {
-                                                    "description": "Slot at which the snapshot schedule is anchored",
-                                                    "maximum": 1.8446744073709551615e19,
-                                                    "minimum": 0,
-                                                    "title": "SlotOffset",
-                                                    "type": "integer"
-                                                },
-                                                "SnapshotInterval": {
-                                                    "description": "Slots between snapshots (non-zero)",
-                                                    "maximum": 1.8446744073709551615e19,
-                                                    "minimum": 1,
-                                                    "title": "SnapshotInterval",
                                                     "type": "integer"
                                                 }
                                             },
@@ -731,7 +720,14 @@
                                             "type": "object"
                                         }
                                     ],
-                                    "default": "Mithril",
+                                    "default": {
+                                        "Interval": 432000,
+                                        "MaxDelay": 21600,
+                                        "MinDelay": 300,
+                                        "NumOfDiskSnapshots": 2,
+                                        "Offset": 388800,
+                                        "RateLimit": 600
+                                    },
                                     "description": "Snapshot policy: \"Mithril\" or an object of snapshot options",
                                     "title": "Snapshots"
                                 }
@@ -740,10 +736,10 @@
                             "type": "object"
                         }
                     },
-                    "title": "StorageConfig",
+                    "title": "Storage",
                     "type": "object"
                 },
-                "TestingConfig": {
+                "Testing": {
                     "allOf": [
                         {
                             "if": {
@@ -892,7 +888,7 @@
                             "type": "integer"
                         }
                     },
-                    "title": "TestingConfig",
+                    "title": "Testing",
                     "type": "object"
                 }
             },

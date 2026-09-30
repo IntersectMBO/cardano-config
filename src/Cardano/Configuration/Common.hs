@@ -135,7 +135,7 @@ parseStartAsNonProducingNode =
 -- than a record of independent settings. Mirrors @cardano-rpc@'s @RpcEndpoint@.
 --
 -- In the configuration file it is written flat, as the @Grpc*@ keys of
--- @LocalConnectionsConfig@ (see 'grpcEndpointObjectCodec'). It stays optional
+-- @LocalConnections@ (see 'grpcEndpointObjectCodec'). It stays optional
 -- in a resolved configuration, because the consumer derives the default socket
 -- (@rpc.sock@ beside the node socket), a path @defaults\/@ cannot name.
 data GrpcEndpoint
@@ -166,7 +166,7 @@ defaultGrpcListenAddress :: IP
 defaultGrpcListenAddress = "127.0.0.1"
 
 -- | The gRPC endpoint as a configuration file writes it: a flat group of
--- optional keys inside @LocalConnectionsConfig@, folded into the 'GrpcEndpoint'
+-- optional keys inside @LocalConnections@, folded into the 'GrpcEndpoint'
 -- they describe, and unfolded again when rendering.
 --
 -- The combinations that describe no single listener are rejected here, at parse

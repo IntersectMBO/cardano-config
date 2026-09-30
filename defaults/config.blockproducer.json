@@ -1,7 +1,7 @@
 {
     "Version": 2,
     "Configuration": {
-        "ConsensusConfig": {
+        "Consensus": {
             "ConsensusMode": "PraosMode"
         },
         "HermodTracing": {
@@ -15,13 +15,11 @@
                 }
             }
         },
-        "LocalConnectionsConfig": {
+        "LocalConnections": {
             "EnableGrpc": false
         },
-        "MempoolConfig": {
-            "MempoolCapacityBytesOverride": "NoOverride"
-        },
-        "NetworkConfig": {
+        "Mempool": {},
+        "Network": {
             "AcceptedConnectionsLimit": {
                 "HardLimit": 512,
                 "SoftLimit": 384,
@@ -55,19 +53,26 @@
             "TxSubmissionInitDelay": 60,
             "TxSubmissionLogicVersion": "TxSubmissionLogicV1"
         },
-        "ProtocolConfig": {
+        "Protocol": {
             "RequiresNetworkMagic": "RequiresNoMagic",
             "StartAsNonProducingNode": false
         },
-        "StorageConfig": {
+        "Storage": {
             "DatabasePath": "db",
             "LedgerDB": {
                 "Backend": "V2InMemory",
-                "Snapshots": "Mithril",
+                "Snapshots": {
+                    "Interval": 432000,
+                    "Offset": 388800,
+                    "RateLimit": 600,
+                    "MinDelay": 300,
+                    "MaxDelay": 21600,
+                    "NumOfDiskSnapshots": 2
+                },
                 "QueryBatchSize": 100000
             }
         },
-        "TestingConfig": {
+        "Testing": {
             "ExperimentalHardForksEnabled": false
         }
     }

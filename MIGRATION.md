@@ -74,6 +74,20 @@ the same key sits in both places, the one inside `Configuration` wins, and
 | `TargetNumberOfKnownBigLedgerPeers` | `DeadlineTargetNumberOfKnownBigLedgerPeers` |
 | `TargetNumberOfEstablishedBigLedgerPeers` | `DeadlineTargetNumberOfEstablishedBigLedgerPeers` |
 | `TargetNumberOfActiveBigLedgerPeers` | `DeadlineTargetNumberOfActiveBigLedgerPeers` |
+| `MempoolCapacityBytesOverride` | `CapacityBytesOverride` |
+
+The sections lose their `Config` suffix. They are renamed only directly under
+`Configuration`, where sections live:
+
+| Old name | Current name |
+|----------|--------------|
+| `ConsensusConfig` | `Consensus` |
+| `LocalConnectionsConfig` | `LocalConnections` |
+| `MempoolConfig` | `Mempool` |
+| `NetworkConfig` | `Network` |
+| `ProtocolConfig` | `Protocol` |
+| `StorageConfig` | `Storage` |
+| `TestingConfig` | `Testing` |
 
 These three are renamed only inside an `AcceptedConnectionsLimit` object,
 because the names are too common to rewrite anywhere else:
@@ -90,7 +104,11 @@ Reconcile the two by hand when the dropped value was the one you wanted.
 
 ## Dropped keys
 
-`migrate` removes these. Nothing reads them now.
+A `MempoolCapacityBytesOverride` or `CapacityBytesOverride` whose value is the
+string `"NoOverride"` is removed whole. Leaving the key out now means no
+override, and `"NoOverride"` is no longer a valid value.
+
+`migrate` also removes these keys. Nothing reads them now.
 
 | Key | Why |
 |-----|-----|
@@ -100,7 +118,7 @@ Reconcile the two by hand when the dropped value was the one you wanted.
 | `LastKnownBlockVersion-Alt` | Comes from consensus defaults. |
 | `ApplicationVersion` | The Byron software version number, now fixed in code. |
 | `EnableP2P` | P2P is the only mode. |
-| `Protocol` | The protocol selector no longer selects anything. |
+| `Protocol` | The protocol selector no longer selects anything. Only a non-object value is dropped, because `Protocol` is also a section. |
 | `MaxKnownMajorProtocolVersion` | The node never read it. |
 
 These belonged to the old logging system, which `trace-dispatcher` replaced.
@@ -114,7 +132,7 @@ to remove at any depth:
 
 Older files wrote many keys flat, at the top level. `migrate` moves each one
 under the section that owns it. For example `ConsensusMode` moves under
-`ConsensusConfig`, and `LedgerDB` moves under `StorageConfig`.
+`Consensus`, and `LedgerDB` moves under `Storage`.
 
 Three groups change shape as well as place.
 
@@ -125,6 +143,17 @@ object:
 
 `SnapshotInterval`, `SlotOffset`, `RateLimit`, `MinDelay`, `MaxDelay`,
 `NumOfDiskSnapshots`.
+
+Inside `Snapshots`, two of them are renamed:
+
+| Old name | Current name |
+|----------|--------------|
+| `SnapshotInterval` | `Interval` |
+| `SlotOffset` | `Offset` |
+
+The rename applies to the moved keys and to a `Snapshots` object already in
+place. The names are too common to rewrite anywhere else. If both spellings
+are present, the current name wins, with a `RenamedKeyCollision` warning.
 
 If a `Snapshots` key is already present, it wins, and the flat keys are
 dropped. `Snapshots` can be the string `"Mithril"`, which is a policy rather

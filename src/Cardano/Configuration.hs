@@ -290,14 +290,17 @@ defaultConfigChecks =
       ( "the Mithril snapshot policy under the V2LSM backend has no LSMExportPath, so the LSM backend "
           <> "cannot export snapshots; set an LSMExportPath, or use the V2InMemory backend"
       )
+      -- Mithril is matched by value, not by the "Mithril" name: the defaults
+      -- spell the Mithril values out, and a partial policy may fill in to them.
       ( \nc ->
           let ldb = runIdentity (File.ledgerDbConfiguration (storageConfiguration nc))
            in case File.snapshots ldb of
-                SJust File.MithrilSnapshotPolicy ->
-                  case File.backendSelector ldb of
-                    SNothing -> True -- defaults to V2InMemory, which satisfies Mithril
-                    SJust File.V2InMemory -> True
-                    SJust (File.V2LSM _ exportPath) -> isSJust exportPath
+                SJust policy
+                  | File.resolveSnapshotPolicy policy == File.mithrilSnapshotOptions ->
+                      case File.backendSelector ldb of
+                        SNothing -> True -- defaults to V2InMemory, which satisfies Mithril
+                        SJust File.V2InMemory -> True
+                        SJust (File.V2LSM _ exportPath) -> isSJust exportPath
                 _ -> True
       )
   , ConfigCheck
@@ -456,11 +459,11 @@ resolveConfigurationWith checks cli file = do
         File.mergeValues (File.defaultConfiguration role) (File.userConfiguration file)
       section :: FromJSON a => String -> Either ConfigResolutionError a
       section name = either (Left . SectionDecodeError name) Right (File.decodeSection merged name)
-  network <- section "NetworkConfig" >>= finalize . File.finalizeNetwork
-  testing <- section "TestingConfig" >>= finalize . File.finalizeTesting
-  mempool <- section "MempoolConfig" >>= finalize . File.finalizeMempool
+  network <- section "Network" >>= finalize . File.finalizeNetwork
+  testing <- section "Testing" >>= finalize . File.finalizeTesting
+  mempool <- section "Mempool" >>= finalize . File.finalizeMempool
   -- Local connections additionally take CLI overrides before being finalized.
-  lcc <- section "LocalConnectionsConfig"
+  lcc <- section "LocalConnections"
   let cliGrpcEndpoint = CLI.grpcEndpointCLI cli
       lccWithCli =
         lcc
@@ -486,9 +489,9 @@ resolveConfigurationWith checks cli file = do
   -- itself, the other two in their descriptions, JSON Schema having no way to
   -- write a default of three coupled values or one that applies under a single
   -- backend.
-  sc <- section "StorageConfig"
-  pc <- section "ProtocolConfig"
-  consensus <- section "ConsensusConfig"
+  sc <- section "Storage"
+  pc <- section "Protocol"
+  consensus <- section "Consensus"
   dbPath <- finalize $ require "DatabasePath" (CLI.databasePathCLI cli <|> File.databasePath sc)
   consensusMode <- finalize $ require "ConsensusMode" (getConsensusConfiguration consensus)
   startNonProducing <-
@@ -496,8 +499,7 @@ resolveConfigurationWith checks cli file = do
       require
         "StartAsNonProducingNode"
         (CLI.startAsNonProducingNode cli <|> File.startAsNonProducingNode pc)
-  -- Run the consistency checks while the snapshot policy is still its requested
-  -- form (the Mithril/LSMExportPath check needs to see "Mithril"), then resolve
+  -- Run the consistency checks on the snapshot policy as requested, then resolve
   -- it to concrete options so the result carries no bare "Mithril" policy.
   (resolved, warnings) <-
     runConfigChecks checks $

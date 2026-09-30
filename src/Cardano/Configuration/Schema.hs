@@ -55,6 +55,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Foldable (toList)
 import Data.List (nub)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Version (versionBranch)
@@ -80,13 +81,13 @@ rawComponentSchemas :: [(Text, Value)]
 rawComponentSchemas =
   [ (name, withConstraints name raw)
   | (name, raw) <-
-      [ ("StorageConfig", rawStorageSchema)
-      , ("ConsensusConfig", rawConsensusSchema)
-      , ("ProtocolConfig", rawProtocolSchema)
-      , ("NetworkConfig", rawNetworkSchema)
-      , ("LocalConnectionsConfig", rawLocalConnectionsSchema)
-      , ("MempoolConfig", rawMempoolSchema)
-      , ("TestingConfig", rawTestingSchema)
+      [ ("Storage", rawStorageSchema)
+      , ("Consensus", rawConsensusSchema)
+      , ("Protocol", rawProtocolSchema)
+      , ("Network", rawNetworkSchema)
+      , ("LocalConnections", rawLocalConnectionsSchema)
+      , ("Mempool", rawMempoolSchema)
+      , ("Testing", rawTestingSchema)
       ]
   ]
 
@@ -112,7 +113,7 @@ componentConstraints = \case
   -- TCP keys, an address or a TLS credential needs a port, and the certificate
   -- and its private key are given together. Mirrors
   -- 'Cardano.Configuration.Common.grpcEndpointObjectCodec'.
-  "LocalConnectionsConfig" ->
+  "LocalConnections" ->
     dependencies
       [ ("GrpcSocketPath", excludes tcpEndpointKeys)
       , ("GrpcListenAddress", requires ["GrpcListenPort"])
@@ -125,7 +126,7 @@ componentConstraints = \case
       ]
   -- The three mempool timeouts are one coupled default: all set, or all unset.
   -- Mirrors 'Cardano.Configuration.File.Mempool.finalizeMempool'.
-  "MempoolConfig" ->
+  "Mempool" ->
     dependencies
       [ ("MempoolTimeoutSoft", requires ["MempoolTimeoutHard", "MempoolTimeoutCapacity"])
       , ("MempoolTimeoutHard", requires ["MempoolTimeoutSoft", "MempoolTimeoutCapacity"])
@@ -135,7 +136,7 @@ componentConstraints = \case
   -- the experimental eras requires the genesis to run them from.
   -- Mirrors 'Cardano.Configuration.File.Protocol.optionalHashedGenesisObjectCodec'
   -- and 'Cardano.Configuration.File.Testing.finalizeTesting'.
-  "TestingConfig" ->
+  "Testing" ->
     mergeConstraints
       ( dependencies
           [ ("DijkstraGenesisFile", requires ["DijkstraGenesisHash"])
@@ -267,8 +268,8 @@ configDescription =
   T.unwords
     [ "The cardano-node configuration, held in one file."
     , "The document is the { $schema, Version, MinNodeVersion, Configuration } envelope,"
-    , "and Configuration gives each component inline under its section key (e.g. StorageConfig)."
-    , "The mandatory genesis files are supplied through the ProtocolConfig section."
+    , "and Configuration gives each component inline under its section key (e.g. Storage)."
+    , "The mandatory genesis files are supplied through the Protocol section."
     ]
 
 versionRef :: Value
@@ -467,7 +468,7 @@ titleProperties o =
 -- accepts. Keyed by the property name, which is unique across the
 -- configuration, so it is matched at any depth.
 --
--- @SnapshotInterval@ is a 'Data.Word.Word64', so its derived schema admits 0,
+-- @Interval@ (the snapshot interval) is a 'Data.Word.Word64', so its derived schema admits 0,
 -- which @snapshotIntervalCodec@ rejects. Like 'componentConstraints' this
 -- states what validates, so it is frozen with the format version.
 constrainProperties :: KM.KeyMap Value -> KM.KeyMap Value
@@ -483,7 +484,7 @@ constrainProperties o =
 -- | The property-level narrowings applied by 'constrainProperties'.
 propertyConstraints :: [(Text, KM.KeyMap Value)]
 propertyConstraints =
-  [ ("SnapshotInterval", KM.singleton "minimum" (Number 1))
+  [ ("Interval", KM.singleton "minimum" (Number 1))
   ]
 
 -- | Attach the 'propertyDefaults' to the properties they name. A @default@
@@ -557,7 +558,7 @@ titleBranches o = foldr titleUnion o ["anyOf", "oneOf"]
       _ -> Nothing
 
 -- | Give a bare @const@ schema the @type@ implied by its value, so even a single
--- enumerated alternative (e.g. the @"NoOverride"@ branch of a union) declares a
+-- enumerated alternative (e.g. the @"Mithril"@ branch of @Snapshots@) declares a
 -- type rather than leaving it undefined.
 typeConst :: KM.KeyMap Value -> KM.KeyMap Value
 typeConst o =
@@ -618,22 +619,17 @@ configSchemaWithDefaults defs =
 
 -- | Fill in the @default@ keywords of a schema from a defaults object (a config
 -- object keyed by the configuration keys). Each value is placed at
--- @properties.<key>.default@, recursing into nested objects so leaf defaults
--- land on leaf properties.
+-- @properties.<key>.default@, recursing into a nested object only where the
+-- schema itself has @properties@ there, so leaf defaults land on leaf
+-- properties. An object default for a property without @properties@ (e.g. one
+-- that is an @anyOf@ of a string and an object, like @Snapshots@) is kept whole as
+-- that property's @default@, rather than inventing @properties@ next to the
+-- @anyOf@.
 withDefaults :: Value -> Value -> Value
-withDefaults defaultsObj schema = deepMerge schema (defaultsOverlay defaultsObj)
-
--- | Turn a defaults object into a schema overlay carrying only @default@s, to be
--- deep-merged into a schema.
-defaultsOverlay :: Value -> Value
-defaultsOverlay = \case
-  Object o -> object ["properties" .= Object (KM.map leaf o)]
-  v -> object ["default" .= v]
+withDefaults (Object defs) (Object schema)
+  | Just (Object props) <- KM.lookup "properties" schema =
+      Object (KM.insert "properties" (Object (KM.foldrWithKey place props defs)) schema)
  where
-  leaf v@(Object _) = defaultsOverlay v
-  leaf v = object ["default" .= v]
-
--- | Deep, right-biased merge of two JSON values (objects merge key by key).
-deepMerge :: Value -> Value -> Value
-deepMerge (Object a) (Object b) = Object (KM.unionWith deepMerge a b)
-deepMerge _ b = b
+  place k v acc = KM.insert k (withDefaults v (fromMaybe (Object KM.empty) (KM.lookup k acc))) acc
+withDefaults v (Object schema) = Object (KM.insert "default" v schema)
+withDefaults v _ = object ["default" .= v]

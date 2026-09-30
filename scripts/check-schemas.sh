@@ -19,7 +19,6 @@ cd "$(dirname "$0")/.."
 # to be rejected are left out too.
 CANONICAL_EXAMPLES=(
   all-sections
-  version1
   injection
   dijkstra-gated-off
   min-node-version

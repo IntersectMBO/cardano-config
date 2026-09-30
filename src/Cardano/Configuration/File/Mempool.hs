@@ -5,8 +5,13 @@ module Cardano.Configuration.File.Mempool
   ) where
 
 import Autodocodec
-import Cardano.Configuration.Basic (ErrorMessage, diffTimeCodec, optionalFieldWithStrict)
-import Cardano.Ledger.BaseTypes (StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe)
+import Cardano.Configuration.Basic
+  ( ErrorMessage
+  , diffTimeCodec
+  , optionalFieldStrict
+  , optionalFieldWithStrict
+  )
+import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity (Identity (..))
 import Data.Time.Clock (DiffTime)
@@ -14,7 +19,7 @@ import Data.Word
 import GHC.Generics (Generic)
 
 -- | The mempool configuration. @mempoolCapacityOverride@ is optional by nature
--- (the node's default is "no override"), so it stays @Maybe@ in both forms. The
+-- (leaving it unset means no override), so it stays @Maybe@ in both forms. The
 -- three timeouts, however, are resolved /together/: they must be either all set
 -- or all unset, and all-unset takes a coupled default (see 'finalizeMempool'),
 -- so they carry the @f@ parameter — @Maybe@ in the partial form, @Identity@ in
@@ -44,15 +49,9 @@ instance HasCodec (MempoolConfiguration StrictMaybe) where
   codec =
     object "MempoolConfiguration" $
       MempoolConfiguration
-        <$> dimapCodec
-          maybeToStrictMaybe
-          strictMaybeToMaybe
-          ( optionalFieldWithDefaultWith
-              "MempoolCapacityBytesOverride"
-              mempoolCapacityOverrideCodec
-              Nothing
-              "Override for the maximum mempool size in bytes, or the string \"NoOverride\""
-          )
+        <$> optionalFieldStrict
+          "CapacityBytesOverride"
+          "Override for the maximum mempool size in bytes. Unset means no override"
           .= mempoolCapacityOverride
         <*> optionalFieldWithStrict
           "MempoolTimeoutSoft"
@@ -84,16 +83,3 @@ finalizeMempool c =
       Right (MempoolConfiguration (mempoolCapacityOverride c) (Identity 1) (Identity 1.5) (Identity 5))
     _ ->
       Left "mempool timeouts (Soft, Hard, Capacity) must be all set or all unset"
-
--- | The mempool capacity override is either a byte count or the string
--- @"NoOverride"@ (which, like omitting the key, means \"use the default\").
-mempoolCapacityOverrideCodec :: JSONCodec (Maybe Word64)
-mempoolCapacityOverrideCodec =
-  dimapCodec toOverride fromOverride $
-    eitherCodec
-      (codec @Word64)
-      (literalTextCodec "NoOverride")
- where
-  toOverride = either Just (const Nothing)
-  fromOverride (Just c) = Left c
-  fromOverride Nothing = Right "NoOverride"

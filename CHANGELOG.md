@@ -39,7 +39,7 @@ and each message names what is missing.
 
 ### One file
 
-A section key such as `StorageConfig` or `ProtocolConfig` used to take either
+A section key such as `Storage` or `Protocol` used to take either
 an inline object or a path to a separate file. It now takes the inline object
 alone. A section that holds anything else is rejected, and the error names the
 section. The genesis files and the `HermodTracing` file are unaffected,
@@ -108,7 +108,7 @@ the three coupled mempool timeouts, and the LSM `DatabasePath` default of
 ### The gRPC endpoint
 
 The gRPC server used to listen only on a unix socket. It can now listen over
-HTTP/2 on a TCP port, with or without TLS. `LocalConnectionsConfig` gains five
+HTTP/2 on a TCP port, with or without TLS. `LocalConnections` gains five
 keys:
 
 - `GrpcListenAddress`
@@ -188,6 +188,41 @@ only a document already at the current version that migration still changed.
 
 The `migrate` command used to print `ExitFailure 1` under a message it had
 already written. It no longer does.
+
+### Section names
+
+The sections under `Configuration` lose their `Config` suffix:
+`ConsensusConfig` is now `Consensus`, and likewise `LocalConnections`,
+`Mempool`, `Network`, `Protocol`, `Storage` and `Testing`. `HermodTracing`
+keeps its name.
+
+`migrate` renames the sections. The legacy `Protocol` selector is still
+dropped, but only when it is not an object, so the new `Protocol` section
+survives.
+
+### The mempool capacity override
+
+`MempoolCapacityBytesOverride` is now `CapacityBytesOverride`, and it takes a
+byte count only. Leaving it out means no override. The `"NoOverride"` string
+is gone, and the default configurations no longer set the key.
+
+`migrate` renames the key. Where its value is `"NoOverride"`, under either
+name, `migrate` drops the key instead.
+
+### Snapshots
+
+Two snapshot options are renamed inside `LedgerDB.Snapshots`:
+`SnapshotInterval` is now `Interval`, and `SlotOffset` is now `Offset`.
+`migrate` rewrites both, whether they sit flat under `LedgerDB` or already
+inside `Snapshots`. The parser rejects the old names.
+
+The Mithril `MaxDelay` is now 21600 seconds, which is `10 * k` on mainnet. It
+used to be 600. `mithrilSnapshotOptions` carries the new value.
+
+The default configurations spell the Mithril values out rather than naming the
+`"Mithril"` policy. The warning for a Mithril policy under `V2LSM` with no
+`LSMExportPath` now matches the policy by its values, so it still fires for the
+default and for a partial policy that fills in to the Mithril values.
 
 ### The Haskell API
 

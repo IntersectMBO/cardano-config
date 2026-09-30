@@ -23,7 +23,8 @@
 --
 --   * renamed keys are rewritten to their current names and removed keys are
 --     dropped, at every depth (so the grouping below, which keys off the current
---     names, places them correctly);
+--     names, places them correctly). A mempool capacity override of
+--     @"NoOverride"@ is dropped whole, since omitting the key means the same;
 --   * @Version@ and @$schema@ are set to the current format version (see
 --     'Cardano.Configuration.Schema.currentFormatVersion' and
 --     'Cardano.Configuration.Schema.schemaTag'), so an older document comes out
@@ -31,14 +32,18 @@
 --     @$schema@ it pins. A document declaring a /newer/ version keeps it, since
 --     migration never goes backwards, and the reader rejects it. An existing
 --     @MinNodeVersion@ is carried through;
+--   * a section still carrying its old @Config@ suffix (@StorageConfig@,
+--     @NetworkConfig@, …) is renamed to its current name (@Storage@,
+--     @Network@, …) at the @Configuration@ level (see 'sectionRenames');
 --   * a flat top-level property key is nested under the component section that
---     owns it (e.g. @ConsensusMode@ under @ConsensusConfig@, @LedgerDB@ under
---     @StorageConfig@);
+--     owns it (e.g. @ConsensusMode@ under @Consensus@, @LedgerDB@ under
+--     @Storage@);
 --   * the flat snapshot-option keys directly under @LedgerDB@ (@SnapshotInterval@,
 --     @NumOfDiskSnapshots@, …) are gathered into a nested @LedgerDB.Snapshots@
---     object, and the flat @V2LSM@ backend keys are folded into the tagged
---     @Backend: { "LSM": … }@ form the @LedgerDB@ codec reads (see
---     'nestSnapshotOptions'\/'nestBackend');
+--     object, where @SnapshotInterval@\/@SlotOffset@ are renamed to
+--     @Interval@\/@Offset@, and the flat @V2LSM@ backend keys are folded into the
+--     tagged @Backend: { "LSM": … }@ form the @LedgerDB@ codec reads (see
+--     'nestSnapshotOptions'\/'renameSnapshotOptions'\/'nestBackend');
 --   * the flat tracing keys that @trace-dispatcher@'s own parser reads (its
 --     legacy format: @TraceOptions@, @TraceOptionForwarder@, …) are gathered
 --     verbatim into an inline @HermodTracing@ object, a top-level @ApplicationName@
@@ -136,7 +141,15 @@ renamedFields =
   , ("TargetNumberOfKnownBigLedgerPeers", "DeadlineTargetNumberOfKnownBigLedgerPeers")
   , ("TargetNumberOfEstablishedBigLedgerPeers", "DeadlineTargetNumberOfEstablishedBigLedgerPeers")
   , ("TargetNumberOfActiveBigLedgerPeers", "DeadlineTargetNumberOfActiveBigLedgerPeers")
+  , -- Mempool capacity override (lost the Mempool prefix)
+    ("MempoolCapacityBytesOverride", "CapacityBytesOverride")
   ]
+
+-- | The old and current names of the mempool capacity override. Under either one
+-- @migrate@ drops a @"NoOverride"@ value: omitting the key is now the only way to
+-- ask for no override (see 'renameLegacy').
+mempoolCapacityOverrideKeys :: [Text]
+mempoolCapacityOverrideKeys = ["MempoolCapacityBytesOverride", "CapacityBytesOverride"]
 
 -- | The @AcceptedConnectionsLimit@ sub-keys that were lower-cased before the
 -- rename. Their names (@delay@ especially) are too generic to rewrite wherever
@@ -154,7 +167,8 @@ acceptedConnectionsLimitFields =
 -- @PBftSignatureThreshold@ now come from consensus defaults rather than config;
 -- @ApplicationVersion@ is the (now hard-coded) Byron software-version number;
 -- @EnableP2P@ is the vestigial P2P switch (P2P is now the only mode);
--- @Protocol@ is the vestigial protocol selector; and @MaxKnownMajorProtocolVersion@
+-- @Protocol@ is the vestigial protocol selector (dropped only when it is not an
+-- object, since @Protocol@ is also the name of a section); and @MaxKnownMajorProtocolVersion@
 -- is a dead key the node never read at all. Unlike a genuine typo (which is kept,
 -- so nothing is lost) these are known-obsolete keys, so @migrate@ removes them
 -- rather than carry them forward as perpetual unrecognised-key warnings.
@@ -185,9 +199,14 @@ removedFields =
 -- @LedgerDB@ object (see 'nestSnapshotOptions'), not wherever those names happen
 -- to appear.
 renameLegacy :: Value -> (Value, [ConfigWarning])
-renameLegacy (Object o) =
+renameLegacy (Object o0) =
   (Object (KM.fromList pairs), collisionWarnings <> concatMap snd rekeyed)
  where
+  -- A mempool capacity override of "NoOverride" means the same as leaving the key
+  -- out, which is now the only way to say it, so the whole entry is dropped (under
+  -- either name) before the renames below can see it.
+  o = KM.filterWithKey (\k v -> not (isNoOverride k v)) o0
+  isNoOverride k v = K.toText k `elem` mempoolCapacityOverrideKeys && v == String "NoOverride"
   present = [K.toText k | (k, _) <- KM.toList o]
   -- A rename whose target already exists here: keep the (current-name) value that
   -- is already present, drop the old-name one, and warn. Without this, KM.fromList
@@ -201,20 +220,27 @@ renameLegacy (Object o) =
   rekeyed =
     [ rekey (k, v)
     | (k, v) <- KM.toList o
-    , K.toText k `notElem` removedFields
+    , not (isRemoved k v)
     , K.toText k `notElem` collidingOld
     ]
+  -- @Protocol@ is both a removed key (the legacy protocol selector, a string) and
+  -- the current name of a section (an object), so only the former is dropped.
+  isRemoved k v = K.toText k `elem` removedFields && not (K.toText k == "Protocol" && isObject v)
   pairs = map fst rekeyed
-  rekey (k, v) = let (v', w) = renameLegacy v in ((rename renamedFields k, scoped k v'), w)
+  rekey (k, v) =
+    let (v', w) = renameLegacy v
+        (v'', w') = scoped k v'
+     in ((rename renamedFields k, v''), w <> w')
   -- Inside an AcceptedConnectionsLimit object, also rewrite its (generic) direct
   -- sub-keys; the recursion above has already handled any deeper nesting. Inside a
   -- LedgerDB object, gather the flat snapshot-option keys into a nested Snapshots
-  -- object and fold the flat V2LSM backend keys into the tagged Backend form (see
-  -- 'nestSnapshotOptions'\/'nestBackend').
+  -- object, rename the options inside it, and fold the flat V2LSM backend keys
+  -- into the tagged Backend form (see 'nestSnapshotOptions'\/'renameSnapshotOptions'\/'nestBackend').
   scoped k v
-    | K.toText k == "AcceptedConnectionsLimit" = renameTopKeys acceptedConnectionsLimitFields v
-    | K.toText k == "LedgerDB" = nestBackend (nestSnapshotOptions v)
-    | otherwise = v
+    | K.toText k == "AcceptedConnectionsLimit" = (renameTopKeys acceptedConnectionsLimitFields v, [])
+    | K.toText k == "LedgerDB" =
+        let (v', w) = renameSnapshotOptions (nestSnapshotOptions v) in (nestBackend v', w)
+    | otherwise = (v, [])
 renameLegacy (Array a) =
   let results = fmap renameLegacy a
    in (Array (fmap fst results), foldMap snd results)
@@ -227,9 +253,20 @@ renameTopKeys table (Object o) =
   Object (KM.fromList [(rename table k, v) | (k, v) <- KM.toList o])
 renameTopKeys _ v = v
 
+-- | The snapshot options that were renamed when they moved into
+-- @LedgerDB.Snapshots@, as @(old, new)@. The names are too generic to rewrite
+-- anywhere else, so they are only rewritten inside a @LedgerDB.Snapshots@ object
+-- (see 'renameSnapshotOptions').
+snapshotOptionFields :: [(Text, Text)]
+snapshotOptionFields =
+  [ ("SnapshotInterval", "Interval")
+  , ("SlotOffset", "Offset")
+  ]
+
 -- | The snapshot-option keys that legacy configs (and the node's own parser)
 -- accept /flat/ directly under @LedgerDB@, but which cardano-config only reads
--- from a nested @LedgerDB.Snapshots@ object.
+-- from a nested @LedgerDB.Snapshots@ object. These are the legacy spellings:
+-- 'renameSnapshotOptions' then rewrites them to the current ones.
 snapshotOptionKeys :: [Text]
 snapshotOptionKeys =
   [ "SnapshotInterval"
@@ -255,6 +292,22 @@ nestSnapshotOptions (Object o)
   flat = KM.filterWithKey (\k _ -> K.toText k `elem` snapshotOptionKeys) o
   rest = KM.filterWithKey (\k _ -> K.toText k `notElem` snapshotOptionKeys) o
 nestSnapshotOptions v = v
+
+-- | Within a @LedgerDB@ object whose @Snapshots@ is an options object, rewrite
+-- the renamed options ('snapshotOptionFields') to their current names. Where both
+-- the old and the current name are present the current one wins, with a
+-- 'RenamedKeyCollision' warning. A @"Mithril"@ policy is left unchanged.
+renameSnapshotOptions :: Value -> (Value, [ConfigWarning])
+renameSnapshotOptions (Object ldb)
+  | Just (Object snaps) <- KM.lookup "Snapshots" ldb =
+      let present = [K.toText k | k <- KM.keys snaps]
+          collisions = [(old, new) | (old, new) <- snapshotOptionFields, old `elem` present, new `elem` present]
+          kept = KM.filterWithKey (\k _ -> K.toText k `notElem` map fst collisions) snaps
+          renamed = KM.fromList [(rename snapshotOptionFields k, v) | (k, v) <- KM.toList kept]
+       in ( Object (KM.insert "Snapshots" (Object renamed) ldb)
+          , [RenamedKeyCollision old new | (old, new) <- collisions]
+          )
+renameSnapshotOptions v = (v, [])
 
 -- | Within a @LedgerDB@ object, fold the legacy flat @V2LSM@ backend into the
 -- tagged form: @Backend: "V2LSM"@ (+ optional @LSMDatabasePath@\/@LSMExportPath@)
@@ -369,13 +422,32 @@ reshape (Object top)
   body = KM.unionWith mergeValues siblings envelopeBody
   collisionWarnings =
     [EnvelopeKeyCollision (K.toText k) | k <- KM.keys siblings, k `KM.member` envelopeBody]
+      <> [RenamedKeyCollision old new | (old, new) <- sectionCollisions]
+
+  -- Rename the sections that carried a @Config@ suffix ('sectionRenames'). This
+  -- happens only at this level, where sections live. Where both the old and the
+  -- current name are present the current one wins, with a 'RenamedKeyCollision'
+  -- warning, as for the other renames.
+  sectionCollisions =
+    [ (old, new)
+    | (old, new) <- sectionRenames
+    , K.fromText old `KM.member` body
+    , K.fromText new `KM.member` body
+    ]
+  renamedBody =
+    KM.fromList
+      [ (rename sectionRenames k, v)
+      | (k, v) <- KM.toList body
+      , K.toText k `notElem` map fst sectionCollisions
+      ]
 
   -- A section that does not hold an object cannot be migrated: the values it
-  -- stands for are in another file, which migrate does not read.
+  -- stands for are in another file, which migrate does not read. It is reported
+  -- under the name the document used, old or current.
   notInline =
     [ (K.toText k, v)
     | (k, v) <- KM.toList body
-    , K.toText k `elem` sectionNames
+    , K.toText k `elem` sectionNames <> map fst sectionRenames
     , not (isObject v)
     ]
 
@@ -389,7 +461,7 @@ reshape (Object top)
   -- A mixed input (a section object plus some of its flat keys, or HermodTracing
   -- alongside flat tracing keys) is deep-merged. Every section present holds an
   -- object (checked above), so nesting never has to merge into a non-object.
-  configuration = KM.foldrWithKey place KM.empty body
+  configuration = KM.foldrWithKey place KM.empty renamedBody
   place k v
     | key `elem` tracingObsoleteKeys = id
     | key `elem` tracingLegacyKeys = nestUnderAs "HermodTracing" k
@@ -413,6 +485,20 @@ isObject _ = False
 -- | Top-level keys that belong to the envelope, not to the configuration body.
 envelopeAnnotations :: [Text]
 envelopeAnnotations = ["$schema", "Version", "MinNodeVersion", "Configuration"]
+
+-- | The sections renamed when they lost their @Config@ suffix, as @(old, new)@.
+-- They are renamed only at the @Configuration@ level (see 'reshape'); the
+-- current names are too generic to rewrite anywhere else.
+sectionRenames :: [(Text, Text)]
+sectionRenames =
+  [ ("ConsensusConfig", "Consensus")
+  , ("LocalConnectionsConfig", "LocalConnections")
+  , ("MempoolConfig", "Mempool")
+  , ("NetworkConfig", "Network")
+  , ("ProtocolConfig", "Protocol")
+  , ("StorageConfig", "Storage")
+  , ("TestingConfig", "Testing")
+  ]
 
 -- | The name of every component section, so a section holding something other
 -- than its configuration object can be reported.

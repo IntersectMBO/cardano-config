@@ -10,7 +10,7 @@
 -- drift out of step with the binary.
 --
 -- There is one file per node role, each a complete default configuration. The
--- two differ only in the @NetworkConfig@ deadline peer targets and
+-- two differ only in the @Network@ deadline peer targets and
 -- @PeerSharing@, which is what \"block producer\" and \"relay\" mean here; every
 -- other section is identical. Resolution picks one by whether the operator
 -- supplied block-forging credentials and merges the user's configuration on top

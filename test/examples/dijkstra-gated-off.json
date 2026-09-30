@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
   "Version": 2,
   "Configuration": {
-    "ProtocolConfig": {
+    "Protocol": {
       "ByronGenesisFile": "mainnet-byron-genesis.json",
       "ByronGenesisHash": "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
       "RequiresNetworkMagic": "RequiresNoMagic",
@@ -13,7 +13,7 @@
       "ConwayGenesisFile": "mainnet-conway-genesis.json",
       "ConwayGenesisHash": "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62"
     },
-    "TestingConfig": {
+    "Testing": {
       "ExperimentalHardForksEnabled": false,
       "DijkstraGenesisFile": "dijkstra-genesis.json",
       "DijkstraGenesisHash": "0000000000000000000000000000000000000000000000000000000000000000"

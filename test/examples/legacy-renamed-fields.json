@@ -15,6 +15,7 @@
   "RpcTlsCertificateFile": "tls/server.pem",
   "RpcTlsPrivateKeyFile": "tls/server.key",
   "RpcTlsChainCertificateFiles": ["tls/intermediate.pem"],
+  "MempoolCapacityBytesOverride": 2000000,
   "TargetNumberOfRootPeers": 60,
   "TargetNumberOfKnownPeers": 85,
   "TargetNumberOfEstablishedPeers": 30,

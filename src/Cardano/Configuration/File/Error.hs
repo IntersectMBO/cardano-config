@@ -22,7 +22,7 @@ data ConfigurationParsingError = ConfigurationParsingError
   -- The tracing file never appears here. @trace-dispatcher@ reads it and
   -- reports its own errors.
   , errSection :: StrictMaybe String
-  -- ^ The top-level configuration section being parsed (e.g. @"StorageConfig"@).
+  -- ^ The top-level configuration section being parsed (e.g. @"Storage"@).
   , errPath :: JSONPath
   -- ^ The path to the offending value within the JSON\/YAML document.
   , errMessage :: String

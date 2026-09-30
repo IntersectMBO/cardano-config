@@ -35,7 +35,7 @@ import GHC.Generics
 snapshotIntervalCodec :: JSONCodec Word64
 snapshotIntervalCodec = bimapCodec validate id codec
  where
-  validate 0 = Left "Non-positive SnapshotInterval: 0"
+  validate 0 = Left "Non-positive Interval: 0"
   validate w = Right w
 
 -- | An explicit set of snapshot policy options. All fields are optional; when
@@ -56,7 +56,7 @@ data SnapshotOptions = SnapshotOptions
   , numOfDiskSnapshots :: StrictMaybe Word64
   -- ^ How many snapshots the node should keep on disk.
   }
-  deriving (Generic, Show)
+  deriving (Eq, Generic, Show)
 
 instance HasCodec SnapshotOptions where
   codec =
@@ -64,11 +64,11 @@ instance HasCodec SnapshotOptions where
       object "SnapshotOptions" $
         SnapshotOptions
           <$> optionalFieldWithStrict
-            "SnapshotInterval"
+            "Interval"
             snapshotIntervalCodec
             "Slots between snapshots (non-zero)"
             .= snapshotInterval
-          <*> optionalFieldStrict "SlotOffset" "Slot at which the snapshot schedule is anchored" .= slotOffset
+          <*> optionalFieldStrict "Offset" "Slot at which the snapshot schedule is anchored" .= slotOffset
           <*> optionalFieldStrict "RateLimit" "Minimum seconds between snapshots" .= snapshotRateLimit
           <*> optionalFieldStrict "MinDelay" "Lower bound (seconds) of the random snapshot delay" .= minDelay
           <*> optionalFieldStrict "MaxDelay" "Upper bound (seconds) of the random snapshot delay" .= maxDelay
@@ -116,7 +116,7 @@ mithrilSnapshotOptions =
     , slotOffset = SJust 388800
     , snapshotRateLimit = SJust 600
     , minDelay = SJust 300
-    , maxDelay = SJust 600
+    , maxDelay = SJust 21600
     , numOfDiskSnapshots = SJust 2
     }
 
@@ -208,8 +208,7 @@ instance Default LedgerDbConfiguration where
 -- | Finally resolve the storage configuration with a final 'NodeDatabasePaths'.
 -- The V2LSM backend's database path defaults to @"lsm"@ when unset (the export
 -- path stays optional). The snapshot policy is /not/ resolved here — that happens
--- in 'resolveSnapshotOptions', after the consistency checks, which need to see
--- the originally-requested @"Mithril"@ policy.
+-- in 'resolveSnapshotOptions', after the consistency checks.
 adjustDbPath ::
   StorageConfiguration StrictMaybe -> NodeDatabasePaths -> StorageConfiguration Identity
 adjustDbPath sc db =
@@ -226,8 +225,7 @@ adjustDbPath sc db =
 -- | Resolve the snapshot policy to a concrete set of options (see
 -- 'resolveSnapshotPolicy'), so the resolved configuration never carries the bare
 -- @"Mithril"@ policy or a partially-specified options object. Run /after/ the
--- consistency checks: those still need to see which policy was requested (e.g.
--- the Mithril\/LSMExportPath rule), which flattening would erase.
+-- consistency checks, so they see the policy as requested.
 resolveSnapshotOptions :: StorageConfiguration Identity -> StorageConfiguration Identity
 resolveSnapshotOptions sc =
   sc{ledgerDbConfiguration = fmap normalize (ledgerDbConfiguration sc)}

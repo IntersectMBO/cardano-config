@@ -116,7 +116,7 @@ finalizeTesting c = do
   case (runIdentity enabled, experimentalGenesis c) of
     (True, SNothing) ->
       Left $
-        "ExperimentalHardForksEnabled is true, so TestingConfig must also give a "
+        "ExperimentalHardForksEnabled is true, so Testing must also give a "
           <> "DijkstraGenesisFile (with its DijkstraGenesisHash); "
           <> "add them, or set ExperimentalHardForksEnabled to false"
     _ -> Right ()

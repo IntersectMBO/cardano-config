@@ -118,11 +118,15 @@ cases =
   , migrationErrorCase
   , formatVersionCase
   , formatVersionCompatibilityCase
+  , version1RenamesCase
   , migrateCase
   , migrateRenameCase
+  , migrateNoOverrideCase
+  , migrateSectionRenameCase
   , migrateTracingCase
   , migrateApplicationNameCase
   , migrateLedgerDbSnapshotsCase
+  , migrateSnapshotRenameCase
   , migrateLedgerDbBackendCase
   , backendRoundTripCase
   , migrateSiblingCase
@@ -230,7 +234,7 @@ sectionNotInlineCase =
     expectOk $ case res of
       Right _ -> Just "expected a section naming a separate file to be rejected"
       Left (e :: SomeException)
-        | "StorageConfig" `isInfixOf` show e
+        | "Storage" `isInfixOf` show e
         , "one file" `isInfixOf` show e ->
             Nothing
         | otherwise -> Just ("unexpected rejection message: " <> show e)
@@ -331,7 +335,7 @@ formatVersionCase =
 
 -- | 'migrate' reshapes a legacy flat config into the envelope: the
 -- envelope keys appear at the top, each component's flat keys are grouped under
--- its section (e.g. ConsensusMode under ConsensusConfig), a removed key
+-- its section (e.g. ConsensusMode under Consensus), a removed key
 -- (MaxKnownMajorProtocolVersion) is dropped, and the result is idempotent.
 migrateCase :: TestTree
 migrateCase =
@@ -345,12 +349,12 @@ migrateCase =
               Just ("missing envelope keys; got " <> show (KM.keys top))
           | otherwise -> case KM.lookup (K.fromString "Configuration") top of
               Just (Object cfg)
-                | not (nested cfg "ProtocolConfig" "ByronGenesisFile") ->
-                    Just "ProtocolConfig.ByronGenesisFile not grouped"
-                | not (nested cfg "ConsensusConfig" "ConsensusMode") ->
-                    Just "ConsensusConfig.ConsensusMode not grouped"
-                | not (nested cfg "StorageConfig" "LedgerDB") ->
-                    Just "StorageConfig.LedgerDB not grouped"
+                | not (nested cfg "Protocol" "ByronGenesisFile") ->
+                    Just "Protocol.ByronGenesisFile not grouped"
+                | not (nested cfg "Consensus" "ConsensusMode") ->
+                    Just "Consensus.ConsensusMode not grouped"
+                | not (nested cfg "Storage" "LedgerDB") ->
+                    Just "Storage.LedgerDB not grouped"
                 | KM.member (K.fromString "MaxKnownMajorProtocolVersion") cfg ->
                     Just "removed key MaxKnownMajorProtocolVersion survived (should be dropped)"
                 | fst (migrated m) /= m -> Just "migrate is not idempotent"
@@ -408,10 +412,74 @@ formatVersionCompatibilityCase =
         && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
     _ -> False
 
+-- | A version-1 envelope written with the version-1 spellings reaches version 2
+-- with the renames applied: the snapshot options @SnapshotInterval@\/@SlotOffset@
+-- become @Interval@\/@Offset@, the sections lose their @Config@ suffix, a
+-- @"NoOverride"@ mempool capacity override is
+-- dropped, and a numeric one is renamed to @CapacityBytesOverride@. The fixture is
+-- read through the parser (which migrates it in memory) and resolved, so the
+-- renamed options also fill in from the Mithril values.
+version1RenamesCase :: TestTree
+version1RenamesCase =
+  testCase "a version-1 envelope is migrated with the snapshot and mempool renames" $ do
+    path <- getDataFileName "test/examples/version1-renames.json"
+    raw <- decodeData "test/examples/version1-renames.json" :: IO (Either String Value)
+    (parsed, warnings) <- parseConfigurationFiles path
+    expectOk $ case raw of
+      Left err -> Just ("could not read the fixture: " <> err)
+      Right v1
+        | OutdatedFormatVersion 1 currentFormatVersion `notElem` warnings ->
+            Just ("reading the version-1 document did not report it: " <> show warnings)
+        | isSJust (mempoolCapacityOverride (mempoolConfiguration parsed)) ->
+            Just "the \"NoOverride\" capacity override was not dropped"
+        | Just problem <- migratedProblem v1 -> Just problem
+        | otherwise -> case resolveConfiguration (C.defaultCliArgs path) parsed of
+            Left err -> Just ("the version-1 document did not resolve: " <> show err)
+            Right (nc, _) ->
+              case snapshots (runIdentity (ledgerDbConfiguration (C.storageConfiguration nc))) of
+                SJust (CustomSnapshotPolicy o)
+                  | snapshotFields o == [Just 864, Just 10, Just 600, Just 300, Just 21600, Just 2] -> Nothing
+                other -> Just ("unexpected resolved snapshot options: " <> show other)
+ where
+  -- The same document with a numeric override: after 'migrate' it sits at
+  -- version 2 under the current names only.
+  migratedProblem v1 = case fst (migrated (withNumericOverride v1)) of
+    m@(Object top)
+      | KM.lookup (K.fromString "Version") top /= Just (Number (fromIntegral currentFormatVersion)) ->
+          Just "the version-1 document was not stamped with the current version"
+      | any
+          ( `elem`
+              [ "SnapshotInterval"
+              , "SlotOffset"
+              , "MempoolCapacityBytesOverride"
+              , "MempoolConfig"
+              , "ProtocolConfig"
+              , "StorageConfig"
+              ]
+          )
+          (allKeys m) ->
+          Just ("an old name survived migration; keys: " <> show (allKeys m))
+      | navigate m ["Configuration", "Mempool", "CapacityBytesOverride"] /= Just (Number 2000000) ->
+          Just "the numeric capacity override was not renamed to CapacityBytesOverride"
+      | otherwise -> Nothing
+    _ -> Just "migrate did not produce an object"
+  withNumericOverride = setAt ["Configuration", "MempoolConfig", "MempoolCapacityBytesOverride"] (Number 2000000)
+  setAt [k] x (Object o) = Object (KM.insert (K.fromString k) x o)
+  setAt (k : ks) x (Object o) = case KM.lookup (K.fromString k) o of
+    Just inner -> Object (KM.insert (K.fromString k) (setAt ks x inner) o)
+    Nothing -> Object o
+  setAt _ _ v = v
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+  allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
+  allKeys (Array a) = concatMap allKeys a
+  allKeys _ = []
+
 -- | 'migrate' rewrites the renamed fields to their current names and drops the
 -- removed ones. Renamed flat keys must end up grouped under their section using
--- the /new/ name (a peer target under NetworkConfig, EnableGrpc under
--- LocalConnectionsConfig); AcceptedConnectionsLimit's sub-keys are renamed in
+-- the /new/ name (a peer target under Network, EnableGrpc under
+-- LocalConnections); AcceptedConnectionsLimit's sub-keys are renamed in
 -- place, but that rename is scoped — a stray @delay@ elsewhere is left alone;
 -- no removed key survives anywhere (including @Protocol@ and
 -- @MaxKnownMajorProtocolVersion@); a genuinely-unrecognised key is kept; and the
@@ -430,13 +498,15 @@ migrateRenameCase =
               Just ("an old name survived; keys: " <> show (allKeys m))
           | otherwise -> case KM.lookup (K.fromString "Configuration") top of
               Just (Object cfg)
-                | not (nested cfg "NetworkConfig" "DeadlineTargetNumberOfRootPeers") ->
-                    Just "renamed peer target not grouped under NetworkConfig"
-                | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
-                    Just "EnableGrpc not grouped under LocalConnectionsConfig"
-                | not (deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "HardLimit") ->
+                | not (nested cfg "Network" "DeadlineTargetNumberOfRootPeers") ->
+                    Just "renamed peer target not grouped under Network"
+                | not (nested cfg "LocalConnections" "EnableGrpc") ->
+                    Just "EnableGrpc not grouped under LocalConnections"
+                | not (nested cfg "Mempool" "CapacityBytesOverride") ->
+                    Just "renamed CapacityBytesOverride not grouped under Mempool"
+                | not (deepNested cfg "Network" "AcceptedConnectionsLimit" "HardLimit") ->
                     Just "AcceptedConnectionsLimit.HardLimit not renamed in place"
-                | deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "hardLimit" ->
+                | deepNested cfg "Network" "AcceptedConnectionsLimit" "hardLimit" ->
                     Just "AcceptedConnectionsLimit.hardLimit not renamed"
                 -- The rename is scoped: a stray top-level "delay" is not touched.
                 | not (KM.member (K.fromString "delay") cfg) ->
@@ -471,6 +541,7 @@ migrateRenameCase =
     , "RpcTlsPrivateKeyFile"
     , "RpcTlsChainCertificateFiles"
     , "TargetNumberOfRootPeers"
+    , "MempoolCapacityBytesOverride"
     ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
@@ -482,6 +553,101 @@ migrateRenameCase =
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
+
+-- | 'migrate' renames the sections that carried a @Config@ suffix. Where both
+-- spellings are present the current one wins, with a 'RenamedKeyCollision'
+-- warning. A @Protocol@ section survives, although @Protocol@ is also the removed
+-- legacy protocol selector, which is still dropped.
+migrateSectionRenameCase :: TestTree
+migrateSectionRenameCase =
+  testCase "migrate drops the Config suffix from the sections" $
+    expectOk $ case migrated input of
+      (Object top, warnings)
+        | RenamedKeyCollision (T.pack "NetworkConfig") (T.pack "Network") `notElem` warnings ->
+            Just ("expected a RenamedKeyCollision for NetworkConfig, got " <> show warnings)
+        | otherwise -> case KM.lookup (K.fromString "Configuration") top of
+            Just (Object cfg)
+              | any (\k -> KM.member (K.fromString k) cfg) ["NetworkConfig", "ProtocolConfig", "StorageConfig"] ->
+                  Just ("an old section name survived; keys: " <> show (KM.keys cfg))
+              | KM.lookup (K.fromString "Network") cfg
+                  /= Just (obj [("DiffusionMode", String (T.pack "InitiatorOnly"))]) ->
+                  Just ("the current-name Network should win, got " <> show (KM.lookup (K.fromString "Network") cfg))
+              | KM.lookup (K.fromString "Protocol") cfg
+                  /= Just (obj [("RequiresNetworkMagic", String (T.pack "RequiresNoMagic"))]) ->
+                  Just
+                    ( "the Protocol section was not kept as written, got "
+                        <> show (KM.lookup (K.fromString "Protocol") cfg)
+                    )
+              | KM.lookup (K.fromString "Storage") cfg /= Just (obj [("DatabasePath", String (T.pack "db"))]) ->
+                  Just "StorageConfig was not renamed to Storage"
+              | otherwise -> Nothing
+            _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
+ where
+  input =
+    obj
+      [ ("Protocol", String (T.pack "Cardano"))
+      ,
+        ( "Configuration"
+        , obj
+            [ ("NetworkConfig", obj [("DiffusionMode", String (T.pack "InitiatorAndResponder"))])
+            , ("Network", obj [("DiffusionMode", String (T.pack "InitiatorOnly"))])
+            , ("ProtocolConfig", obj [("RequiresNetworkMagic", String (T.pack "RequiresNoMagic"))])
+            , ("StorageConfig", obj [("DatabasePath", String (T.pack "db"))])
+            ]
+        )
+      ]
+
+-- | A mempool capacity override of @"NoOverride"@ means the same as omitting the
+-- key, which is now the only spelling, so 'migrate' drops the entry whole, under
+-- the old name or the current one. It does not count as a rename collision.
+migrateNoOverrideCase :: TestTree
+migrateNoOverrideCase =
+  testCase "migrate drops a \"NoOverride\" mempool capacity override" $
+    expectOk $
+      firstProblem
+        [ check "old name, flat" (obj [("MempoolCapacityBytesOverride", noOverride)]) []
+        , check
+            "current name, in the envelope"
+            (obj [("Configuration", obj [("Mempool", obj [("CapacityBytesOverride", noOverride)])])])
+            []
+        , check
+            "old name beside the current one"
+            ( obj
+                [
+                  ( "Configuration"
+                  , obj
+                      [
+                        ( "Mempool"
+                        , obj [("MempoolCapacityBytesOverride", noOverride), ("CapacityBytesOverride", Number 5)]
+                        )
+                      ]
+                  )
+                ]
+            )
+            [Number 5]
+        ]
+ where
+  noOverride = String (T.pack "NoOverride")
+  check label input expected = case migrated input of
+    (Object top, warnings)
+      | any isCollision warnings -> Just (label <> ": unexpected collision warning: " <> show warnings)
+      | otherwise ->
+          let found = case KM.lookup (K.fromString "Configuration") top of
+                Just (Object cfg) -> case KM.lookup (K.fromString "Mempool") cfg of
+                  Just (Object m) ->
+                    [ v
+                    | (k, v) <- KM.toList m
+                    , K.toString k `elem` ["MempoolCapacityBytesOverride", "CapacityBytesOverride"]
+                    ]
+                  _ -> []
+                _ -> []
+           in if found == expected
+                then Nothing
+                else Just (label <> ": expected " <> show expected <> ", got " <> show found)
+    _ -> Just (label <> ": migrate did not produce an object")
+  isCollision RenamedKeyCollision{} = True
+  isCollision _ = False
 
 -- | 'migrate' gathers the flat trace-dispatcher keys /verbatim/ into an inline
 -- @HermodTracing@ object under @Configuration@ (keeping the flat names — including
@@ -586,29 +752,31 @@ migrateApplicationNameCase =
 
 -- | 'migrate' gathers the flat snapshot-option keys directly under @LedgerDB@
 -- (which legacy configs and the node parser accept there) into a nested
--- @LedgerDB.Snapshots@ object — the form cardano-config's @LedgerDB@ codec reads.
+-- @LedgerDB.Snapshots@ object — the form cardano-config's @LedgerDB@ codec reads —
+-- renaming @SnapshotInterval@ to @Interval@ on the way.
 -- @Backend@/@QueryBatchSize@ stay at the @LedgerDB@ level. Idempotent.
 migrateLedgerDbSnapshotsCase :: TestTree
 migrateLedgerDbSnapshotsCase =
   testCase "migrate gathers flat LedgerDB snapshot options into LedgerDB.Snapshots" $
     expectOk $ case fst (migrated legacyLedgerDB) of
-      m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
+      m@Object{} -> case navigate m ["Configuration", "Storage", "LedgerDB"] of
         Just (Object ldb)
-          | any (\k -> KM.member (K.fromString k) ldb) snapOpts ->
+          | any (\k -> KM.member (K.fromString k) ldb) flatOpts ->
               Just ("a flat snapshot key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
           | not (KM.member (K.fromString "Backend") ldb && KM.member (K.fromString "QueryBatchSize") ldb) ->
               Just "Backend/QueryBatchSize were not kept at the LedgerDB level"
           | otherwise -> case KM.lookup (K.fromString "Snapshots") ldb of
               Just (Object snaps)
-                | not (all (\k -> KM.member (K.fromString k) snaps) snapOpts) ->
+                | not (all (\k -> KM.member (K.fromString k) snaps) nestedOpts) ->
                     Just ("LedgerDB.Snapshots is missing a moved key; has: " <> show (KM.keys snaps))
                 | fst (migrated m) /= m -> Just "migrate is not idempotent"
                 | otherwise -> Nothing
               _ -> Just "LedgerDB.Snapshots was not created as an object"
-        _ -> Just "Configuration.StorageConfig.LedgerDB not found"
+        _ -> Just "Configuration.Storage.LedgerDB not found"
       _ -> Just "migrate did not produce an object"
  where
-  snapOpts = ["SnapshotInterval", "NumOfDiskSnapshots"]
+  flatOpts = ["SnapshotInterval", "NumOfDiskSnapshots"]
+  nestedOpts = ["Interval", "NumOfDiskSnapshots"]
   legacyLedgerDB =
     Object $
       KM.fromList
@@ -627,13 +795,54 @@ migrateLedgerDbSnapshotsCase =
   navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
   navigate _ _ = Nothing
 
+-- | Inside an existing @LedgerDB.Snapshots@ object 'migrate' renames
+-- @SnapshotInterval@\/@SlotOffset@ to @Interval@\/@Offset@. Where both spellings
+-- are present the current one wins, with a 'RenamedKeyCollision' warning.
+migrateSnapshotRenameCase :: TestTree
+migrateSnapshotRenameCase =
+  testCase "migrate renames the snapshot options inside LedgerDB.Snapshots" $
+    expectOk $ case migrated input of
+      (m, warnings)
+        | expectedWarning `notElem` warnings ->
+            Just ("expected a RenamedKeyCollision warning, got " <> show warnings)
+        | otherwise -> case navigate m ["Configuration", "Storage", "LedgerDB", "Snapshots"] of
+            Just (Object snaps)
+              | any (\k -> KM.member (K.fromString k) snaps) ["SnapshotInterval", "SlotOffset"] ->
+                  Just ("an old snapshot option name survived; keys: " <> show (KM.keys snaps))
+              | KM.lookup (K.fromString "Interval") snaps /= Just (Number 100) ->
+                  Just
+                    ( "the current-name Interval (100) should win, got "
+                        <> show (KM.lookup (K.fromString "Interval") snaps)
+                    )
+              | KM.lookup (K.fromString "Offset") snaps /= Just (Number 7) ->
+                  Just ("SlotOffset was not renamed to Offset; keys: " <> show (KM.keys snaps))
+              | otherwise -> Nothing
+            _ -> Just "LedgerDB.Snapshots is not an object"
+ where
+  expectedWarning = RenamedKeyCollision (T.pack "SnapshotInterval") (T.pack "Interval")
+  input =
+    obj
+      [
+        ( "LedgerDB"
+        , obj
+            [
+              ( "Snapshots"
+              , obj [("SnapshotInterval", Number 864), ("Interval", Number 100), ("SlotOffset", Number 7)]
+              )
+            ]
+        )
+      ]
+  navigate v [] = Just v
+  navigate (Object o) (k : ks) = KM.lookup (K.fromString k) o >>= \v -> navigate v ks
+  navigate _ _ = Nothing
+
 -- | 'migrate' folds the legacy flat @V2LSM@ backend keys under @LedgerDB@ into the
 -- tagged @Backend: { "LSM": { "DatabasePath": …, "ExportPath": … } }@ form.
 migrateLedgerDbBackendCase :: TestTree
 migrateLedgerDbBackendCase =
   testCase "migrate folds the flat V2LSM backend into Backend.LSM" $
     expectOk $ case fst (migrated legacyLedgerDB) of
-      m@Object{} -> case navigate m ["Configuration", "StorageConfig", "LedgerDB"] of
+      m@Object{} -> case navigate m ["Configuration", "Storage", "LedgerDB"] of
         Just (Object ldb)
           | any (\k -> KM.member (K.fromString k) ldb) ["LSMDatabasePath", "LSMExportPath"] ->
               Just ("a flat LSM key stayed at the LedgerDB level; keys: " <> show (KM.keys ldb))
@@ -646,7 +855,7 @@ migrateLedgerDbBackendCase =
                   | otherwise -> Just ("Backend.LSM has wrong contents: " <> show (KM.toList lsm))
                 _ -> Just "Backend.LSM was not created as an object"
               other -> Just ("Backend was not folded into an object: " <> show other)
-        _ -> Just "Configuration.StorageConfig.LedgerDB not found"
+        _ -> Just "Configuration.Storage.LedgerDB not found"
       _ -> Just "migrate did not produce an object"
  where
   legacyLedgerDB =
@@ -686,8 +895,8 @@ backendRoundTripCase =
 
 -- | 'migrate' does not drop a top-level sibling of an existing @Configuration@
 -- envelope: a stray @ByronGenesisFile@ next to the envelope is folded into the
--- body and regrouped under its owning section (@ProtocolConfig@), and the pre-existing
--- @StorageConfig@ section is preserved. (Regression test for the reviewer's
+-- body and regrouped under its owning section (@Protocol@), and the pre-existing
+-- @Storage@ section is preserved. (Regression test for the reviewer's
 -- "enveloped file drops its siblings" concern.)
 migrateSiblingCase :: TestTree
 migrateSiblingCase =
@@ -697,10 +906,10 @@ migrateSiblingCase =
         | not (null warnings) -> Just ("expected no warnings, got " <> show warnings)
         | otherwise -> case KM.lookup (K.fromString "Configuration") top of
             Just (Object cfg)
-              | not (nested cfg "ProtocolConfig" "ByronGenesisFile") ->
-                  Just "the sibling ByronGenesisFile was dropped, not regrouped under ProtocolConfig"
-              | not (KM.member (K.fromString "StorageConfig") cfg) ->
-                  Just "the pre-existing StorageConfig section was lost"
+              | not (nested cfg "Protocol" "ByronGenesisFile") ->
+                  Just "the sibling ByronGenesisFile was dropped, not regrouped under Protocol"
+              | not (KM.member (K.fromString "Storage") cfg) ->
+                  Just "the pre-existing Storage section was lost"
               | otherwise -> Nothing
             _ -> Just "Configuration is not an object"
       _ -> Just "migrate did not produce an object"
@@ -708,7 +917,7 @@ migrateSiblingCase =
   input =
     obj
       [ ("Version", Number 1)
-      , ("Configuration", obj [("StorageConfig", obj [("DatabasePath", String (T.pack "db"))])])
+      , ("Configuration", obj [("Storage", obj [("DatabasePath", String (T.pack "db"))])])
       , ("ByronGenesisFile", String (T.pack "byron.json"))
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
@@ -725,10 +934,10 @@ migrateEnvelopeCollisionCase =
     $ expectOk
     $ case migrated input of
       (Object top, warnings)
-        | EnvelopeKeyCollision (T.pack "MempoolConfig") `notElem` warnings ->
-            Just ("expected an EnvelopeKeyCollision for MempoolConfig, got " <> show warnings)
+        | EnvelopeKeyCollision (T.pack "Mempool") `notElem` warnings ->
+            Just ("expected an EnvelopeKeyCollision for Mempool, got " <> show warnings)
         | otherwise -> case KM.lookup (K.fromString "Configuration") top of
-            Just (Object cfg) -> case KM.lookup (K.fromString "MempoolConfig") cfg of
+            Just (Object cfg) -> case KM.lookup (K.fromString "Mempool") cfg of
               Just (Object m)
                 | KM.lookup (K.fromString "MempoolCapacityOverride") m /= Just (Number 100) ->
                     Just
@@ -736,14 +945,14 @@ migrateEnvelopeCollisionCase =
                           <> show (KM.lookup (K.fromString "MempoolCapacityOverride") m)
                       )
                 | otherwise -> Nothing
-              _ -> Just "MempoolConfig is not an object"
+              _ -> Just "Mempool is not an object"
             _ -> Just "Configuration is not an object"
       _ -> Just "migrate did not produce an object"
  where
   input =
     obj
-      [ ("Configuration", obj [("MempoolConfig", obj [("MempoolCapacityOverride", Number 100)])])
-      , ("MempoolConfig", obj [("MempoolCapacityOverride", Number 999)])
+      [ ("Configuration", obj [("Mempool", obj [("MempoolCapacityOverride", Number 100)])])
+      , ("Mempool", obj [("MempoolCapacityOverride", Number 999)])
       ]
 
 -- | 'migrate' rewrites a pre-rename field name even when the document is
@@ -764,8 +973,8 @@ migrateEnvelopedRenameCase =
       | "EnableRpc" `elem` allKeys m -> Just "the old name EnableRpc survived the rename"
       | otherwise -> case KM.lookup (K.fromString "Configuration") top of
           Just (Object cfg)
-            | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
-                Just "EnableRpc was not renamed to EnableGrpc under LocalConnectionsConfig"
+            | not (nested cfg "LocalConnections" "EnableGrpc") ->
+                Just "EnableRpc was not renamed to EnableGrpc under LocalConnections"
             | otherwise -> Nothing
           _ -> Just "Configuration is not an object"
     (m, _) -> Just ("migrate did not produce an object: " <> show m)
@@ -788,7 +997,7 @@ migrateEnvelopedRenameCase =
     obj
       [ ("$schema", pinnedSchema)
       , ("Version", Number (fromIntegral version))
-      , ("Configuration", obj [("LocalConnectionsConfig", obj [("EnableRpc", Bool True)])])
+      , ("Configuration", obj [("LocalConnections", obj [("EnableRpc", Bool True)])])
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
@@ -810,7 +1019,7 @@ migrateRenameCollisionCase =
         | expectedWarning `notElem` warnings ->
             Just ("expected a RenamedKeyCollision warning, got " <> show warnings)
         | otherwise -> case KM.lookup (K.fromString "Configuration") top of
-            Just (Object cfg) -> case KM.lookup (K.fromString "NetworkConfig") cfg of
+            Just (Object cfg) -> case KM.lookup (K.fromString "Network") cfg of
               Just (Object n)
                 | KM.member (K.fromString "TargetNumberOfRootPeers") n ->
                     Just "the old name TargetNumberOfRootPeers survived (should be dropped)"
@@ -820,7 +1029,7 @@ migrateRenameCollisionCase =
                           <> show (KM.lookup (K.fromString "DeadlineTargetNumberOfRootPeers") n)
                       )
                 | otherwise -> Nothing
-              _ -> Just "NetworkConfig is not an object"
+              _ -> Just "Network is not an object"
             _ -> Just "Configuration is not an object"
       _ -> Just "migrate did not produce an object"
  where
@@ -832,7 +1041,7 @@ migrateRenameCollisionCase =
         ( "Configuration"
         , obj
             [
-              ( "NetworkConfig"
+              ( "Network"
               , obj
                   [ ("TargetNumberOfRootPeers", Number 1)
                   , ("DeadlineTargetNumberOfRootPeers", Number 2)
@@ -1084,7 +1293,7 @@ sectionDecodeErrorCase =
   testCase "a section that cannot be decoded is a decode error, not a violated check" $ do
     path <- getDataFileName "test/examples/all-sections.json"
     (cfg, _) <- parseConfigurationFiles path
-    let broken = cfg{userConfiguration = section "NetworkConfig" "DiffusionMode" (str "Nonsense")}
+    let broken = cfg{userConfiguration = section "Network" "DiffusionMode" (str "Nonsense")}
         section outer inner v =
           Object (KM.singleton (K.fromString outer) (Object (KM.singleton (K.fromString inner) v)))
     expectOk $ case cliArgs [] of
@@ -1092,7 +1301,7 @@ sectionDecodeErrorCase =
       Just cli -> case resolveConfiguration cli broken of
         Right _ -> Just "a section that cannot be decoded resolved"
         Left (C.SectionDecodeError sec msg)
-          | sec /= "NetworkConfig" -> Just ("the wrong section was named: " <> sec)
+          | sec /= "Network" -> Just ("the wrong section was named: " <> sec)
           | not ("DiffusionMode" `isInfixOf` msg) ->
               Just ("the decode error does not name the field: " <> msg)
           | otherwise -> Nothing
@@ -1189,7 +1398,7 @@ peerTargetsRejectedCase =
         Right _ -> Right ()
 
 -- | The two default configurations are one configuration in two roles: they
--- must differ only in the @NetworkConfig@ fields that the role decides (the
+-- must differ only in the @Network@ fields that the role decides (the
 -- deadline peer targets and @PeerSharing@). Anything else differing means one
 -- file was edited and the other was not.
 defaultConfigParityCase :: TestTree
@@ -1201,16 +1410,16 @@ defaultConfigParityCase =
       (Left e, _) -> Just e
       (_, Left e) -> Just e
       (Right b, Right r)
-        | differing /= ["NetworkConfig"] ->
-            Just ("sections other than NetworkConfig differ: " <> show differing)
+        | differing /= ["Network"] ->
+            Just ("sections other than Network differ: " <> show differing)
         | not (null badKeys) ->
-            Just ("NetworkConfig differs outside the role fields: " <> show badKeys)
+            Just ("Network differs outside the role fields: " <> show badKeys)
         | roleKeys /= sort roleFields ->
             Just ("the role fields that differ are " <> show roleKeys)
         | otherwise -> Nothing
        where
         differing = sort [K.toString k | (k, v) <- KM.toList b, KM.lookup k r /= Just v]
-        net (Object o) = case KM.lookup (K.fromString "NetworkConfig") o of
+        net (Object o) = case KM.lookup (K.fromString "Network") o of
           Just (Object n) -> n
           _ -> KM.empty
         net _ = KM.empty
@@ -1245,7 +1454,7 @@ experimentalHardForksDefaultCase =
     committed <- eitherDecodeFileStrict' path :: IO (Either String Value)
     expectOk $ case committed of
       Left e -> Just ("could not read " <> fp <> ": " <> e)
-      Right v -> case lookupPath ["Configuration", "TestingConfig", "ExperimentalHardForksEnabled"] v of
+      Right v -> case lookupPath ["Configuration", "Testing", "ExperimentalHardForksEnabled"] v of
         Just (Bool False) -> Nothing
         other -> Just (fp <> " sets ExperimentalHardForksEnabled to " <> show other)
   lookupPath keys v = foldM step v keys
@@ -1308,7 +1517,7 @@ mempoolMixedResolveCase =
 
 -- | Parse @cardano-node@-style CLI arguments for a test (no defaults file is
 -- needed; the parser supplies its own).
--- | The flat @Grpc*@ keys of @LocalConnectionsConfig@ fold into the single
+-- | The flat @Grpc*@ keys of @LocalConnections@ fold into the single
 -- 'GrpcEndpoint' they describe: a unix socket, a plaintext (h2c) TCP listener
 -- or a TLS one. The listen address defaults to loopback. Each endpoint also
 -- survives a round trip through 'toJSON'.
@@ -1557,11 +1766,11 @@ schemaConstraintsCase =
     expectOk (firstProblem results)
  where
   checks =
-    [ ("LocalConnectionsConfig", "the gRPC endpoint exclusions", hasDependencies grpcKeys)
-    , ("MempoolConfig", "the coupled mempool timeouts", hasDependencies mempoolTimeoutKeys)
-    , ("TestingConfig", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
-    , ("TestingConfig", "the experimental-eras requirement", hasIfThen)
-    , ("StorageConfig", "the non-zero SnapshotInterval", hasMinimum "SnapshotInterval" 1)
+    [ ("LocalConnections", "the gRPC endpoint exclusions", hasDependencies grpcKeys)
+    , ("Mempool", "the coupled mempool timeouts", hasDependencies mempoolTimeoutKeys)
+    , ("Testing", "the Dijkstra genesis file/hash pair", hasDependencies dijkstraKeys)
+    , ("Testing", "the experimental-eras requirement", hasIfThen)
+    , ("Storage", "the non-zero snapshot Interval", hasMinimum "Interval" 1)
     ]
   grpcKeys =
     [ "GrpcSocketPath"
@@ -1614,14 +1823,14 @@ schemaConstraintsCase =
 -- schema says @minimum: 1@ rather than the 0 a 'Data.Word.Word64' would allow).
 snapshotIntervalCase :: TestTree
 snapshotIntervalCase =
-  testCase "a zero SnapshotInterval is rejected" $
+  testCase "a zero snapshot Interval is rejected" $
     expectOk $ case (decodeInterval 0, decodeInterval 1) of
-      (Right _, _) -> Just "SnapshotInterval 0 was accepted"
-      (_, Left err) -> Just ("SnapshotInterval 1 was rejected: " <> err)
+      (Right _, _) -> Just "Interval 0 was accepted"
+      (_, Left err) -> Just ("Interval 1 was rejected: " <> err)
       (Left _, Right _) -> Nothing
  where
   decodeInterval n =
-    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("SnapshotInterval", Number n)])])]) ::
+    case fromJSON (obj [("LedgerDB", obj [("Snapshots", obj [("Interval", Number n)])])]) ::
            Result (StorageConfiguration StrictMaybe) of
       Error err -> Left err
       Success cfg -> Right cfg
@@ -1674,7 +1883,7 @@ snapshotFields o =
 
 -- | The concrete values the @"Mithril"@ policy resolves to.
 mithrilFields :: [Maybe Word64]
-mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 600, Just 2]
+mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 21600, Just 2]
 
 -- | End-to-end: a configuration that uses the base @"Mithril"@ default and one
 -- that sets only a couple of snapshot options both resolve to the full concrete
@@ -1682,7 +1891,7 @@ mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 600, Just 2]
 snapshotMithrilResolveCase :: TestTree
 snapshotMithrilResolveCase =
   testCase "Mithril snapshot policy resolves to concrete values (filling partial overrides)" $ do
-    fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base "Mithril"
+    fromMithril <- resolvedOptions "test/examples/role-precedence.json" -- no Snapshots ⇒ base (Mithril values)
     fromPartial <- resolvedOptions "test/examples/legacy-fullconfig.json" -- sets 3 of 6 (= Mithril)
     expectOk $ case (fromMithril, fromPartial) of
       (Right a, Right b)
@@ -1703,7 +1912,7 @@ snapshotMithrilResolveCase =
           other -> Left ("expected resolved custom snapshot options, got " <> show other)
 
 -- | 'resolveSnapshotPolicy': @"Mithril"@ yields its values, and a partial custom
--- policy keeps the value it set (here a distinct @SnapshotInterval@) while the
+-- policy keeps the value it set (here a distinct @Interval@) while the
 -- rest are inherited from Mithril.
 snapshotResolvePolicyCase :: TestTree
 snapshotResolvePolicyCase =
@@ -1712,14 +1921,16 @@ snapshotResolvePolicyCase =
       ( let mithril = snapshotFields (resolveSnapshotPolicy MithrilSnapshotPolicy)
             partial = SnapshotOptions (SJust 7777) SNothing SNothing SNothing SNothing SNothing
             filled = snapshotFields (resolveSnapshotPolicy (CustomSnapshotPolicy partial))
-         in if mithril == mithrilFields && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 600, Just 2]
+         in if mithril == mithrilFields
+              && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 21600, Just 2]
               then Nothing
               else Just ("unexpected: mithril=" <> show mithril <> " filled=" <> show filled)
       )
 
 -- | The Mithril policy under the V2LSM backend without an @LSMExportPath@ is
--- accepted, but resolution surfaces a non-fatal 'ConsistencyWarning' (the check
--- runs before the Mithril policy is resolved away).
+-- accepted, but resolution surfaces a non-fatal 'ConsistencyWarning'. The fixture
+-- sets no @Snapshots@, so it inherits the defaults, which spell the Mithril values
+-- out rather than name the @"Mithril"@ policy: the check matches them by value.
 mithrilRequiresExportCase :: TestTree
 mithrilRequiresExportCase =
   testCase "Mithril + V2LSM without LSMExportPath resolves with a warning" $ do
