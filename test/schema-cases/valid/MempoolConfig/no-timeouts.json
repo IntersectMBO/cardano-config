@@ -3,7 +3,7 @@
     "Version": 2,
     "Configuration": {
         "MempoolConfig": {
-            "MempoolCapacityBytesOverride": "NoOverride"
+            "CapacityBytesOverride": 1000000
         }
     }
 }

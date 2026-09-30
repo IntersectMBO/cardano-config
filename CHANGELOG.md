@@ -189,6 +189,15 @@ only a document already at the current version that migration still changed.
 The `migrate` command used to print `ExitFailure 1` under a message it had
 already written. It no longer does.
 
+### The mempool capacity override
+
+`MempoolCapacityBytesOverride` is now `CapacityBytesOverride`, and it takes a
+byte count only. Leaving it out means no override. The `"NoOverride"` string
+is gone, and the default configurations no longer set the key.
+
+`migrate` renames the key. Where its value is `"NoOverride"`, under either
+name, `migrate` drops the key instead.
+
 ### Snapshots
 
 Two snapshot options are renamed inside `LedgerDB.Snapshots`:

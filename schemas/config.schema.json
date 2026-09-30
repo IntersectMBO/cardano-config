@@ -218,23 +218,12 @@
                     },
                     "description": "MempoolConfiguration",
                     "properties": {
-                        "MempoolCapacityBytesOverride": {
-                            "anyOf": [
-                                {
-                                    "maximum": 1.8446744073709551615e19,
-                                    "minimum": 0,
-                                    "title": "Integer",
-                                    "type": "integer"
-                                },
-                                {
-                                    "const": "NoOverride",
-                                    "title": "NoOverride",
-                                    "type": "string"
-                                }
-                            ],
-                            "default": "NoOverride",
-                            "description": "Override for the maximum mempool size in bytes, or the string \"NoOverride\"",
-                            "title": "MempoolCapacityBytesOverride"
+                        "CapacityBytesOverride": {
+                            "description": "Override for the maximum mempool size in bytes. Unset means no override",
+                            "maximum": 1.8446744073709551615e19,
+                            "minimum": 0,
+                            "title": "CapacityBytesOverride",
+                            "type": "integer"
                         },
                         "MempoolTimeoutCapacity": {
                             "description": "Capacity mempool timeout, in seconds. Set all three or none. All unset takes the coupled default: Soft 1, Hard 1.5, Capacity 5",

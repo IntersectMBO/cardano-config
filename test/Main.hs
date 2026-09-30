@@ -120,6 +120,7 @@ cases =
   , formatVersionCompatibilityCase
   , migrateCase
   , migrateRenameCase
+  , migrateNoOverrideCase
   , migrateTracingCase
   , migrateApplicationNameCase
   , migrateLedgerDbSnapshotsCase
@@ -435,6 +436,8 @@ migrateRenameCase =
                     Just "renamed peer target not grouped under NetworkConfig"
                 | not (nested cfg "LocalConnectionsConfig" "EnableGrpc") ->
                     Just "EnableGrpc not grouped under LocalConnectionsConfig"
+                | not (nested cfg "MempoolConfig" "CapacityBytesOverride") ->
+                    Just "renamed CapacityBytesOverride not grouped under MempoolConfig"
                 | not (deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "HardLimit") ->
                     Just "AcceptedConnectionsLimit.HardLimit not renamed in place"
                 | deepNested cfg "NetworkConfig" "AcceptedConnectionsLimit" "hardLimit" ->
@@ -472,6 +475,7 @@ migrateRenameCase =
     , "RpcTlsPrivateKeyFile"
     , "RpcTlsChainCertificateFiles"
     , "TargetNumberOfRootPeers"
+    , "MempoolCapacityBytesOverride"
     ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
     Just (Object s) -> KM.member (K.fromString key) s
@@ -483,6 +487,57 @@ migrateRenameCase =
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
+
+-- | A mempool capacity override of @"NoOverride"@ means the same as omitting the
+-- key, which is now the only spelling, so 'migrate' drops the entry whole, under
+-- the old name or the current one. It does not count as a rename collision.
+migrateNoOverrideCase :: TestTree
+migrateNoOverrideCase =
+  testCase "migrate drops a \"NoOverride\" mempool capacity override" $
+    expectOk $
+      firstProblem
+        [ check "old name, flat" (obj [("MempoolCapacityBytesOverride", noOverride)]) []
+        , check
+            "current name, in the envelope"
+            (obj [("Configuration", obj [("MempoolConfig", obj [("CapacityBytesOverride", noOverride)])])])
+            []
+        , check
+            "old name beside the current one"
+            ( obj
+                [
+                  ( "Configuration"
+                  , obj
+                      [
+                        ( "MempoolConfig"
+                        , obj [("MempoolCapacityBytesOverride", noOverride), ("CapacityBytesOverride", Number 5)]
+                        )
+                      ]
+                  )
+                ]
+            )
+            [Number 5]
+        ]
+ where
+  noOverride = String (T.pack "NoOverride")
+  check label input expected = case migrated input of
+    (Object top, warnings)
+      | any isCollision warnings -> Just (label <> ": unexpected collision warning: " <> show warnings)
+      | otherwise ->
+          let found = case KM.lookup (K.fromString "Configuration") top of
+                Just (Object cfg) -> case KM.lookup (K.fromString "MempoolConfig") cfg of
+                  Just (Object m) ->
+                    [ v
+                    | (k, v) <- KM.toList m
+                    , K.toString k `elem` ["MempoolCapacityBytesOverride", "CapacityBytesOverride"]
+                    ]
+                  _ -> []
+                _ -> []
+           in if found == expected
+                then Nothing
+                else Just (label <> ": expected " <> show expected <> ", got " <> show found)
+    _ -> Just (label <> ": migrate did not produce an object")
+  isCollision RenamedKeyCollision{} = True
+  isCollision _ = False
 
 -- | 'migrate' gathers the flat trace-dispatcher keys /verbatim/ into an inline
 -- @HermodTracing@ object under @Configuration@ (keeping the flat names — including

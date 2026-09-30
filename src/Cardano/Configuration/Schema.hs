@@ -558,7 +558,7 @@ titleBranches o = foldr titleUnion o ["anyOf", "oneOf"]
       _ -> Nothing
 
 -- | Give a bare @const@ schema the @type@ implied by its value, so even a single
--- enumerated alternative (e.g. the @"NoOverride"@ branch of a union) declares a
+-- enumerated alternative (e.g. the @"Mithril"@ branch of @Snapshots@) declares a
 -- type rather than leaving it undefined.
 typeConst :: KM.KeyMap Value -> KM.KeyMap Value
 typeConst o =

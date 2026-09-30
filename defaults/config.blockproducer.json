@@ -18,9 +18,7 @@
         "LocalConnectionsConfig": {
             "EnableGrpc": false
         },
-        "MempoolConfig": {
-            "MempoolCapacityBytesOverride": "NoOverride"
-        },
+        "MempoolConfig": {},
         "NetworkConfig": {
             "AcceptedConnectionsLimit": {
                 "HardLimit": 512,

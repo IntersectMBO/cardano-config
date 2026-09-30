@@ -74,6 +74,7 @@ the same key sits in both places, the one inside `Configuration` wins, and
 | `TargetNumberOfKnownBigLedgerPeers` | `DeadlineTargetNumberOfKnownBigLedgerPeers` |
 | `TargetNumberOfEstablishedBigLedgerPeers` | `DeadlineTargetNumberOfEstablishedBigLedgerPeers` |
 | `TargetNumberOfActiveBigLedgerPeers` | `DeadlineTargetNumberOfActiveBigLedgerPeers` |
+| `MempoolCapacityBytesOverride` | `CapacityBytesOverride` |
 
 These three are renamed only inside an `AcceptedConnectionsLimit` object,
 because the names are too common to rewrite anywhere else:
@@ -90,7 +91,11 @@ Reconcile the two by hand when the dropped value was the one you wanted.
 
 ## Dropped keys
 
-`migrate` removes these. Nothing reads them now.
+A `MempoolCapacityBytesOverride` or `CapacityBytesOverride` whose value is the
+string `"NoOverride"` is removed whole. Leaving the key out now means no
+override, and `"NoOverride"` is no longer a valid value.
+
+`migrate` also removes these keys. Nothing reads them now.
 
 | Key | Why |
 |-----|-----|

@@ -48,7 +48,7 @@
       "TestShelleyHardForkAtEpoch": 2
     },
     "MempoolConfig": {
-      "MempoolCapacityBytesOverride": 1000000
+      "CapacityBytesOverride": 1000000
     }
   }
 }

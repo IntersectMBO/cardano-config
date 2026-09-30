@@ -23,7 +23,8 @@
 --
 --   * renamed keys are rewritten to their current names and removed keys are
 --     dropped, at every depth (so the grouping below, which keys off the current
---     names, places them correctly);
+--     names, places them correctly). A mempool capacity override of
+--     @"NoOverride"@ is dropped whole, since omitting the key means the same;
 --   * @Version@ and @$schema@ are set to the current format version (see
 --     'Cardano.Configuration.Schema.currentFormatVersion' and
 --     'Cardano.Configuration.Schema.schemaTag'), so an older document comes out
@@ -137,7 +138,15 @@ renamedFields =
   , ("TargetNumberOfKnownBigLedgerPeers", "DeadlineTargetNumberOfKnownBigLedgerPeers")
   , ("TargetNumberOfEstablishedBigLedgerPeers", "DeadlineTargetNumberOfEstablishedBigLedgerPeers")
   , ("TargetNumberOfActiveBigLedgerPeers", "DeadlineTargetNumberOfActiveBigLedgerPeers")
+  , -- Mempool capacity override (lost the Mempool prefix)
+    ("MempoolCapacityBytesOverride", "CapacityBytesOverride")
   ]
+
+-- | The old and current names of the mempool capacity override. Under either one
+-- @migrate@ drops a @"NoOverride"@ value: omitting the key is now the only way to
+-- ask for no override (see 'renameLegacy').
+mempoolCapacityOverrideKeys :: [Text]
+mempoolCapacityOverrideKeys = ["MempoolCapacityBytesOverride", "CapacityBytesOverride"]
 
 -- | The @AcceptedConnectionsLimit@ sub-keys that were lower-cased before the
 -- rename. Their names (@delay@ especially) are too generic to rewrite wherever
@@ -186,9 +195,14 @@ removedFields =
 -- @LedgerDB@ object (see 'nestSnapshotOptions'), not wherever those names happen
 -- to appear.
 renameLegacy :: Value -> (Value, [ConfigWarning])
-renameLegacy (Object o) =
+renameLegacy (Object o0) =
   (Object (KM.fromList pairs), collisionWarnings <> concatMap snd rekeyed)
  where
+  -- A mempool capacity override of "NoOverride" means the same as leaving the key
+  -- out, which is now the only way to say it, so the whole entry is dropped (under
+  -- either name) before the renames below can see it.
+  o = KM.filterWithKey (\k v -> not (isNoOverride k v)) o0
+  isNoOverride k v = K.toText k `elem` mempoolCapacityOverrideKeys && v == String "NoOverride"
   present = [K.toText k | (k, _) <- KM.toList o]
   -- A rename whose target already exists here: keep the (current-name) value that
   -- is already present, drop the old-name one, and warn. Without this, KM.fromList
