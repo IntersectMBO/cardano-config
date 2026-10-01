@@ -68,11 +68,12 @@ source-repository-package
     libs/small-steps
     libs/vector-map
 
+-- Release candidate for node 11.2
 source-repository-package
   type: git
   location: https://github.com/IntersectMBO/ouroboros-network
-  tag: a3d8017e798b225055aaf9118ad062fe58bc650f
-  --sha256: sha256-nrDi43HfvKAg+5wE6PF4QI4HmYh1rav3a5uqw24BFv0=
+  tag: a6fcf9c6f5c8e44b0311c9e3c0236449ab4436c1
+  --sha256: sha256-wZMR10aktm1flDx5bRxP9Dp8NdySneCWdRyMXBzTXhc=
   subdir:
     network-mux
     ouroboros-network
