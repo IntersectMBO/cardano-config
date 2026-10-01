@@ -11,15 +11,15 @@ repository cardano-haskell-packages
 
 -- The index-states
 index-state:
-  , hackage.haskell.org 2026-08-29T13:20:56Z
-  , cardano-haskell-packages 2026-08-21T19:33:33Z
+  , hackage.haskell.org 2026-09-30T08:47:51Z
+  , cardano-haskell-packages 2026-09-30T12:46:04Z
 
 packages:
   .
 
 -- Ensures colourized output from test runners
 test-show-details: direct
-tests: true
+tests: True
 
 program-options
   ghc-options: -Werror
@@ -29,9 +29,6 @@ package bitvec
   -- Workaround for windows cross-compilation
   flags: -simd
 
-allow-newer:
-  , cborg-json:aeson
-
 if impl(ghc >=9.14)
   allow-newer:
     , serialise:base
@@ -39,12 +36,12 @@ if impl(ghc >=9.14)
     , cborg:base
     , safe-wild-cards:template-haskell
 
--- 11.2 integration pin on ledger
+-- Release candidate for node 11.2
 source-repository-package
   type: git
   location: https://github.com/IntersectMBO/cardano-ledger
-  tag: fb723848a28256fe372ea9ba692eccded6a12a53
-  --sha256: sha256-iL61RTn4OPRNzzPn/2YcVJNMJYolXghaQ9cDG/DOOWM=
+  tag: 8203c5180a74e6508a25f35247475f243588999a
+  --sha256: sha256-j+S87ETVxRUkWMuLv8nOVIR7on/7ML+qIEeWYDH6IJY=
   subdir:
     eras/allegra/impl
     eras/alonzo/impl
@@ -77,10 +74,3 @@ source-repository-package
   subdir:
     network-mux
     ouroboros-network
-
-source-repository-package
-  type: git
-  location: https://github.com/intersectmbo/cardano-base.git
-  --sha256: sha256-WUBluY6UqvBkS5cNsJnKMOaW+1dTfL3mg8iq/kVPV0o=
-  tag: 242f1ebde40b137ac024d8b68265e2935e0eba14
-  subdir: cardano-crypto-leios
