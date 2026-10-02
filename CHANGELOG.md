@@ -1,5 +1,28 @@
 # Revision history for cardano-config
 
+## 2.1.0.0 -- 02-10-2026
+
+### Snapshots
+
+The Mithril `Interval` is now 86400 slots and the Mithril `Offset` is now 0.
+They used to be 432000 and 388800.
+
+86400 slots is `40 * k` for the mainnet security parameter `k = 2160`, which is
+one snapshot a day. That interval divides both the 432000-slot Shelley epoch
+and the 4492800-slot start of Shelley, so an offset of 0 puts a snapshot on
+every epoch boundary, which is the state Mithril signs, and four more inside
+each epoch. The node captures the state at that slot and writes it between
+`MinDelay` and `MaxDelay` seconds later, so the write does not land on the
+epoch-boundary work. The previous offset put the one snapshot of each epoch at
+mid-epoch instead, which kept the write off the boundary but signed a state
+that was not on one.
+
+The interval is the mainnet value. A network with a different security
+parameter needs its own `Interval`.
+
+`mithrilSnapshotOptions`, the two default configurations and the example
+configurations carry the new values.
+
 ## 2.0.0.0 -- 02-10-2026
 
 The configuration format moves to version 2, so the package version is
