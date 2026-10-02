@@ -62,8 +62,8 @@
             "LedgerDB": {
                 "Backend": "V2InMemory",
                 "Snapshots": {
-                    "Interval": 432000,
-                    "Offset": 388800,
+                    "Interval": 86400,
+                    "Offset": 0,
                     "RateLimit": 600,
                     "MinDelay": 300,
                     "MaxDelay": 21600,

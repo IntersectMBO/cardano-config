@@ -1883,7 +1883,7 @@ snapshotFields o =
 
 -- | The concrete values the @"Mithril"@ policy resolves to.
 mithrilFields :: [Maybe Word64]
-mithrilFields = [Just 432000, Just 388800, Just 600, Just 300, Just 21600, Just 2]
+mithrilFields = [Just 86400, Just 0, Just 600, Just 300, Just 21600, Just 2]
 
 -- | End-to-end: a configuration that uses the base @"Mithril"@ default and one
 -- that sets only a couple of snapshot options both resolve to the full concrete
@@ -1922,7 +1922,7 @@ snapshotResolvePolicyCase =
             partial = SnapshotOptions (SJust 7777) SNothing SNothing SNothing SNothing SNothing
             filled = snapshotFields (resolveSnapshotPolicy (CustomSnapshotPolicy partial))
          in if mithril == mithrilFields
-              && filled == [Just 7777, Just 388800, Just 600, Just 300, Just 21600, Just 2]
+              && filled == [Just 7777, Just 0, Just 600, Just 300, Just 21600, Just 2]
               then Nothing
               else Just ("unexpected: mithril=" <> show mithril <> " filled=" <> show filled)
       )

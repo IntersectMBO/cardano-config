@@ -721,11 +721,11 @@
                                         }
                                     ],
                                     "default": {
-                                        "Interval": 432000,
+                                        "Interval": 86400,
                                         "MaxDelay": 21600,
                                         "MinDelay": 300,
                                         "NumOfDiskSnapshots": 2,
-                                        "Offset": 388800,
+                                        "Offset": 0,
                                         "RateLimit": 600
                                     },
                                     "description": "Snapshot policy: \"Mithril\" or an object of snapshot options",

@@ -106,14 +106,28 @@ instance HasCodec SnapshotPolicy where
 
 -- | The concrete snapshot options the @"Mithril"@ policy stands for. Resolving
 -- @"Mithril"@ to these values here means every consumer (not just consensus)
--- gets the same numbers without re-deriving them. These mirror the values
--- consensus uses for the Mithril policy; a test pins them so they cannot drift
--- silently.
+-- gets the same numbers without re-deriving them.
+--
+-- The interval of 86400 slots is @40 * k@ for the mainnet security parameter
+-- @k = 2160@, which is one snapshot a day. That interval divides both the
+-- 432000-slot Shelley epoch and the 4492800-slot start of Shelley, so with an
+-- offset of 0 the schedule hits every epoch boundary, which is the state
+-- Mithril signs, and four further slots inside each epoch. The node captures
+-- the state at that slot but writes it between @MinDelay@ and @MaxDelay@
+-- seconds later, so the write does not land on the epoch-boundary work.
+--
+-- The interval is the mainnet value. A network with a different security
+-- parameter needs its own @Interval@.
+--
+-- These mirror the values consensus uses for the Mithril policy, in
+-- @Ouroboros.Consensus.Storage.LedgerDB.Snapshots.mithrilSnapshotPolicyArgs@. A
+-- test pins them here, so a change on this side is deliberate, but nothing
+-- compares the two packages: keep them in step by hand.
 mithrilSnapshotOptions :: SnapshotOptions
 mithrilSnapshotOptions =
   SnapshotOptions
-    { snapshotInterval = SJust 432000
-    , slotOffset = SJust 388800
+    { snapshotInterval = SJust 86400
+    , slotOffset = SJust 0
     , snapshotRateLimit = SJust 600
     , minDelay = SJust 300
     , maxDelay = SJust 21600
