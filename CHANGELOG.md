@@ -1,6 +1,6 @@
 # Revision history for cardano-config
 
-## Unreleased
+## 2.0.0.0 -- 02-10-2026
 
 The configuration format moves to version 2, so the package version is
 `2.0.0.0`. A `cardano-config-2.x.x.x` reads every format version up to and
