@@ -1,6 +1,6 @@
 # Revision history for cardano-config
 
-## Unreleased
+## 2.1.0.0 -- 02-10-2026
 
 ### Snapshots
 
