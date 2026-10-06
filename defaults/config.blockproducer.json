@@ -58,7 +58,7 @@
             "StartAsNonProducingNode": false
         },
         "Storage": {
-            "DatabasePath": "db",
+            "DatabasePath": "mainnet/db/",
             "LedgerDB": {
                 "Backend": "V2InMemory",
                 "Snapshots": {

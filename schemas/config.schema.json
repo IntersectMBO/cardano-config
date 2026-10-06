@@ -607,7 +607,7 @@
                                     "type": "object"
                                 }
                             ],
-                            "default": "db",
+                            "default": "mainnet/db/",
                             "description": "Directory (or split directories) where the state is stored",
                             "title": "DatabasePath"
                         },

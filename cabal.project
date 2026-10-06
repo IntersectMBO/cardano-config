@@ -32,6 +32,12 @@ package bitvec
 if impl(ghc >=9.14)
   allow-newer:
     , serialise:base
+    , serialise:containers
+    , serialise:time
+    , canonical-json:containers
     , cborg-json:base
     , cborg:base
+    , cborg:containers
+    , dictionary-sharing:containers
+    , dependent-map:containers
     , safe-wild-cards:template-haskell

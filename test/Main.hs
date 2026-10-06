@@ -578,7 +578,8 @@ migrateSectionRenameCase =
                     ( "the Protocol section was not kept as written, got "
                         <> show (KM.lookup (K.fromString "Protocol") cfg)
                     )
-              | KM.lookup (K.fromString "Storage") cfg /= Just (obj [("DatabasePath", String (T.pack "db"))]) ->
+              | KM.lookup (K.fromString "Storage") cfg
+                  /= Just (obj [("DatabasePath", String (T.pack "mainnet/db/"))]) ->
                   Just "StorageConfig was not renamed to Storage"
               | otherwise -> Nothing
             _ -> Just "Configuration is not an object"
@@ -593,7 +594,7 @@ migrateSectionRenameCase =
             [ ("NetworkConfig", obj [("DiffusionMode", String (T.pack "InitiatorAndResponder"))])
             , ("Network", obj [("DiffusionMode", String (T.pack "InitiatorOnly"))])
             , ("ProtocolConfig", obj [("RequiresNetworkMagic", String (T.pack "RequiresNoMagic"))])
-            , ("StorageConfig", obj [("DatabasePath", String (T.pack "db"))])
+            , ("StorageConfig", obj [("DatabasePath", String (T.pack "mainnet/db/"))])
             ]
         )
       ]
@@ -917,7 +918,7 @@ migrateSiblingCase =
   input =
     obj
       [ ("Version", Number 1)
-      , ("Configuration", obj [("Storage", obj [("DatabasePath", String (T.pack "db"))])])
+      , ("Configuration", obj [("Storage", obj [("DatabasePath", String (T.pack "mainnet/db/"))])])
       , ("ByronGenesisFile", String (T.pack "byron.json"))
       ]
   nested cfg section key = case KM.lookup (K.fromString section) cfg of
