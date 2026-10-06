@@ -17,6 +17,11 @@ module Cardano.Configuration.CliArgs
   , GrpcTlsFiles (..)
   , defaultGrpcListenAddress
 
+    -- * The database paths
+
+  -- Re-exported for the same reason, for 'databasePathCLI'.
+  , NodeDatabasePaths (..)
+
     -- * Credentials
   , Credentials (..)
   , emptyCredentials
@@ -30,6 +35,8 @@ module Cardano.Configuration.CliArgs
   , parseTopologyFile
   , parseSocketPath
   , parseValidateDB
+  , parseNodeDatabasePaths
+  , parseStartAsNonProducingNode
   , parseEnableGrpc
   , parseGrpcEndpoint
   , parseGrpcSocketPath

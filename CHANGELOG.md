@@ -1,5 +1,22 @@
 # Revision history for cardano-config
 
+## 2.2.1.0 -- 06-10-2026
+
+### Exports
+
+`Cardano.Configuration.CliArgs` now exports `parseNodeDatabasePaths` and
+`parseStartAsNonProducingNode`, along with the `NodeDatabasePaths` type.
+
+Both parsers live in `Cardano.Configuration.Common`, which is an internal
+module, so they could not be reached from outside the package. Every other
+option parser of the node command line was already exported, so a consumer that
+wanted to build the node's command line from this package had to write its own
+`--database-path`, `--volatile-database-path`, `--immutable-database-path` and
+`--start-as-non-producing-node`, which is what the exports exist to avoid. The
+type is re-exported for the same reason `GrpcEndpoint` is: a consumer building a
+`CliArgs` directly has to name the type of `databasePathCLI`.
+
+
 ## 2.2.0.0 -- 06-10-2026
 
 ### Defaults
