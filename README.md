@@ -139,6 +139,12 @@ the published schema address immutable:
 https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json
 ```
 
+Immutable covers the constraints. What a document must satisfy to be valid
+never changes under a tag. A later release can still correct an annotation,
+such as a `default`, a `description` or a `title`. A validator does not act on
+those keys, so the tag moves to the corrected file. A change to what validates
+needs a new format version, and that version gets its own tag.
+
 One schema lives under [`schemas/`](schemas/). `config.schema.json` describes
 the format above. Print it with `cardano-config schema`. Regenerate the
 committed file with `scripts/gen-schemas.sh`.

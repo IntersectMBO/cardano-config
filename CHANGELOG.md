@@ -1,5 +1,28 @@
 # Revision history for cardano-config
 
+## 2.2.0.0 -- 06-10-2026
+
+### Defaults
+
+The default `DatabasePath` is now `mainnet/db/`. It used to be `db`.
+
+`mainnet/db/` is what cardano-node's own parser resolves to when a
+configuration leaves `DatabasePath` unset. The two defaults disagreed. An
+operator who moved an existing deployment to cardano-config, and who never
+wrote the key, got a node that ignored the database under `mainnet/db/`. The
+node started a fresh sync in a new `db` directory instead. The node now finds
+the database it already has.
+
+The directory is named `mainnet` on every network. That is the node's existing
+behavior, and it is now this package's behavior as well. A deployment that
+sets `DatabasePath` explicitly is unaffected. Only a configuration without the
+key changes where the node reads and writes.
+
+The two default configurations carry the new value. `schemas/config.schema.json`
+carries it as the documented `default`. A default is an annotation and not a
+constraint, so the format version stays at 2 and the `v2` tag moves (#28).
+
+
 ## 2.1.0.0 -- 02-10-2026
 
 ### Snapshots
