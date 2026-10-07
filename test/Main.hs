@@ -22,7 +22,13 @@ module Main (main) where
 
 import Cardano.Configuration (resolveConfiguration)
 import qualified Cardano.Configuration as C
-import Cardano.Configuration.CliArgs (CliArgs, grpcEndpointCLI, parseCliArgs)
+import Cardano.Configuration.CliArgs
+  ( CliArgs
+  , credentials
+  , grpcEndpointCLI
+  , parseCliArgs
+  , shelleyBLSKey
+  )
 import Cardano.Configuration.File
 import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Storage
@@ -146,6 +152,7 @@ cases =
   , grpcEnabledEndpointCheckCase
   , boundedDecimalOnlyCase
   , roleSelectionCase
+  , blsKeyRoleCase
   , rolePrecedenceCase
   , peerTargetsRejectedCase
   , sectionDecodeErrorCase
@@ -1252,6 +1259,29 @@ roleSelectionCase =
                   then Nothing
                   else Just "resolved role targets do not match the expected block-producer/relay values"
       _ -> Just "could not build CLI arguments"
+
+-- | @--shelley-bls-key@ is parsed into 'shelleyBLSKey' and, alone, is enough to
+-- make the node a block producer, as in @cardano-node@'s @hasProtocolFile@: it
+-- yields the block-producer targets of 'roleSelectionCase'.
+blsKeyRoleCase :: TestTree
+blsKeyRoleCase =
+  testCase "a BLS key alone selects the block-producer role" $ do
+    path <- getDataFileName "test/examples/legacy-fullconfig.json"
+    (cfg, _) <- parseConfigurationFiles path
+    expectOk $ case cliArgs ["--shelley-bls-key", "bls.skey"] of
+      Nothing -> Just "could not build CLI arguments"
+      Just cli
+        | shelleyBLSKey (credentials cli) /= SJust "bls.skey" ->
+            Just ("BLS key not parsed: " <> show (shelleyBLSKey (credentials cli)))
+        | otherwise -> case resolveConfiguration cli cfg of
+            Left e -> Just ("resolve failed: " <> show e)
+            Right (nc, _) ->
+              let n = C.networkConfiguration nc
+               in if deadlineTargetOfRootPeers n == SJust 100
+                    && deadlineTargetOfKnownPeers n == SJust 100
+                    && peerSharing n == SJust PeerSharingDisabled
+                    then Nothing
+                    else Just "a BLS key did not select the block-producer targets"
 
 -- | An explicit file value for a role field wins over the role default, even
 -- when credentials are present (block producer). Here PeerSharing and

@@ -227,6 +227,7 @@ credentialsValue c =
       , ("ShelleyKES" .=) . kesSourceValue <$> CLI.shelleyKES c
       , ("ShelleyVRFKey" .=) <$> CLI.shelleyVRFKey c
       , ("ShelleyOperationalCertificate" .=) <$> CLI.shelleyOperationalCertificate c
+      , ("ShelleyBLSKey" .=) <$> CLI.shelleyBLSKey c
       , ("BulkCredentialsFile" .=) <$> CLI.bulkCredentialsFile c
       ]
 

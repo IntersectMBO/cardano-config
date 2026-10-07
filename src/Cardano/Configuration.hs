@@ -581,6 +581,7 @@ roleFromCredentials c
       , () <$ CLI.shelleyKES c
       , () <$ CLI.shelleyVRFKey c
       , () <$ CLI.shelleyOperationalCertificate c
+      , () <$ CLI.shelleyBLSKey c
       , () <$ CLI.bulkCredentialsFile c
       ] =
       File.IsBlockProducer
