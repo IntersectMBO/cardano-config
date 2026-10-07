@@ -1,5 +1,9 @@
 # Revision history for cardano-config
 
+## 2.2.1.1 (unreleased)
+
+- Update ledger dependency bounds for the CIP-160 core/Dijkstra compatibility proposal. Configuration constructors and defaults are unchanged.
+
 ## 2.2.1.0 -- 06-10-2026
 
 ### Exports

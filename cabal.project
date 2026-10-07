@@ -11,8 +11,8 @@ repository cardano-haskell-packages
 
 -- The index-states
 index-state:
-  , hackage.haskell.org 2026-09-30T08:47:51Z
-  , cardano-haskell-packages 2026-10-01T20:54:24Z
+  , hackage.haskell.org 2026-09-02T14:05:07Z
+  , cardano-haskell-packages 2026-10-06T16:46:26Z
 
 packages:
   .
@@ -41,3 +41,46 @@ if impl(ghc >=9.14)
     , dictionary-sharing:containers
     , dependent-map:containers
     , safe-wild-cards:template-haskell
+
+-- Temporary source prerequisites for the CIP-160 ledger draft PR 6153.
+-- Remove these overrides after the reviewed package versions reach CHaP.
+source-repository-package
+  type: git
+  location: https://github.com/colll78/cardano-ledger.git
+  tag: 71d330f9ffcc0a736c6204d86e45226a0fa64b5a
+  --sha256: sha256-4h2rvaAAusvqKuC5TPfkpum6CGGZqW9Le8rJFSWCjvA=
+  subdir:
+    eras/allegra/impl
+    eras/alonzo/impl
+    eras/babbage/impl
+    eras/byron/crypto
+    eras/byron/ledger/impl
+    eras/conway/impl
+    eras/dijkstra/impl
+    eras/mary/impl
+    eras/shelley/impl
+    libs/cardano-data
+    libs/cardano-ledger-api
+    libs/cardano-ledger-binary
+    libs/cardano-ledger-core
+    libs/cardano-protocol
+    libs/cardano-protocol-tpraos
+    libs/non-integral
+    libs/small-steps
+    libs/vector-map
+
+source-repository-package
+  type: git
+  location: https://github.com/colll78/plutus.git
+  tag: 9d927c19a756cb15c7eba9e331d1a87878215fd1
+  --sha256: sha256-N6bU53Bw3DWF7ymVgLzO0CoKmusbQcbN1+JUFzBh6Qg=
+  subdir: plutus-ledger-api
+
+-- Dependency test suites run in their owning repositories. Their test-only
+-- bounds need not constrain this consumer's standalone source integration.
+package *
+  tests: False
+  benchmarks: False
+
+package cardano-config
+  tests: True
