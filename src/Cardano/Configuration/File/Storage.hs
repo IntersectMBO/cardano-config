@@ -158,10 +158,13 @@ data LedgerDbBackendSelector
   | -- | The LSM-tree backend.
     V2LSM
       -- | An optional custom path to the
-      -- database (the @LSMDatabasePath@ key)
+      -- database (the @LSMDatabasePath@ key). Relative to the volatile
+      -- database directory, or used as is when absolute.
       (StrictMaybe FilePath)
       -- | An optional directory into which the backend
-      -- exports snapshots as it takes them (the @LSMExportPath@ key)
+      -- exports snapshots as it takes them (the @LSMExportPath@ key).
+      -- Resolved like the database path, and it must be on the same volume
+      -- as the database.
       (StrictMaybe FilePath)
   deriving (Eq, Generic, Show)
 
@@ -188,12 +191,19 @@ instance HasCodec LedgerDbBackendSelector where
                 <$> optionalFieldWithStrict
                   "DatabasePath"
                   filePathCodec
-                  "Custom path to the LSM database. Defaults to \"lsm\" when the backend is LSM"
+                  ( "Custom path to the LSM database. A relative path is resolved against the "
+                      <> "volatile database directory (the DatabasePath itself when it is a single "
+                      <> "path); an absolute path is used as is. Defaults to \"lsm\""
+                  )
                   .= fst
                 <*> optionalFieldWithStrict
                   "ExportPath"
                   filePathCodec
-                  "Directory into which the LSM backend exports snapshots"
+                  ( "Directory into which the LSM backend exports snapshots. Resolved like "
+                      <> "DatabasePath: relative to the volatile database directory, or as is when "
+                      <> "absolute. It must be on the same volume (filesystem or drive) as the LSM "
+                      <> "database, otherwise exporting a snapshot fails"
+                  )
                   .= snd
           )
           "LSM-tree backend options"
