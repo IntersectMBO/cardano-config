@@ -109,7 +109,8 @@ data KESSource
 
 -- | The block-forging credentials supplied on the command line: the Byron
 -- delegation certificate and signing key, the Shelley KES\/VRF keys and
--- operational certificate, or a single bulk credentials file. All are optional;
+-- operational certificate, the BLS (Leios) signing key, or a single bulk
+-- credentials file. All are optional;
 -- their presence is what makes the node a block producer (see
 -- @roleFromCredentials@).
 data Credentials = Credentials
@@ -118,6 +119,7 @@ data Credentials = Credentials
   , shelleyKES :: StrictMaybe KESSource
   , shelleyVRFKey :: StrictMaybe FilePath
   , shelleyOperationalCertificate :: StrictMaybe FilePath
+  , shelleyBLSKey :: StrictMaybe FilePath
   , bulkCredentialsFile :: StrictMaybe FilePath
   }
   deriving Show
@@ -133,6 +135,7 @@ emptyCredentials =
     , shelleyKES = SNothing
     , shelleyVRFKey = SNothing
     , shelleyOperationalCertificate = SNothing
+    , shelleyBLSKey = SNothing
     , bulkCredentialsFile = SNothing
     }
 
@@ -164,6 +167,7 @@ parseCredentials =
     <*> optionalStrict parseKESSource
     <*> optionalStrict parseVrfKeyFilePath
     <*> optionalStrict parseOperationalCertFilePath
+    <*> optionalStrict parseBlsKeyFilePath
     <*> optionalStrict parseBulkCredsFilePath
 
 -- | Like optparse-applicative's 'optional', but yielding a 'StrictMaybe' to
@@ -509,6 +513,21 @@ parseVrfKeyFilePath =
       [ long "shelley-vrf-key"
       , metavar "FILEPATH"
       , help "Path to the VRF signing key"
+      , completer (bashCompleter "file")
+      ]
+
+parseBlsKeyFilePath :: Parser FilePath
+parseBlsKeyFilePath =
+  strOption $
+    mconcat
+      [ long "shelley-bls-key"
+      , metavar "FILEPATH"
+      , help $
+          mconcat
+            [ "Path to the BLS (Leios) signing key: a single text envelope, "
+            , "or a JSON array of them to vote with every key that holds a "
+            , "committee seat (e.g. a rotation pair, or a bundle of pool keys)."
+            ]
       , completer (bashCompleter "file")
       ]
 

@@ -1,5 +1,19 @@
 # Revision history for cardano-config
 
+## Unreleased
+
+### Credentials
+
+The node command line now takes `--shelley-bls-key FILEPATH`, the BLS (Leios)
+signing key, as cardano-node does on its `leios-prototype` branch. It is held in
+the new `shelleyBLSKey` field of `Credentials` and rendered as `ShelleyBLSKey`.
+
+Like every other credential, its presence makes the node a block producer. This
+matches the node's `hasProtocolFile`, which counts the BLS key too.
+
+`Credentials` gains a field, so code that builds it with the positional
+constructor has to change. Code that starts from `emptyCredentials` does not.
+
 ## 2.2.1.0 -- 06-10-2026
 
 ### Exports
