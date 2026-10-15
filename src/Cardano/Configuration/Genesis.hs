@@ -10,6 +10,7 @@ module Cardano.Configuration.Genesis
 
     -- * Reading genesis files
   , readGenesisFile
+  , genesisFileHash
 
     -- * Resolving the configuration's genesis references
   , resolveExperimentalGenesis
@@ -69,6 +70,15 @@ readGenesisFile expected fp = do
             else case Aeson.eitherDecodeStrict' bytes of
               Left err -> Left (GenesisDecodeError fp err)
               Right a -> Right a
+
+-- | The hash a configuration pins an (aeson) era genesis file to: the
+-- @Blake2b_256@ hash of its raw bytes, as 'readGenesisFile' checks it.
+genesisFileHash :: FilePath -> IO (Either GenesisReadError (Hash Blake2b_256 ByteString))
+genesisFileHash fp = do
+  result <- try (BS.readFile fp)
+  pure $ case result of
+    Left e -> Left (GenesisFileReadError fp e)
+    Right bytes -> Right (hashWith id bytes)
 
 -- | Resolve the experimental (Dijkstra) genesis referenced by the testing
 -- configuration: read and decode it if present, resolving its path relative to
