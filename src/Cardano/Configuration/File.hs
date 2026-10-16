@@ -6,6 +6,7 @@ module Cardano.Configuration.File
   ( -- * Configuration file
     NodeConfigurationFromFile (..)
   , parseConfigurationFiles
+  , migrateConfiguration
 
     -- * Warnings
   , ConfigWarning (..)
@@ -222,6 +223,25 @@ parseConfigurationFiles ::
   HasCallStack => FilePath -> IO (NodeConfigurationFromFile, [ConfigWarning])
 parseConfigurationFiles cfgFile = do
   rawValue <- decodeValueFile cfgFile
+  (mainValue, migrationWarnings) <- migrateConfiguration (Just cfgFile) rawValue
+  -- migrate has brought the document to the current version, so there is one
+  -- body parser rather than one per version.
+  (_version, minNodeVer, configValue) <- splitEnvelope mainValue
+  let warnings = migrationWarnings <> configWarnings configValue
+      root = takeDirectory cfgFile
+  config <- parseConfigurationBody root minNodeVer configValue
+  pure (config, warnings)
+
+-- | Bring a configuration document to the current format version, together
+-- with the warnings doing so raised. Failures are thrown as a
+-- 'ConfigurationParsingError', naming the file when one is given.
+migrateConfiguration ::
+  -- | The file the document was read from, for error reporting.
+  Maybe FilePath ->
+  -- | The document, as decoded from the file.
+  Value ->
+  IO (Value, [ConfigWarning])
+migrateConfiguration cfgFile rawValue = do
   -- Every document is run through 'migrate' before parsing, so an already-enveloped
   -- configuration that still uses a pre-rename field name (or carries a stray
   -- top-level sibling) is brought up to the current shape too — not only a
@@ -238,7 +258,7 @@ parseConfigurationFiles cfgFile = do
   when (declared > currentFormatVersion) $
     throwIO $
       ConfigurationParsingError
-        (SJust cfgFile)
+        (maybeToStrictMaybe cfgFile)
         SNothing
         [Key "Version"]
         ( "unsupported configuration version: "
@@ -252,7 +272,11 @@ parseConfigurationFiles cfgFile = do
   (mainValue, migrateWarnings) <- case migrate rawValue of
     Left err ->
       throwIO $
-        ConfigurationParsingError (SJust cfgFile) SNothing [] (renderMigrationError err)
+        ConfigurationParsingError
+          (maybeToStrictMaybe cfgFile)
+          SNothing
+          []
+          (renderMigrationError err)
     Right ok -> pure ok
   let migrationWarnings =
         -- An outdated version is reported on its own. migrate always rewrites
@@ -263,13 +287,7 @@ parseConfigurationFiles cfgFile = do
         ]
           <> [OutdatedFormatVersion declared currentFormatVersion | declared < currentFormatVersion]
           <> migrateWarnings
-  -- migrate has brought the document to the current version, so there is one
-  -- body parser rather than one per version.
-  (_version, minNodeVer, configValue) <- splitEnvelope mainValue
-  let warnings = migrationWarnings <> configWarnings configValue
-      root = takeDirectory cfgFile
-  config <- parseConfigurationBody root minNodeVer configValue
-  pure (config, warnings)
+  pure (mainValue, migrationWarnings)
 
 -- | Read a configuration object at the current format version: check that
 -- every section parses, and read the genesis files and tracing configuration

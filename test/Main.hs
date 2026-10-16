@@ -29,6 +29,12 @@ import Cardano.Configuration.CliArgs
   , parseCliArgs
   , shelleyBLSKey
   )
+import Cardano.Configuration.Edit
+  ( configurationDocumentFromValue
+  , readConfigurationDocument
+  , refreshGenesisHashes
+  , writeConfigurationDocument
+  )
 import Cardano.Configuration.File
 import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Storage
@@ -55,7 +61,7 @@ import Cardano.Configuration.Schema
   , packageFormatVersion
   , schemaId
   )
-import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex)
+import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromTextAsHex, hashToTextAsHex)
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic (RequiresNoMagic))
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.BaseTypes (StrictMaybe (..), isSJust, strictMaybeToMaybe)
@@ -70,6 +76,7 @@ import Data.Aeson
   , Result (..)
   , Value (..)
   , eitherDecodeFileStrict'
+  , encodeFile
   , fromJSON
   , toJSON
   )
@@ -84,9 +91,10 @@ import qualified Data.Text as T
 import Data.Word (Word64)
 import Language.Haskell.TH.Syntax (lift)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult, info)
-import System.Directory (doesFileExist)
+import System.Directory (copyFile, doesFileExist)
 import System.FS.API (fsPathToList)
 import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase)
 
@@ -189,6 +197,9 @@ cases =
       "test/examples/mainnet-conway-genesis.json (decodes via the ledger instances)"
       (decodeData "test/examples/mainnet-conway-genesis.json" :: IO (Either String ConwayGenesis))
   , byronGenesisDecodeCase
+  , refreshMissingHashesCase
+  , refreshStaleHashesCase
+  , documentRoundTripCase
   ]
 
 -- | 'migrate' on a document that is expected to migrate cleanly. Every input
@@ -2239,6 +2250,120 @@ byronGenesisDecodeCase =
       Just expected -> do
         res <- readByronGenesisConfig RequiresNoMagic expected path
         expectOk (either (Just . ("Byron read failed: " <>)) (const Nothing) res)
+
+-- | A configuration written without genesis hashes reads as a document, and
+-- once its hashes are filled in it parses with every genesis file checked.
+refreshMissingHashesCase :: TestTree
+refreshMissingHashesCase =
+  testCase "refreshGenesisHashes fills in the genesis hashes a configuration leaves out" $
+    withEditFixtures $ \dir -> do
+      (document, _) <- configurationDocumentFromValue (editConfiguration [])
+      refreshed <- refreshGenesisHashes dir document
+      writeConfigurationDocument (dir </> "config.json") refreshed
+      expectEditHashes (dir </> "config.json")
+
+-- | A configuration whose genesis hashes are out of date is rejected when
+-- parsed, still reads as a document, and parses once its hashes are refreshed.
+refreshStaleHashesCase :: TestTree
+refreshStaleHashesCase =
+  testCase "refreshGenesisHashes replaces genesis hashes that are out of date" $
+    withEditFixtures $ \dir -> do
+      let file = dir </> "config.json"
+          stale = replicate 64 '0'
+      encodeFile file . editConfiguration $
+        [ (key, stale)
+        | key <-
+            [ "ByronGenesisHash"
+            , "ShelleyGenesisHash"
+            , "AlonzoGenesisHash"
+            , "ConwayGenesisHash"
+            , "DijkstraGenesisHash"
+            ]
+        ]
+      rejected <- try @SomeException (parseConfigurationFiles file)
+      assertBool "the out-of-date hashes are rejected" (either (const True) (const False) rejected)
+      (document, _) <- readConfigurationDocument file
+      refreshGenesisHashes dir document >>= writeConfigurationDocument file
+      expectEditHashes file
+
+-- | Writing a document and reading it back gives the same document.
+documentRoundTripCase :: TestTree
+documentRoundTripCase =
+  testCase "readConfigurationDocument reads back what writeConfigurationDocument wrote" $
+    withSystemTempDirectory "cardano-config-edit" $ \dir -> do
+      (document, _) <- getDataFileName "test/examples/all-sections.json" >>= readConfigurationDocument
+      writeConfigurationDocument (dir </> "config.json") document
+      (document', _) <- readConfigurationDocument (dir </> "config.json")
+      assertBool "the document changed on the way" (document == document')
+
+-- | Run an edit case in a fresh directory holding the genesis files
+-- 'editConfiguration' names.
+withEditFixtures :: (FilePath -> IO a) -> IO a
+withEditFixtures k =
+  withSystemTempDirectory "cardano-config-edit" $ \dir -> do
+    mapM_
+      ( \file -> do
+          source <- getDataFileName ("test/examples" </> file)
+          copyFile source (dir </> file)
+      )
+      [ "mainnet-byron-genesis.json"
+      , "mainnet-shelley-genesis.json"
+      , "mainnet-alonzo-genesis.json"
+      , "mainnet-conway-genesis.json"
+      , "dijkstra-genesis.json"
+      ]
+    k dir
+
+-- | A flat configuration naming the mainnet genesis files and the Dijkstra one,
+-- with the given extra keys (hashes).
+editConfiguration :: [(String, String)] -> Value
+editConfiguration extra =
+  Object . KM.fromList $
+    [ (K.fromString k, String (T.pack v))
+    | (k, v) <-
+        [ ("ByronGenesisFile", "mainnet-byron-genesis.json")
+        , ("ShelleyGenesisFile", "mainnet-shelley-genesis.json")
+        , ("AlonzoGenesisFile", "mainnet-alonzo-genesis.json")
+        , ("ConwayGenesisFile", "mainnet-conway-genesis.json")
+        , ("DijkstraGenesisFile", "dijkstra-genesis.json")
+        ]
+          <> extra
+    ]
+      <> [(K.fromString "ExperimentalHardForksEnabled", Bool True)]
+
+-- | The configuration parses, with every genesis file read and checked, and its
+-- genesis hashes are the mainnet ones.
+expectEditHashes :: FilePath -> Assertion
+expectEditHashes file = do
+  (config, _) <- parseConfigurationFiles file
+  let protocol = protocolConfiguration config
+      hashText = T.unpack . hashToTextAsHex
+  assertBool "the Dijkstra genesis is read" (isSJust (experimentalGenesisConfig config))
+  mapM_
+    ( \(era, actual, expected) ->
+        assertBool (era <> " genesis hash: " <> actual) (actual == expected)
+    )
+    [
+      ( "Byron"
+      , hashText (C.hash (C.byronGenesisFile (byronGenesis protocol)))
+      , "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb"
+      )
+    ,
+      ( "Shelley"
+      , hashText (C.hash (shelleyGenesis protocol))
+      , "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+      )
+    ,
+      ( "Alonzo"
+      , hashText (C.hash (alonzoGenesis protocol))
+      , "7e94a15f55d1e82d10f09203fa1d40f8eede58fd8066542cf6566008068ed874"
+      )
+    ,
+      ( "Conway"
+      , hashText (C.hash (conwayGenesis protocol))
+      , "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62"
+      )
+    ]
 
 -- | The committed schemas under @schemas/@ (the whole configuration and one per
 -- component) must match the schema derived from the codecs, so the documented

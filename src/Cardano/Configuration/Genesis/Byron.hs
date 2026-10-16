@@ -5,11 +5,18 @@
 module Cardano.Configuration.Genesis.Byron
   ( ByronGenesisConfig
   , readByronGenesisConfig
+  , byronGenesisFileHash
   , byronGenesisToJSON
   ) where
 
-import Cardano.Chain.Genesis (Config, configGenesisData, mkConfigFromFile)
-import Cardano.Crypto.Hash (Blake2b_256, Hash, hashToBytes)
+import Cardano.Chain.Genesis
+  ( Config
+  , GenesisHash (unGenesisHash)
+  , configGenesisData
+  , mkConfigFromFile
+  , readGenesisData
+  )
+import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromBytes, hashToBytes)
 import qualified Cardano.Crypto.Hashing as Byron
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic)
 import qualified Cardano.Crypto.Raw as Byron
@@ -42,6 +49,18 @@ readByronGenesisConfig rnm expected fp = do
   let expectedRaw :: Byron.Hash Byron.Raw
       expectedRaw = Byron.unsafeAbstractHashFromBytes (hashToBytes expected)
   first show <$> runExceptT (mkConfigFromFile rnm fp expectedRaw)
+
+-- | The hash a configuration pins a Byron genesis file to: the @Blake2b_256@
+-- hash of its canonical-JSON rendering, as 'readByronGenesisConfig' checks it.
+byronGenesisFileHash :: FilePath -> IO (Either String (Hash Blake2b_256 ByteString))
+byronGenesisFileHash fp = do
+  result <- runExceptT (readGenesisData fp)
+  pure $ case result of
+    Left err -> Left (show err)
+    Right (_, genesisHash) ->
+      case hashFromBytes (Byron.abstractHashToBytes (unGenesisHash genesisHash)) of
+        Just h -> Right h
+        Nothing -> Left "the Byron genesis hash is not a Blake2b_256 hash"
 
 -- | Render a parsed Byron genesis as an (aeson) JSON 'Value'. Byron genesis is
 -- /canonical/ JSON (not the @aeson@ JSON of the later eras), so we re-encode the

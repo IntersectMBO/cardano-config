@@ -1,6 +1,22 @@
 # Revision history for cardano-config
 
-## Unreleased
+## 2.2.2.0 -- 16-10-2026
+
+### Dependency versions
+
+Version bounds on `cardano-ledger` were relaxed from `^>=` to `>=` to allow
+for the next integration cycle.
+
+### Editing a configuration
+
+The new `Cardano.Configuration.Edit` module reads, changes and writes a
+configuration file without the checks `parseConfigurationFiles` makes for a
+node, which a tool that writes configurations needs before those checks can
+pass. `readConfigurationDocument` (or `configurationDocumentFromValue`, for a
+configuration held as JSON) brings a configuration in any format version to the
+current one, without reading its genesis files and with its genesis hashes
+missing or out of date. `refreshGenesisHashes` sets each genesis hash to the hash
+of the file it names, and `writeConfigurationDocument` writes the result back.
 
 ### Credentials
 
