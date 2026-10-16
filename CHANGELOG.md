@@ -1,6 +1,11 @@
 # Revision history for cardano-config
 
-## Unreleased
+## 2.2.2.0 -- 16-10-2026
+
+### Dependency versions
+
+Version bounds on `cardano-ledger` were relaxed from `^>=` to `>=` to allow
+for the next integration cycle.
 
 ### Editing a configuration
 
