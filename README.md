@@ -21,8 +21,8 @@ envelope, which holds four keys and nothing else:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
-  "Version": 2,
+  "$schema": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v3/schemas/config.schema.json",
+  "Version": 3,
   "MinNodeVersion": "11.2",
   "Configuration": {
     "Protocol": {
@@ -132,11 +132,11 @@ including `X`, and writes `X`. It reads an older document by migrating it to
 `X` first, in memory. The other three components of the package version carry
 changes to the Haskell code alone.
 
-Each format version has its own git tag, `v1`, `v2` and so on. The tag makes
-the published schema address immutable:
+Each format version has its own git tag, `v1`, `v2`, `v3` and so on. The tag
+makes the published schema address immutable:
 
 ```
-https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json
+https://raw.githubusercontent.com/IntersectMBO/cardano-config/v3/schemas/config.schema.json
 ```
 
 Immutable covers the constraints. What a document must satisfy to be valid

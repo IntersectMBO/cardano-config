@@ -1,10 +1,10 @@
 {
-    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+    "$id": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v3/schemas/config.schema.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
     "description": "The cardano-node configuration, held in one file. The document is the { $schema, Version, MinNodeVersion, Configuration } envelope, and Configuration gives each component inline under its section key (e.g. Storage). The mandatory genesis files are supplied through the Protocol section.",
     "properties": {
         "$schema": {
-            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v2/schemas/config.schema.json",
+            "default": "https://raw.githubusercontent.com/IntersectMBO/cardano-config/v3/schemas/config.schema.json",
             "description": "URL of the JSON Schema this configuration follows (the standard $schema annotation), a sibling of Version, for editors and validators. Pinned to the vN tag of the format version it describes, so it identifies one exact schema; point it at a later vN to validate against that version.",
             "title": "$schema",
             "type": "string"
@@ -901,7 +901,7 @@
             "type": "string"
         },
         "Version": {
-            "description": "The configuration format version (currently 2). It is the first component of the cardano-config version, which states how far the parser goes: cardano-config-2.y.z.v parses every version up to and including 2, and writes 2.",
+            "description": "The configuration format version (currently 3). It is the first component of the cardano-config version, which states how far the parser goes: cardano-config-3.y.z.v parses every version up to and including 3, and writes 3.",
             "minimum": 1,
             "title": "Version",
             "type": "integer"
