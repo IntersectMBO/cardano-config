@@ -14,8 +14,9 @@ import Data.Word
 import GHC.Generics (Generic)
 
 -- | The testing configuration: knobs for forcing era transitions at specific
--- epochs/versions and for enabling the experimental era. Only
--- @ExperimentalHardForksEnabled@ has a default; the rest are optional by nature.
+-- epochs/versions, for enabling the experimental era, and for tuning the Leios
+-- prototype (@LeiosMinOfferLead@). Only @ExperimentalHardForksEnabled@ has a
+-- default; the rest are optional by nature.
 data TestingConfiguration f = TestingConfiguration
   { experimentalHardForksEnabled :: f Bool
   , testShelleyHardForkAtEpoch :: StrictMaybe Word64
@@ -33,6 +34,7 @@ data TestingConfiguration f = TestingConfiguration
   , testDijkstraHardForkAtEpoch :: StrictMaybe Word64
   , testDijkstraHardForkAtVersion :: StrictMaybe Word
   , experimentalGenesis :: StrictMaybe (Hashed FilePath)
+  , leiosMinOfferLead :: StrictMaybe Word64
   }
   deriving Generic
 
@@ -101,6 +103,14 @@ instance HasCodec (TestingConfiguration StrictMaybe) where
           "Force the Dijkstra hard fork at this protocol version"
           .= testDijkstraHardForkAtVersion
         <*> optionalHashedGenesisObjectCodec "DijkstraGenesisFile" "DijkstraGenesisHash" .= experimentalGenesis
+        <*> optionalFieldStrict
+          "LeiosMinOfferLead"
+          ( "How much younger than the immutable tip an endorser block must be for the"
+              <> " node to offer it onward, in slots. Absent, the consensus default applies"
+              <> " (an hour of one-second slots). Not a protocol parameter, so peers need not"
+              <> " agree on it."
+          )
+          .= leiosMinOfferLead
 
 -- | Resolve a partial testing configuration, taking @ExperimentalHardForksEnabled@
 -- from the (always-applied) defaults.
@@ -138,4 +148,5 @@ finalizeTesting c = do
       , testDijkstraHardForkAtEpoch = testDijkstraHardForkAtEpoch c
       , testDijkstraHardForkAtVersion = testDijkstraHardForkAtVersion c
       , experimentalGenesis = experimentalGenesis c
+      , leiosMinOfferLead = leiosMinOfferLead c
       }
