@@ -387,9 +387,10 @@ migrateCase =
 
 -- | 'migrate' brings every document it accepts to the current format version,
 -- which is why there is one parse path rather than one per version. A legacy
--- document and a version-1 document both come out at 'currentFormatVersion',
--- with the @$schema@ that goes with it. Reading a version-1 document still
--- works and reports 'OutdatedFormatVersion'. A version past the newest is
+-- document, a version-1 document and a version-2 document all come out at
+-- 'currentFormatVersion', with the @$schema@ that goes with it. Reading a
+-- version-1 or a version-2 document still works and reports
+-- 'OutdatedFormatVersion'. A version past the newest is
 -- rejected, naming it, and so is one below the oldest: 1 is the lowest version
 -- there has ever been, so 0 names no format, and without the check it would be
 -- read as a legacy document and quietly migrated.
@@ -400,18 +401,27 @@ formatVersionCompatibilityCase =
     older <- decodeData "test/examples/version1.json" :: IO (Either String Value)
     legacy <- decodeData "test/examples/legacy-fullconfig.json" :: IO (Either String Value)
     (parsed, warnings) <- parseConfigurationFiles olderPath
+    v2Path <- getDataFileName "test/examples/version2.json"
+    v2 <- decodeData "test/examples/version2.json" :: IO (Either String Value)
+    (parsedV2, warningsV2) <- parseConfigurationFiles v2Path
     unsupportedPath <- getDataFileName "test/examples/version-unsupported.json"
     unsupported <- try (parseConfigurationFiles unsupportedPath)
     nonPositivePath <- getDataFileName "test/examples/version-nonpositive.json"
     nonPositive <- try (parseConfigurationFiles nonPositivePath)
-    expectOk $ case (older, legacy) of
-      (Left err, _) -> Just ("could not read the version-1 fixture: " <> err)
-      (_, Left err) -> Just ("could not read the legacy fixture: " <> err)
-      (Right olderValue, Right legacyValue)
+    expectOk $ case (older, v2, legacy) of
+      (Left err, _, _) -> Just ("could not read the version-1 fixture: " <> err)
+      (_, Left err, _) -> Just ("could not read the version-2 fixture: " <> err)
+      (_, _, Left err) -> Just ("could not read the legacy fixture: " <> err)
+      (Right olderValue, Right v2Value, Right legacyValue)
         | not (upgraded olderValue) -> Just "a version-1 document was not upgraded"
+        | not (upgraded v2Value) -> Just "a version-2 document was not upgraded"
         | not (upgraded legacyValue) -> Just "a legacy document was not upgraded"
         | OutdatedFormatVersion 1 currentFormatVersion `notElem` warnings ->
             Just ("reading a version-1 document did not report it: " <> show warnings)
+        | OutdatedFormatVersion 2 currentFormatVersion `notElem` warningsV2 ->
+            Just ("reading a version-2 document did not report it: " <> show warningsV2)
+        | Left err <- resolveConfiguration (C.defaultCliArgs v2Path) parsedV2 ->
+            Just ("the version-2 document did not resolve: " <> show err)
         | otherwise -> case resolveConfiguration (C.defaultCliArgs olderPath) parsed of
             Left err -> Just ("the version-1 document did not resolve: " <> show err)
             Right _ -> case (unsupported, nonPositive) of
@@ -430,7 +440,7 @@ formatVersionCompatibilityCase =
         && KM.lookup (K.fromString "$schema") o == Just (String (schemaId "config.schema.json"))
     _ -> False
 
--- | A version-1 envelope written with the version-1 spellings reaches version 2
+-- | A version-1 envelope written with the version-1 spellings reaches the current version
 -- with the renames applied: the snapshot options @SnapshotInterval@\/@SlotOffset@
 -- become @Interval@\/@Offset@, the sections lose their @Config@ suffix, a
 -- @"NoOverride"@ mempool capacity override is
@@ -460,7 +470,7 @@ version1RenamesCase =
                 other -> Just ("unexpected resolved snapshot options: " <> show other)
  where
   -- The same document with a numeric override: after 'migrate' it sits at
-  -- version 2 under the current names only.
+  -- the current version under the current names only.
   migratedProblem v1 = case fst (migrated (withNumericOverride v1)) of
     m@(Object top)
       | KM.lookup (K.fromString "Version") top /= Just (Number (fromIntegral currentFormatVersion)) ->

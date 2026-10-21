@@ -370,7 +370,7 @@ draftURI = "http://json-schema.org/draft-07/schema#"
 -- document to @X@ before parsing it. Each new version therefore costs one
 -- migration step, not one parse path.
 currentFormatVersion :: Int
-currentFormatVersion = 2
+currentFormatVersion = 3
 
 -- | The newest format version implied by the package version: its first
 -- component, with the pre-1.0 series (@0.x.x.x@) counting as heading for version
@@ -407,8 +407,9 @@ packageFormatVersion = case versionBranch version of
 -- documents the canonical form alone.
 --
 -- The tag must exist for the URL to resolve. @v1@ was cut alongside
--- @cardano-config-1.1.0.0@. @v2@ is cut alongside @cardano-config-2.0.0.0@, so
--- the URLs the schemas carry today resolve only once that tag exists.
+-- @cardano-config-1.1.0.0@ and @v2@ alongside @cardano-config-2.0.0.0@. @v3@ is
+-- cut alongside @cardano-config-3.0.0.0@, so the URLs the schemas carry today
+-- resolve only once that tag exists.
 schemaTag :: Text
 schemaTag = "v" <> T.pack (show currentFormatVersion)
 

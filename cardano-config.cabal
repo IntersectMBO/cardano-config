@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: cardano-config
-version: 2.2.2.0
+version: 3.0.0.0
 synopsis: Cardano-node configuration parsing
 description:
   Datatypes and parsers for optparse-applicative and from YAML/JSON for the @cardano-node@ configuration.
@@ -37,7 +37,7 @@ source-repository head
 source-repository this
   type: git
   location: https://github.com/IntersectMBO/cardano-config
-  tag: cardano-config-2.0.0.0
+  tag: cardano-config-3.0.0.0
 
 common warnings
   ghc-options:

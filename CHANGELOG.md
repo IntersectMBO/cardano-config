@@ -1,5 +1,20 @@
 # Revision history for cardano-config
 
+## 3.0.0.0 -- unreleased
+
+The configuration format moves to version 3, so the package version is
+`3.0.0.0`. A `cardano-config-3.x.x.x` reads every format version up to and
+including 3, and writes 3. The schema is published under the new `v3` tag, which
+is cut with this release.
+
+Version 3 changes no key's name or place, so migrating a version 2 document
+only stamps the new `Version` and `$schema`. You do not have to migrate on
+disk: the parser migrates a version 2 document in memory before it reads it,
+and reports `OutdatedFormatVersion`.
+
+A new format version is needed because the changes below change what the
+schema validates, and the `v2` schema cannot change under its tag.
+
 ## 2.2.2.0 -- 16-10-2026
 
 ### Dependency versions
