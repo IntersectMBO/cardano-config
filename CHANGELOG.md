@@ -15,6 +15,20 @@ and reports `OutdatedFormatVersion`.
 A new format version is needed because the changes below change what the
 schema validates, and the `v2` schema cannot change under its tag.
 
+### Testing
+
+The `Testing` section now takes `LeiosMinOfferLead`, the number of slots an
+endorser block must be younger than the immutable tip for the node to offer it
+onward, as cardano-node reads it on its `leios-prototype` branch. It is held in
+the new `leiosMinOfferLead` field of `TestingConfiguration`, and absent, the
+consensus default applies.
+
+cardano-node reads it as a top-level key, and `migrate` nests such a key under
+`Testing`.
+
+`TestingConfiguration` gains a field, so code that builds it with the positional
+constructor has to change.
+
 ## 2.2.2.0 -- 16-10-2026
 
 ### Dependency versions

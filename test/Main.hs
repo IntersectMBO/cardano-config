@@ -137,6 +137,7 @@ cases =
   , migrateRenameCase
   , migrateNoOverrideCase
   , migrateSectionRenameCase
+  , migrateLeiosMinOfferLeadCase
   , migrateTracingCase
   , migrateApplicationNameCase
   , migrateLedgerDbSnapshotsCase
@@ -581,6 +582,27 @@ migrateRenameCase =
   allKeys (Object o) = map K.toString (KM.keys o) <> concatMap allKeys (KM.elems o)
   allKeys (Array a) = concatMap allKeys a
   allKeys _ = []
+
+-- | A top-level @LeiosMinOfferLead@, where cardano-node's @leios-prototype@
+-- branch reads it, is nested under @Testing@ and decodes into
+-- 'leiosMinOfferLead'.
+migrateLeiosMinOfferLeadCase :: TestTree
+migrateLeiosMinOfferLeadCase =
+  testCase "migrate nests a top-level LeiosMinOfferLead under Testing" $
+    expectOk $ case migrated (obj [("LeiosMinOfferLead", Number 600)]) of
+      (Object top, _) -> case KM.lookup (K.fromString "Configuration") top of
+        Just (Object cfg) -> case KM.lookup (K.fromString "Testing") cfg of
+          Just testing
+            | testing /= obj [("LeiosMinOfferLead", Number 600)] ->
+                Just ("unexpected Testing section: " <> show testing)
+            | otherwise -> case fromJSON testing :: Result (TestingConfiguration StrictMaybe) of
+                Success t
+                  | leiosMinOfferLead t == SJust 600 -> Nothing
+                  | otherwise -> Just ("decoded the wrong lead: " <> show (leiosMinOfferLead t))
+                Error e -> Just ("the migrated Testing section does not decode: " <> e)
+          Nothing -> Just ("LeiosMinOfferLead was not nested under Testing; keys: " <> show (KM.keys cfg))
+        _ -> Just "Configuration is not an object"
+      _ -> Just "migrate did not produce an object"
 
 -- | 'migrate' renames the sections that carried a @Config@ suffix. Where both
 -- spellings are present the current one wins, with a 'RenamedKeyCollision'

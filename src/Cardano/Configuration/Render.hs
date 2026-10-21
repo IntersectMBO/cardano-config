@@ -183,6 +183,7 @@ weakenTesting t =
     , File.testDijkstraHardForkAtEpoch = File.testDijkstraHardForkAtEpoch t
     , File.testDijkstraHardForkAtVersion = File.testDijkstraHardForkAtVersion t
     , File.experimentalGenesis = File.experimentalGenesis t
+    , File.leiosMinOfferLead = File.leiosMinOfferLead t
     }
 
 weakenMempool :: File.MempoolConfiguration Identity -> File.MempoolConfiguration StrictMaybe

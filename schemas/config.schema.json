@@ -789,6 +789,13 @@
                             "title": "ExperimentalHardForksEnabled",
                             "type": "boolean"
                         },
+                        "LeiosMinOfferLead": {
+                            "description": "How much younger than the immutable tip an endorser block must be for the node to offer it onward, in slots. Absent, the consensus default applies (an hour of one-second slots). Not a protocol parameter, so peers need not agree on it.",
+                            "maximum": 1.8446744073709551615e19,
+                            "minimum": 0,
+                            "title": "LeiosMinOfferLead",
+                            "type": "integer"
+                        },
                         "TestAllegraHardForkAtEpoch": {
                             "description": "Force the Allegra hard fork at this epoch",
                             "maximum": 1.8446744073709551615e19,
