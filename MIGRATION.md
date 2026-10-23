@@ -6,8 +6,14 @@ convert in one step:
 
 ```console
 $ cardano-config migrate old-config.json > config.json
+$ cardano-config migrate old-config.yaml > config.yaml
 $ curl -sL <url-of-old-config> | cardano-config migrate - > config.json
 ```
+
+It prints the result in the format it read: a document that is valid JSON
+comes out as JSON, and anything else comes out as YAML. YAML comments and
+anchors do not survive, and keys come out sorted. `migrate` warns when the
+input has comments, so that you can copy across the ones you want to keep.
 
 The parser runs the same steps in memory on every file it reads, so an older
 file still loads. It warns you when it has to. Run `migrate` to make the file
