@@ -118,7 +118,8 @@ $ cardano-config migrate old-config.json > config.json
 
 It reshapes the document into the envelope, brings the key names up to date
 and drops the keys that no longer exist. It keeps your values as you wrote
-them, and fills in no defaults. Run `cardano-config resolve --config <file>`
+them, and fills in no defaults. The result comes out in the format it went
+in: JSON for a JSON file, YAML for a YAML one. Run `cardano-config resolve --config <file>`
 afterwards to make sure that the result parses.
 
 [`MIGRATION.md`](MIGRATION.md) lists every change `migrate` makes, key by key,
