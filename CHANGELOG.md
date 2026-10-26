@@ -1,6 +1,6 @@
 # Revision history for cardano-config
 
-## Unreleased
+## 2.2.3.0 -- 26-10-2026
 
 ### `migrate` keeps the input format
 
