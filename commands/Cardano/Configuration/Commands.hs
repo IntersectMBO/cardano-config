@@ -53,7 +53,7 @@ module Cardano.Configuration.Commands
 import Cardano.Configuration (parseConfigurationFiles, renderConfigWarning, resolveConfiguration)
 import Cardano.Configuration.CliArgs (CliArgs, configFilePath, parseCliArgs)
 import Cardano.Configuration.File (componentDefaults)
-import Cardano.Configuration.File.Merge (declaredFormatVersion, decodeValueFile)
+import Cardano.Configuration.File.Merge (declaredFormatVersion, decodeValueBytes)
 import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.Render (GenesisRendering (..), nodeConfigurationToJSON)
 import Cardano.Configuration.Schema
@@ -64,11 +64,14 @@ import Control.Exception (displayException, fromException, throwIO)
 import Control.Exception.Safe (handleAny)
 import Control.Monad (when)
 import Data.Aeson (Value)
+import qualified Data.Aeson as Aeson
 import Data.Aeson.Encode.Pretty (Config (..), defConfig, encodePretty')
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy.Char8 as L
+import Data.Char (isSpace)
 import Data.Foldable (for_)
-import Data.Yaml (decodeThrow)
+import Data.Maybe (isJust)
 import Data.Yaml.Pretty (encodePretty, setConfCompare, setConfDropNull)
 import qualified Data.Yaml.Pretty as Yaml
 import Options.Applicative
@@ -154,7 +157,7 @@ schemaCommand =
 
 -- | Print the configuration JSON Schema.
 runSchemaCommand :: () -> IO ()
-runSchemaCommand () = dump (configSchemaWithDefaults componentDefaults)
+runSchemaCommand () = dumpJSON (configSchemaWithDefaults componentDefaults)
 
 -- | How to validate a configuration against the schema, shown under
 -- @cardano-config schema --help@.
@@ -175,7 +178,8 @@ schemaValidationHelp = vsep (map pretty ls)
 -- Migrate ---------------------------------------------------------------------
 
 -- | Arguments of the @migrate@ command: the configuration file to migrate
--- (JSON or YAML), or @-@ to read from stdin.
+-- (JSON or YAML), or @-@ to read from stdin. The result is printed in the
+-- same format.
 newtype MigrateOptions = MigrateOptions {migrateConfigPath :: FilePath}
 
 -- | Parser for 'MigrateOptions'.
@@ -194,21 +198,28 @@ migrateCommand =
         (runMigrateCommand <$> migrateOptionsParser)
         ( progDesc
             ( "Reshape a configuration into the recommended "
-                <> "{ $schema, Version, MinNodeVersion, Configuration } envelope and print it as JSON. "
+                <> "{ $schema, Version, MinNodeVersion, Configuration } envelope and print it "
+                <> "in the format it was read in (JSON for JSON, YAML for YAML). "
                 <> "Preserves the values as written (no defaults are filled, no genesis files read)."
             )
         )
     )
 
 -- | Read a configuration and print it, reshaped into the envelope at the
--- current format version, as JSON. A purely structural migration: it does not
--- resolve, default or validate, so the hint at the end points at @resolve@.
--- A path of @-@ reads the configuration from stdin (so it composes with @curl@).
+-- current format version, in the format it was read in: a document that is
+-- valid JSON is printed as JSON, anything else as YAML. A purely structural
+-- migration: it does not resolve, default or validate, so the hint at the end
+-- points at @resolve@. A path of @-@ reads the configuration from stdin (so it
+-- composes with @curl@).
 runMigrateCommand :: MigrateOptions -> IO ()
 runMigrateCommand (MigrateOptions path) = dieOnFailure $ do
-  raw <- case path of
-    "-" -> BS.getContents >>= decodeThrow
-    _ -> decodeValueFile path
+  bytes <- case path of
+    "-" -> BS.getContents
+    _ -> BS.readFile path
+  raw <- decodeValueBytes Nothing (if path == "-" then "<stdin>" else path) bytes
+  -- JSON is a subset of YAML, so the YAML decoder above reads both; telling
+  -- them apart is a matter of whether the bytes also parse as JSON.
+  let isJson = isJust (Aeson.decodeStrict bytes :: Maybe Value)
   -- A document written for a newer format version cannot be migrated down to
   -- this one, so say so instead of rewriting it into something it is not.
   declared <- declaredFormatVersion raw
@@ -221,11 +232,27 @@ runMigrateCommand (MigrateOptions path) = dieOnFailure $ do
         <> ". Upgrade cardano-config to migrate it."
   (migrated, warnings) <- either (die . renderMigrationError) pure (migrate raw)
   for_ warnings $ hPutStrLn stderr . ("Warning: " <>) . renderConfigWarning
-  dump migrated
+  when (not isJson && hasYamlComments bytes) $
+    hPutStrLn stderr $
+      "Warning: the input has comments, which migrate does not carry over. "
+        <> "Copy any you want to keep into the output by hand."
+  (if isJson then dumpJSON else dumpYAML) migrated
   hPutStrLn stderr $
     "Migrated to format version "
       <> show currentFormatVersion
       <> ". Run `cardano-config resolve --config <file>` to check that it parses."
+
+-- | Whether a YAML document looks like it has comments: a line whose first
+-- non-blank character is @#@, or a @#@ after whitespace later in a line. The
+-- YAML decoder drops comments without a trace, so this is a line-based guess;
+-- a @#@ inside a quoted string or a block scalar gives a false positive, which
+-- costs only a needless warning.
+hasYamlComments :: BS.ByteString -> Bool
+hasYamlComments = any isComment . BS8.lines
+ where
+  isComment line =
+    BS8.take 1 (BS8.dropWhile isSpace line) == "#"
+      || any (`BS.isInfixOf` line) [" #", "\t#"]
 
 -- Shared helpers --------------------------------------------------------------
 
@@ -239,8 +266,12 @@ dieOnFailure = handleAny $ \e -> case fromException e :: Maybe ExitCode of
   Nothing -> die (displayException e)
 
 -- | Print a JSON 'Value' with sorted keys for stable output.
-dump :: Value -> IO ()
-dump = L.putStrLn . encodePretty' defConfig{confCompare = compare}
+dumpJSON :: Value -> IO ()
+dumpJSON = L.putStrLn . encodePretty' defConfig{confCompare = compare}
+
+-- | Print a JSON 'Value' as YAML, with sorted keys for stable output.
+dumpYAML :: Value -> IO ()
+dumpYAML = BS.putStr . encodePretty (setConfCompare compare Yaml.defConfig)
 
 -- | Print a message to @stderr@ and exit with a failure status.
 die :: String -> IO a

@@ -1,5 +1,16 @@
 # Revision history for cardano-config
 
+## 2.2.3.0 -- 26-10-2026
+
+### `migrate` keeps the input format
+
+`cardano-config migrate` used to print JSON whatever it read. It now prints a
+JSON document as JSON and a YAML document as YAML, from a file or from
+standard input. A document that is valid JSON counts as JSON. Comments in a
+YAML document are not carried over, so `migrate` warns when it finds any. A
+syntax error in a document read from standard input is now reported like one
+in a file.
+
 ## 2.2.2.0 -- 16-10-2026
 
 ### Dependency versions
