@@ -168,6 +168,7 @@ cases =
   , softAboveHardLimitCase
   , defaultConfigParityCase
   , experimentalHardForksDefaultCase
+  , perasEnabledCase
   , mempoolAllUnsetCase
   , mempoolAllSetCase
   , mempoolMixedCase
@@ -1503,6 +1504,28 @@ experimentalHardForksDefaultCase =
    where
     step (Object o) k = KM.lookup (K.fromString k) o
     step _ _ = Nothing
+
+perasEnabledCase :: TestTree
+perasEnabledCase =
+  testCase "test/examples/peras-enabled.json (a flat PerasEnabled resolves under Peras)" $ do
+    enabled <- resolvedPeras "test/examples/peras-enabled.json"
+    absent <- resolvedPeras "test/examples/legacy-fullconfig.json"
+    expectOk $ case (enabled, absent) of
+      (Right (True, []), Right (False, _)) -> Nothing
+      _ -> Just ("peras-enabled: " <> show enabled <> "; legacy-fullconfig: " <> show absent)
+ where
+  resolvedPeras fp = do
+    path <- getDataFileName fp
+    (cfg, warnings) <- parseConfigurationFiles path
+    pure $ case cliArgs [] of
+      Nothing -> Left "could not build CLI arguments"
+      Just cli -> case resolveConfiguration cli cfg of
+        Left err -> Left (show err)
+        Right (nc, _) ->
+          Right
+            ( runIdentity (C.perasEnabled (C.perasConfiguration nc))
+            , [ks | UnrecognisedKeys ks <- warnings]
+            )
 
 -- | All three mempool timeouts unset resolves to the coupled default (1, 1.5, 5).
 mempoolAllUnsetCase :: TestTree
