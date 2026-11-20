@@ -52,6 +52,7 @@ nodeConfigurationToJSON geneses nc =
     , "LocalConnections" .= toJSON (weakenLocalConnections (localConnectionsConfig nc))
     , "Mempool" .= toJSON (weakenMempool (mempoolConfiguration nc))
     , "Testing" .= toJSON (weakenTesting (testingConfiguration nc))
+    , "Peras" .= toJSON (weakenPeras (perasConfiguration nc))
     , "Runtime" .= runtimeValue nc
     ]
       <> tracingFields
@@ -193,6 +194,9 @@ weakenMempool m =
     , File.mempoolTimeoutHard = j (File.mempoolTimeoutHard m)
     , File.mempoolTimeoutCapacity = j (File.mempoolTimeoutCapacity m)
     }
+
+weakenPeras :: File.PerasConfiguration Identity -> File.PerasConfiguration StrictMaybe
+weakenPeras p = File.PerasConfiguration{File.perasEnabled = j (File.perasEnabled p)}
 
 -- | The operational arguments that come only from the CLI. Unset optional values
 -- are omitted.

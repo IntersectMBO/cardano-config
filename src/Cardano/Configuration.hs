@@ -62,6 +62,9 @@ module Cardano.Configuration
     -- ** Mempool
   , File.MempoolConfiguration (..)
 
+    -- ** Peras
+  , File.PerasConfiguration (..)
+
     -- ** Genesis
 
     -- | The era genesis types of the resolved 'NodeConfiguration' fields. The
@@ -177,6 +180,7 @@ data NodeConfiguration = NodeConfiguration
   , localConnectionsConfig :: File.LocalConnectionsConfig Identity
   , testingConfiguration :: File.TestingConfiguration Identity
   , mempoolConfiguration :: File.MempoolConfiguration Identity
+  , perasConfiguration :: File.PerasConfiguration Identity
   , tracingConfiguration :: File.TraceConfig
   -- ^ The tracing configuration resolved from the top-level @HermodTracing@ key
   -- by @trace-dispatcher@'s parser (see 'File.resolveTracingConfiguration'),
@@ -462,6 +466,7 @@ resolveConfigurationWith checks cli file = do
   network <- section "Network" >>= finalize . File.finalizeNetwork
   testing <- section "Testing" >>= finalize . File.finalizeTesting
   mempool <- section "Mempool" >>= finalize . File.finalizeMempool
+  peras <- section "Peras" >>= finalize . File.finalizePeras
   -- Local connections additionally take CLI overrides before being finalized.
   lcc <- section "LocalConnections"
   let cliGrpcEndpoint = CLI.grpcEndpointCLI cli
@@ -511,6 +516,7 @@ resolveConfigurationWith checks cli file = do
         , localConnectionsConfig = localConnections
         , testingConfiguration = testing
         , mempoolConfiguration = mempool
+        , perasConfiguration = peras
         , tracingConfiguration = File.tracingConfiguration file
         , byronGenesisConfig = File.byronGenesisConfig file
         , shelleyGenesisConfig = File.shelleyGenesisConfig file

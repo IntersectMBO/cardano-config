@@ -71,6 +71,7 @@ library internal
     Cardano.Configuration.File.Merge
     Cardano.Configuration.File.Migrate
     Cardano.Configuration.File.Network
+    Cardano.Configuration.File.Peras
     Cardano.Configuration.File.Protocol
     Cardano.Configuration.File.Storage
     Cardano.Configuration.File.Testing

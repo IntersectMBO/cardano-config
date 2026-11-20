@@ -44,6 +44,7 @@ import Cardano.Configuration.Common (defaultGrpcListenAddress, filePathFormatMar
 import Cardano.Configuration.File.Consensus (ConsensusConfiguration)
 import Cardano.Configuration.File.Mempool (MempoolConfiguration)
 import Cardano.Configuration.File.Network (LocalConnectionsConfig, NetworkConfiguration)
+import Cardano.Configuration.File.Peras (PerasConfiguration)
 import Cardano.Configuration.File.Protocol (ProtocolConfiguration)
 import Cardano.Configuration.File.Storage (StorageConfiguration)
 import Cardano.Configuration.File.Testing (TestingConfiguration)
@@ -65,6 +66,7 @@ import Paths_cardano_config (version)
 -- no @$schema@). Used internally for merging; 'publish' makes them public.
 rawStorageSchema, rawConsensusSchema, rawProtocolSchema, rawNetworkSchema :: Value
 rawLocalConnectionsSchema, rawMempoolSchema, rawTestingSchema, rawTracingSchema :: Value
+rawPerasSchema :: Value
 rawStorageSchema = toJSON (jsonSchemaViaCodec @(StorageConfiguration StrictMaybe))
 rawConsensusSchema = toJSON (jsonSchemaViaCodec @(ConsensusConfiguration StrictMaybe))
 rawProtocolSchema = toJSON (jsonSchemaViaCodec @(ProtocolConfiguration StrictMaybe))
@@ -73,6 +75,7 @@ rawLocalConnectionsSchema = toJSON (jsonSchemaViaCodec @(LocalConnectionsConfig 
 rawMempoolSchema = toJSON (jsonSchemaViaCodec @(MempoolConfiguration StrictMaybe))
 rawTestingSchema = toJSON (jsonSchemaViaCodec @(TestingConfiguration StrictMaybe))
 rawTracingSchema = toJSON (jsonSchemaViaCodec @TracingConfiguration)
+rawPerasSchema = toJSON (jsonSchemaViaCodec @(PerasConfiguration StrictMaybe))
 
 -- The components that are sections of their own. Tracing is deliberately
 -- absent: it is not a section, only the single top-level @HermodTracing@ key
@@ -88,6 +91,7 @@ rawComponentSchemas =
       , ("LocalConnections", rawLocalConnectionsSchema)
       , ("Mempool", rawMempoolSchema)
       , ("Testing", rawTestingSchema)
+      , ("Peras", rawPerasSchema)
       ]
   ]
 
