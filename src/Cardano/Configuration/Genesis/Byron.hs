@@ -11,12 +11,13 @@ module Cardano.Configuration.Genesis.Byron
 
 import Cardano.Chain.Genesis
   ( Config
+  , ConfigurationError (..)
   , GenesisHash (unGenesisHash)
   , configGenesisData
   , mkConfigFromFile
   , readGenesisData
   )
-import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromBytes, hashToBytes)
+import Cardano.Crypto.Hash (Blake2b_256, Hash, hashFromBytes, hashToBytes, hashToStringAsHex)
 import qualified Cardano.Crypto.Hashing as Byron
 import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic)
 import qualified Cardano.Crypto.Raw as Byron
@@ -48,7 +49,18 @@ readByronGenesisConfig ::
 readByronGenesisConfig rnm expected fp = do
   let expectedRaw :: Byron.Hash Byron.Raw
       expectedRaw = Byron.unsafeAbstractHashFromBytes (hashToBytes expected)
-  first show <$> runExceptT (mkConfigFromFile rnm fp expectedRaw)
+  first message <$> runExceptT (mkConfigFromFile rnm fp expectedRaw)
+ where
+  -- A hash mismatch is put in words. The caller names the file, so the message
+  -- does not repeat it. A Byron hash shows as hex.
+  message = \case
+    GenesisHashMismatch actual _ ->
+      "the file's hash is "
+        <> show (unGenesisHash actual)
+        <> ", but the configuration gives "
+        <> hashToStringAsHex expected
+    err@ConfigurationGenesisDataError{} -> show err
+    err@GenesisHashDecodeError{} -> show err
 
 -- | The hash a configuration pins a Byron genesis file to: the @Blake2b_256@
 -- hash of its canonical-JSON rendering, as 'readByronGenesisConfig' checks it.

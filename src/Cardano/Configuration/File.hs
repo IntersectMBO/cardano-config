@@ -84,7 +84,7 @@ import Cardano.Configuration.File.Tracing
   , resolveTracingConfiguration
   )
 import Cardano.Configuration.Genesis
-  ( GenesisReadError
+  ( GenesisReadError (..)
   , genesisErrorFile
   , readGenesisFile
   , resolveExperimentalGenesis
@@ -98,10 +98,12 @@ import Cardano.Configuration.Genesis.Injection
   , renderInjectionSlot
   )
 import Cardano.Configuration.Schema (componentPropertyNames, currentFormatVersion)
+import Cardano.Crypto.Hash (hashToStringAsHex)
 import qualified Cardano.Crypto.ProtocolMagic as Byron
 import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis)
 import Cardano.Ledger.BaseTypes
-  ( StrictMaybe (..)
+  ( Mismatch (..)
+  , StrictMaybe (..)
   , fromSMaybe
   , maybeToStrictMaybe
   , strictMaybeToMaybe
@@ -463,4 +465,15 @@ genesisReadErrorAt section fileKey err =
     (maybeToStrictMaybe (genesisErrorFile err))
     (SJust section)
     [Key (K.fromString fileKey)]
-    (show err)
+    message
+ where
+  -- A hash mismatch is put in words. The file is in 'errFile', so the message
+  -- does not repeat it.
+  message = case err of
+    GenesisHashMismatch _ (Mismatch actual expected) ->
+      "the file's hash is "
+        <> hashToStringAsHex actual
+        <> ", but the configuration gives "
+        <> hashToStringAsHex expected
+    GenesisFileReadError{} -> show err
+    GenesisDecodeError{} -> show err
