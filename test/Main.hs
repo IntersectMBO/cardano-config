@@ -82,6 +82,7 @@ import Data.Aeson
   )
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
+import Data.Aeson.Types (JSONPathElement (Key))
 import Data.FileEmbed (makeRelativeToProject)
 import Data.Functor.Identity (runIdentity)
 import Data.IP (IP)
@@ -197,6 +198,7 @@ cases =
       "test/examples/mainnet-conway-genesis.json (decodes via the ledger instances)"
       (decodeData "test/examples/mainnet-conway-genesis.json" :: IO (Either String ConwayGenesis))
   , byronGenesisDecodeCase
+  , genesisHashMismatchMessageCase
   , refreshMissingHashesCase
   , refreshStaleHashesCase
   , documentRoundTripCase
@@ -2250,6 +2252,70 @@ byronGenesisDecodeCase =
       Just expected -> do
         res <- readByronGenesisConfig RequiresNoMagic expected path
         expectOk (either (Just . ("Byron read failed: " <>)) (const Nothing) res)
+
+-- | A configuration whose hash for one genesis file is wrong is rejected with an
+-- error that names the file and its key, and gives both hashes in words. The
+-- Byron ledger checks the Byron genesis and this library checks the others, so
+-- each era is tried in turn, with the other hashes right.
+genesisHashMismatchMessageCase :: TestTree
+genesisHashMismatchMessageCase =
+  testCase "a wrong genesis hash is reported with both hashes" $
+    withEditFixtures $ \dir -> do
+      let file = dir </> "config.json"
+          wrong = replicate 64 '0'
+      mapM_
+        ( \(fileKey, hashKey, genesisFile, genesisHash) -> do
+            encodeFile file . editConfiguration $
+              [ (key, if key == hashKey then wrong else hash)
+              | (_, key, _, hash) <- genesisHashes
+              ]
+            result <- try @ConfigurationParsingError (parseConfigurationFiles file)
+            expectOk $ case result of
+              Left err
+                | errFile err == SJust (dir </> genesisFile)
+                , errPath err == [Key (K.fromString fileKey)]
+                , errMessage err
+                    == "the file's hash is " <> genesisHash <> ", but the configuration gives " <> wrong ->
+                    Nothing
+                | otherwise -> Just (hashKey <> ": unexpected error: " <> show err)
+              Right _ -> Just (hashKey <> ": the wrong hash was accepted")
+        )
+        genesisHashes
+ where
+  -- The key naming each genesis file, the key of its hash, the file and its hash.
+  genesisHashes :: [(String, String, FilePath, String)]
+  genesisHashes =
+    [
+      ( "ByronGenesisFile"
+      , "ByronGenesisHash"
+      , "mainnet-byron-genesis.json"
+      , "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb"
+      )
+    ,
+      ( "ShelleyGenesisFile"
+      , "ShelleyGenesisHash"
+      , "mainnet-shelley-genesis.json"
+      , "1a3be38bcbb7911969283716ad7aa550250226b76a61fc51cc9a9a35d9276d81"
+      )
+    ,
+      ( "AlonzoGenesisFile"
+      , "AlonzoGenesisHash"
+      , "mainnet-alonzo-genesis.json"
+      , "7e94a15f55d1e82d10f09203fa1d40f8eede58fd8066542cf6566008068ed874"
+      )
+    ,
+      ( "ConwayGenesisFile"
+      , "ConwayGenesisHash"
+      , "mainnet-conway-genesis.json"
+      , "15a199f895e461ec0ffc6dd4e4028af28a492ab4e806d39cb674c88f7643ef62"
+      )
+    ,
+      ( "DijkstraGenesisFile"
+      , "DijkstraGenesisHash"
+      , "dijkstra-genesis.json"
+      , "d939e640f5aece1b33b15345b7ae095aa2d8f93f703292e8ec1564c6b02d5f30"
+      )
+    ]
 
 -- | A configuration written without genesis hashes reads as a document, and
 -- once its hashes are filled in it parses with every genesis file checked.

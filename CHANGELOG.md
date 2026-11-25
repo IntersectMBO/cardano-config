@@ -1,5 +1,15 @@
 # Revision history for cardano-config
 
+## 2.2.4.0 -- 24-11-2026
+
+### Genesis hash mismatches in words
+
+A genesis file whose hash differs from the one the configuration gives used to
+be reported with the Haskell `show` of the error. The error message now gives
+both hashes in words: `the file's hash is <hash>, but the configuration gives
+<hash>`. This covers the Byron genesis too. The file is in `errFile`, as
+before, so the message does not repeat it.
+
 ## 2.2.3.0 -- 26-10-2026
 
 ### `migrate` keeps the input format

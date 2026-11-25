@@ -32,7 +32,8 @@ data GenesisReadError
   = -- | The file could not be read.
     GenesisFileReadError FilePath IOException
   | -- | The file's @Blake2b_256@ hash did not match the expected hash from the
-    -- configuration (expected, then actual).
+    -- configuration. The 'Mismatch' supplies the file's hash and expects the
+    -- configuration's.
     GenesisHashMismatch
       FilePath
       (Mismatch RelEQ (Hash Blake2b_256 ByteString))
