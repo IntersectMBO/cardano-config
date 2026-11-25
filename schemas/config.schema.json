@@ -485,6 +485,19 @@
                     "title": "Network",
                     "type": "object"
                 },
+                "Peras": {
+                    "description": "PerasConfiguration",
+                    "properties": {
+                        "PerasEnabled": {
+                            "default": false,
+                            "description": "Enable Peras: the node diffuses Peras votes and certificates",
+                            "title": "PerasEnabled",
+                            "type": "boolean"
+                        }
+                    },
+                    "title": "Peras",
+                    "type": "object"
+                },
                 "Protocol": {
                     "description": "ProtocolConfiguration",
                     "properties": {

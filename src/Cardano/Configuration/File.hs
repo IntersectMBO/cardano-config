@@ -37,6 +37,7 @@ module Cardano.Configuration.File
   , defaultGrpcListenAddress
   , TestingConfiguration (..)
   , MempoolConfiguration (..)
+  , PerasConfiguration (..)
   , TracingConfiguration (..)
   , TracingConfigSource (..)
   , TraceConfig
@@ -47,6 +48,7 @@ module Cardano.Configuration.File
   , finalizeNetwork
   , finalizeLocalConnections
   , finalizeMempool
+  , finalizePeras
   , finalizeTesting
 
     -- * Network role
@@ -74,6 +76,7 @@ import Cardano.Configuration.File.Merge
   )
 import Cardano.Configuration.File.Migrate (migrate, renderMigrationError)
 import Cardano.Configuration.File.Network
+import Cardano.Configuration.File.Peras
 import Cardano.Configuration.File.Protocol
 import Cardano.Configuration.File.Storage
 import Cardano.Configuration.File.Testing
@@ -148,6 +151,7 @@ data NodeConfigurationFromFile = NodeConfigurationFromFile
   , localConnectionsConfig :: LocalConnectionsConfig StrictMaybe
   , testingConfiguration :: TestingConfiguration StrictMaybe
   , mempoolConfiguration :: MempoolConfiguration StrictMaybe
+  , perasConfiguration :: PerasConfiguration StrictMaybe
   -- ^ Each component as the configuration file wrote it, with no defaults
   -- filled in. A field the file leaves unset is @SNothing@ here.
   --
@@ -313,6 +317,7 @@ parseConfigurationBody root minNodeVer configValue = do
     parseSection @(LocalConnectionsConfig StrictMaybe) configValue "LocalConnections"
   mempool <- parseSection @(MempoolConfiguration StrictMaybe) configValue "Mempool"
   testing <- parseSection @(TestingConfiguration StrictMaybe) configValue "Testing"
+  peras <- parseSection @(PerasConfiguration StrictMaybe) configValue "Peras"
   -- The @HermodTracing@ value is captured (as a file path or an inline object)
   -- and then handed to trace-dispatcher's own parser, which resolves it to a
   -- 'TraceConfig' — reading the referenced file, or the inline object directly.
@@ -368,6 +373,7 @@ parseConfigurationBody root minNodeVer configValue = do
       , localConnectionsConfig = localConnections
       , testingConfiguration = testing
       , mempoolConfiguration = mempool
+      , perasConfiguration = peras
       , userConfiguration = configValue
       , tracingConfiguration = traceConfig
       , byronGenesisConfig = byronGenesisData

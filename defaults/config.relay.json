@@ -53,6 +53,9 @@
             "TxSubmissionInitDelay": 60,
             "TxSubmissionLogicVersion": "TxSubmissionLogicV1"
         },
+        "Peras": {
+            "PerasEnabled": false
+        },
         "Protocol": {
             "RequiresNetworkMagic": "RequiresNoMagic",
             "StartAsNonProducingNode": false
